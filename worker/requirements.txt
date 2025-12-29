@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+transformers>=4.45.2,<4.55.0
+marker-pdf[full]
+python-dotenv
+latex2mathml

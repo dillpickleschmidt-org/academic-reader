@@ -1,0 +1,30 @@
+services:
+  worker:
+    build: ./worker
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ACADEMIC_READER_SERVICE_KEY=${ACADEMIC_READER_SERVICE_KEY}
+    volumes:
+      - ./worker/app:/app/app  # Hot reload during dev
+      - marker-cache:/root/.cache  # Cache downloaded models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - worker
+
+volumes:
+  marker-cache:

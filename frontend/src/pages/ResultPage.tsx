@@ -7,6 +7,7 @@ interface Props {
   fileName: string
   outputFormat: OutputFormat
   content: string
+  imagesReady: boolean
   onDownload: () => void
   onReset: () => void
 }
@@ -14,6 +15,7 @@ interface Props {
 export function ResultPage({
   outputFormat,
   content,
+  imagesReady,
   onDownload,
   onReset,
 }: Props) {
@@ -22,6 +24,7 @@ export function ResultPage({
       return (
         <HtmlResultPage
           content={content}
+          imagesReady={imagesReady}
           onDownload={onDownload}
           onReset={onReset}
         />

@@ -50,6 +50,7 @@ function App() {
           fileName={conversion.fileName}
           outputFormat={conversion.outputFormat}
           content={conversion.content}
+          imagesReady={conversion.imagesReady}
           onDownload={conversion.downloadResult}
           onReset={conversion.reset}
         />

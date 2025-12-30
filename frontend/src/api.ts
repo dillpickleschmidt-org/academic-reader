@@ -90,3 +90,47 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
   return res.json()
 }
+
+export async function warmModels(): Promise<void> {
+  // Fire-and-forget, don't await or check response
+  fetch(`${API_URL}/warm-models`, { method: "POST" }).catch(() => {
+    // Ignore errors - model warming is best-effort
+  })
+}
+
+export function subscribeToJob(
+  jobId: string,
+  onHtmlReady: (content: string) => void,
+  onComplete: (result: NonNullable<JobStatus["result"]>) => void,
+  onError: (error: string) => void,
+): () => void {
+  const eventSource = new EventSource(`${API_URL}/jobs/${jobId}/stream`)
+
+  eventSource.addEventListener("html_ready", (e: MessageEvent) => {
+    const data = JSON.parse(e.data)
+    onHtmlReady(data.content)
+  })
+
+  eventSource.addEventListener("completed", (e: MessageEvent) => {
+    const result = JSON.parse(e.data)
+    onComplete(result)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener("failed", (e: MessageEvent) => {
+    onError(e.data)
+    eventSource.close()
+  })
+
+  eventSource.addEventListener("error", (e: MessageEvent) => {
+    onError(e.data || "Stream error")
+    eventSource.close()
+  })
+
+  eventSource.onerror = () => {
+    // Connection error - caller should fall back to polling
+    eventSource.close()
+  }
+
+  return () => eventSource.close()
+}

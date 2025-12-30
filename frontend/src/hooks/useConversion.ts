@@ -1,10 +1,12 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 import * as api from "../api"
 import baseResultCss from "../styles/base-result.css?raw"
 import htmlResultCss from "../styles/html-result.css?raw"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type OutputFormat = "html" | "markdown" | "json"
+
+const POLL_INTERVAL = 10000 // 10 seconds fallback
 
 export function useConversion() {
   // Navigation
@@ -26,8 +28,18 @@ export function useConversion() {
   // Processing state
   const [content, setContent] = useState("")
   const [error, setError] = useState("")
+  const [imagesReady, setImagesReady] = useState(false)
+
+  // SSE cleanup ref
+  const sseCleanupRef = useRef<(() => void) | null>(null)
 
   const reset = () => {
+    // Clean up any active SSE connection
+    if (sseCleanupRef.current) {
+      sseCleanupRef.current()
+      sseCleanupRef.current = null
+    }
+
     setPage("upload")
     setFileId("")
     setFileName("")
@@ -40,6 +52,7 @@ export function useConversion() {
     setPageRange("")
     setContent("")
     setError("")
+    setImagesReady(false)
   }
 
   const uploadFile = async (file: File) => {
@@ -48,6 +61,9 @@ export function useConversion() {
     setUploadProgress(0)
     setUploadComplete(false)
     setError("")
+
+    // Pre-warm models when upload starts (fire-and-forget)
+    api.warmModels()
 
     try {
       const progressInterval = setInterval(() => {
@@ -75,6 +91,9 @@ export function useConversion() {
     setUploadComplete(false)
     setError("")
 
+    // Pre-warm models when fetch starts (fire-and-forget)
+    api.warmModels()
+
     try {
       const progressInterval = setInterval(() => {
         setUploadProgress((prev) => Math.min(prev + 5, 90))
@@ -96,6 +115,7 @@ export function useConversion() {
   const startConversion = async () => {
     setPage("processing")
     setError("")
+    setImagesReady(false)
 
     try {
       const { job_id } = await api.startConversion(fileId, {
@@ -105,23 +125,74 @@ export function useConversion() {
         pageRange,
       })
 
-      const pollJob = async (): Promise<void> => {
-        const job = await api.getJobStatus(job_id)
+      // Try SSE first, fall back to polling if it fails
+      let sseConnected = false
+      let sseFailed = false
 
-        if (job.status === "completed") {
-          setContent(job.result?.content || "")
+      const cleanup = api.subscribeToJob(
+        job_id,
+        // onHtmlReady - show content immediately (images still loading)
+        (htmlContent) => {
+          sseConnected = true
+          setContent(htmlContent)
           setPage("result")
-        } else if (job.status === "failed") {
-          throw new Error(job.error || "Conversion failed")
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, 5000))
-          return pollJob()
-        }
-      }
+          // imagesReady stays false - shimmer will show for unloaded images
+        },
+        // onComplete - final content with images embedded
+        (result) => {
+          sseConnected = true
+          setContent(result.content)
+          setImagesReady(true)
+          setPage("result")
+          sseCleanupRef.current = null
+        },
+        // onError
+        (errorMsg) => {
+          if (sseConnected) {
+            // Error after connection - show error
+            setError(errorMsg)
+          } else {
+            // Connection failed - will fall back to polling
+            sseFailed = true
+          }
+          sseCleanupRef.current = null
+        },
+      )
 
-      await pollJob()
+      sseCleanupRef.current = cleanup
+
+      // Give SSE a moment to connect, then start polling as fallback
+      setTimeout(() => {
+        if (!sseConnected && !sseFailed) {
+          // SSE hasn't connected yet - start polling fallback
+          pollJobFallback(job_id)
+        } else if (sseFailed) {
+          // SSE failed - use polling
+          pollJobFallback(job_id)
+        }
+      }, 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Conversion failed")
+    }
+  }
+
+  const pollJobFallback = async (jobId: string): Promise<void> => {
+    try {
+      const job = await api.getJobStatus(jobId)
+
+      if (job.status === "completed") {
+        setContent(job.result?.content || "")
+        setImagesReady(true)
+        setPage("result")
+      } else if (job.status === "failed") {
+        setError(job.error || "Conversion failed")
+      } else {
+        // Still processing - poll again
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL))
+        return pollJobFallback(jobId)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to check status")
     }
   }
 
@@ -222,6 +293,7 @@ ${renderedContent}
     pageRange,
     content,
     error,
+    imagesReady,
 
     // Setters
     setUrl,

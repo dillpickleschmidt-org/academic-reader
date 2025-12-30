@@ -236,3 +236,26 @@
     display: none;
   }
 }
+
+/* Shimmer for images not yet embedded */
+.reader-output img:not([src^="data:"]) {
+  background: linear-gradient(
+    90deg,
+    var(--reader-code-bg) 25%,
+    var(--reader-border) 50%,
+    var(--reader-code-bg) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  min-height: 100px; /* Fallback if dimensions not available */
+  border-radius: 4px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

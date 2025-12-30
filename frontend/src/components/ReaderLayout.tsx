@@ -14,6 +14,7 @@ interface Props {
   onDownload: () => void
   onReset: () => void
   showThemeToggle?: boolean
+  downloadDisabled?: boolean
 }
 
 export function ReaderLayout({
@@ -21,6 +22,7 @@ export function ReaderLayout({
   onDownload,
   onReset,
   showThemeToggle = false,
+  downloadDisabled = false,
 }: Props) {
   const [theme, setTheme] = useReaderTheme()
   const radioRefs = useRef<Record<ReaderTheme, HTMLInputElement | null>>({
@@ -72,7 +74,12 @@ export function ReaderLayout({
           </div>
         )}
         <div className="reader-actions">
-          <button onClick={onDownload} title="Download">
+          <button
+            onClick={onDownload}
+            title={downloadDisabled ? "Waiting for images..." : "Download"}
+            disabled={downloadDisabled}
+            style={{ opacity: downloadDisabled ? 0.5 : 1 }}
+          >
             <Download size={18} />
           </button>
           <button onClick={onReset} title="New">

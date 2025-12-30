@@ -1,0 +1,159 @@
+/* ========================================
+   Results Page Styles (Non-HTML Output)
+   For displaying code/markdown/json results
+   ======================================== */
+
+/* Legacy color variables */
+:root {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #fafafa;
+  --color-bg-tertiary: #f5f5f5;
+  --color-text: #171717;
+  --color-text-secondary: #404040;
+  --color-text-muted: #a3a3a3;
+  --color-border: #e5e5e5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1a1a1a;
+    --color-bg-secondary: #242424;
+    --color-bg-tertiary: #2a2a2a;
+    --color-text: #fafafa;
+    --color-text-secondary: #b5b5b5;
+    --color-text-muted: #737373;
+    --color-border: #3a3a3a;
+  }
+}
+
+/* Page Layout */
+.page-wrapper {
+  min-height: 100vh;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.page-content {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* Code Output */
+.code-result-page {
+  max-width: 800px;
+}
+
+.code-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.code-result-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.code-result-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.file-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.file-badge svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-muted);
+}
+
+.format-badge {
+  padding: 0.3rem 0.5rem;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.code-output {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 1rem;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  background: var(--color-bg);
+}
+
+.copy-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.code-content {
+  padding: 1rem;
+  margin: 0;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .page-wrapper {
+    padding: 1rem;
+    align-items: flex-start;
+    padding-top: 1.5rem;
+  }
+
+  .code-result-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}

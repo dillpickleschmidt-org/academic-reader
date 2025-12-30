@@ -1,13 +1,13 @@
-import "./App.css";
-import "./reader.css";
-import { useConversion } from "./hooks/useConversion";
-import { UploadPage } from "./pages/UploadPage";
-import { ConfigurePage } from "./pages/ConfigurePage";
-import { ProcessingPage } from "./pages/ProcessingPage";
-import { ResultPage } from "./pages/ResultPage";
+import "./styles/results.css"
+import "./styles/reader.css"
+import { useConversion } from "./hooks/useConversion"
+import { UploadPage } from "./pages/UploadPage"
+import { ConfigurePage } from "./pages/ConfigurePage"
+import { ProcessingPage } from "./pages/ProcessingPage"
+import { ResultPage } from "./pages/ResultPage"
 
 function App() {
-  const conversion = useConversion();
+  const conversion = useConversion()
 
   switch (conversion.page) {
     case "upload":
@@ -19,7 +19,7 @@ function App() {
           onFileSelect={conversion.uploadFile}
           onFetchUrl={conversion.fetchFromUrl}
         />
-      );
+      )
 
     case "configure":
       return (
@@ -39,7 +39,7 @@ function App() {
           onStartConversion={conversion.startConversion}
           onBack={conversion.reset}
         />
-      );
+      )
 
     case "processing":
       return (
@@ -52,7 +52,7 @@ function App() {
           processingStep={conversion.processingStep}
           error={conversion.error}
         />
-      );
+      )
 
     case "result":
       return (
@@ -63,8 +63,8 @@ function App() {
           onDownload={conversion.downloadResult}
           onReset={conversion.reset}
         />
-      );
+      )
   }
 }
 
-export default App;
+export default App

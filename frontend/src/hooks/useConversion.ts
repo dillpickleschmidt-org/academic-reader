@@ -1,104 +1,105 @@
-import { useState } from "react";
-import * as api from "../api";
-import readerCss from "../reader.css?raw";
+import { useState } from "react"
+import * as api from "../api"
+import readerCss from "../styles/reader.css?raw"
 
-export type Page = "upload" | "configure" | "processing" | "result";
-export type OutputFormat = "html" | "markdown" | "json";
-export type ProcessingStep = "uploading" | "parsing" | "complete";
+export type Page = "upload" | "configure" | "processing" | "result"
+export type OutputFormat = "html" | "markdown" | "json"
+export type ProcessingStep = "uploading" | "parsing" | "complete"
 
 export function useConversion() {
   // Navigation
-  const [page, setPage] = useState<Page>("upload");
+  const [page, setPage] = useState<Page>("upload")
 
   // File state
-  const [fileId, setFileId] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadComplete, setUploadComplete] = useState(false);
-  const [url, setUrl] = useState("");
+  const [fileId, setFileId] = useState("")
+  const [fileName, setFileName] = useState("")
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadComplete, setUploadComplete] = useState(false)
+  const [url, setUrl] = useState("")
 
   // Config options
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("html");
-  const [useLlm, setUseLlm] = useState(false);
-  const [forceOcr, setForceOcr] = useState(false);
-  const [pageRange, setPageRange] = useState("");
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("html")
+  const [useLlm, setUseLlm] = useState(false)
+  const [forceOcr, setForceOcr] = useState(false)
+  const [pageRange, setPageRange] = useState("")
 
   // Processing state
-  const [processingStep, setProcessingStep] = useState<ProcessingStep>("uploading");
-  const [content, setContent] = useState("");
-  const [error, setError] = useState("");
+  const [processingStep, setProcessingStep] =
+    useState<ProcessingStep>("uploading")
+  const [content, setContent] = useState("")
+  const [error, setError] = useState("")
 
   const reset = () => {
-    setPage("upload");
-    setFileId("");
-    setFileName("");
-    setUploadProgress(0);
-    setUploadComplete(false);
-    setUrl("");
-    setOutputFormat("html");
-    setUseLlm(false);
-    setForceOcr(false);
-    setPageRange("");
-    setProcessingStep("uploading");
-    setContent("");
-    setError("");
-  };
+    setPage("upload")
+    setFileId("")
+    setFileName("")
+    setUploadProgress(0)
+    setUploadComplete(false)
+    setUrl("")
+    setOutputFormat("html")
+    setUseLlm(false)
+    setForceOcr(false)
+    setPageRange("")
+    setProcessingStep("uploading")
+    setContent("")
+    setError("")
+  }
 
   const uploadFile = async (file: File) => {
-    setFileName(file.name);
-    setPage("configure");
-    setUploadProgress(0);
-    setUploadComplete(false);
-    setError("");
+    setFileName(file.name)
+    setPage("configure")
+    setUploadProgress(0)
+    setUploadComplete(false)
+    setError("")
 
     try {
       const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90));
-      }, 200);
+        setUploadProgress((prev) => Math.min(prev + 10, 90))
+      }, 200)
 
-      const data = await api.uploadFile(file);
+      const data = await api.uploadFile(file)
 
-      clearInterval(progressInterval);
-      setFileId(data.file_id);
-      setUploadProgress(100);
-      setUploadComplete(true);
+      clearInterval(progressInterval)
+      setFileId(data.file_id)
+      setUploadProgress(100)
+      setUploadComplete(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-      setPage("upload");
+      setError(err instanceof Error ? err.message : "Upload failed")
+      setPage("upload")
     }
-  };
+  }
 
   const fetchFromUrl = async () => {
-    if (!url.trim()) return;
+    if (!url.trim()) return
 
-    setFileName(url.split("/").pop()?.split("?")[0] || "document");
-    setPage("configure");
-    setUploadProgress(0);
-    setUploadComplete(false);
-    setError("");
+    setFileName(url.split("/").pop()?.split("?")[0] || "document")
+    setPage("configure")
+    setUploadProgress(0)
+    setUploadComplete(false)
+    setError("")
 
     try {
       const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 5, 90));
-      }, 300);
+        setUploadProgress((prev) => Math.min(prev + 5, 90))
+      }, 300)
 
-      const data = await api.fetchFromUrl(url);
+      const data = await api.fetchFromUrl(url)
 
-      clearInterval(progressInterval);
-      setFileId(data.file_id);
-      setFileName(data.filename);
-      setUploadProgress(100);
-      setUploadComplete(true);
+      clearInterval(progressInterval)
+      setFileId(data.file_id)
+      setFileName(data.filename)
+      setUploadProgress(100)
+      setUploadComplete(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch URL");
-      setPage("upload");
+      setError(err instanceof Error ? err.message : "Failed to fetch URL")
+      setPage("upload")
     }
-  };
+  }
 
   const startConversion = async () => {
-    setPage("processing");
-    setProcessingStep("parsing");
-    setError("");
+    setPage("processing")
+    setProcessingStep("parsing")
+    setError("")
 
     try {
       const { job_id } = await api.startConversion(fileId, {
@@ -106,45 +107,47 @@ export function useConversion() {
         useLlm,
         forceOcr,
         pageRange,
-      });
+      })
 
       const pollJob = async (): Promise<void> => {
-        const job = await api.getJobStatus(job_id);
+        const job = await api.getJobStatus(job_id)
 
         if (job.status === "completed") {
-          setContent(job.result?.content || "");
-          setProcessingStep("complete");
-          setPage("result");
+          setContent(job.result?.content || "")
+          setProcessingStep("complete")
+          setPage("result")
         } else if (job.status === "failed") {
-          throw new Error(job.error || "Conversion failed");
+          throw new Error(job.error || "Conversion failed")
         } else {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          return pollJob();
+          await new Promise((resolve) => setTimeout(resolve, 5000))
+          return pollJob()
         }
-      };
+      }
 
-      await pollJob();
+      await pollJob()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Conversion failed");
-      setProcessingStep("complete");
+      setError(err instanceof Error ? err.message : "Conversion failed")
+      setProcessingStep("complete")
     }
-  };
+  }
 
   const downloadResult = () => {
-    const ext = outputFormat === "html" ? "html" : outputFormat === "json" ? "json" : "md";
+    const ext =
+      outputFormat === "html" ? "html" : outputFormat === "json" ? "json" : "md"
     const mimeType =
       outputFormat === "html"
         ? "text/html"
         : outputFormat === "json"
           ? "application/json"
-          : "text/markdown";
+          : "text/markdown"
 
-    let downloadContent = content;
+    let downloadContent = content
 
     // Wrap HTML in a full document with inline styles
     if (outputFormat === "html") {
       // Get the rendered DOM content (includes KaTeX-rendered math)
-      const renderedContent = document.querySelector(".reader-content")?.innerHTML || content;
+      const renderedContent =
+        document.querySelector(".reader-content")?.innerHTML || content
 
       downloadContent = `<!DOCTYPE html>
 <html lang="en">
@@ -162,17 +165,17 @@ ${readerCss}
 ${renderedContent}
   </div>
 </body>
-</html>`;
+</html>`
     }
 
-    const blob = new Blob([downloadContent], { type: mimeType });
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = `${fileName.replace(/\.[^/.]+$/, "")}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(blobUrl);
-  };
+    const blob = new Blob([downloadContent], { type: mimeType })
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = blobUrl
+    a.download = `${fileName.replace(/\.[^/.]+$/, "")}.${ext}`
+    a.click()
+    URL.revokeObjectURL(blobUrl)
+  }
 
   return {
     // State
@@ -203,5 +206,5 @@ ${renderedContent}
     fetchFromUrl,
     startConversion,
     downloadResult,
-  };
+  }
 }

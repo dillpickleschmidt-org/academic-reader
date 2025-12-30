@@ -43,13 +43,15 @@
 }
 
 .reader-output {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
   font-size: 20px;
   line-height: 1.7;
   color: var(--reader-text);
   background: var(--reader-bg);
   min-height: 100vh;
-  transition: background 0.3s, color 0.3s;
+  transition:
+    background 0.3s,
+    color 0.3s;
 }
 
 .reader-content {

@@ -1,33 +1,66 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      ;(function () {
+        var theme = localStorage.getItem("academic-reader-theme")
+        if (
+          theme === "dark" ||
+          (theme !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches)
+        ) {
+          document.documentElement.classList.add("dark")
+        }
+      })()
+    </script>
+    <style>
+      html {
+        background: oklch(1 0 0);
+      }
+      html.dark {
+        background: oklch(0.218 0 0);
+      }
+    </style>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Academic Reader</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+    />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+    ></script>
     <script>
       // Progressive enhancement: render KaTeX when available, MathML is fallback
-      document.addEventListener('DOMContentLoaded', function() {
+      document.addEventListener("DOMContentLoaded", function () {
         function renderMath() {
-          if (typeof katex === 'undefined') return;
+          if (typeof katex === "undefined") return
           // Only select unrendered elements (those still containing MathML)
-          document.querySelectorAll('.math-render[data-latex]:not([data-rendered])').forEach(function(el) {
-            try {
-              var latex = el.getAttribute('data-latex');
-              el.innerHTML = katex.renderToString(latex, { throwOnError: false });
-              el.setAttribute('data-rendered', 'true');
-            } catch (e) {
-              // Keep MathML fallback on error
-            }
-          });
+          document
+            .querySelectorAll(".math-render[data-latex]:not([data-rendered])")
+            .forEach(function (el) {
+              try {
+                var latex = el.getAttribute("data-latex")
+                el.innerHTML = katex.renderToString(latex, {
+                  throwOnError: false,
+                })
+                el.setAttribute("data-rendered", "true")
+              } catch (e) {
+                // Keep MathML fallback on error
+              }
+            })
         }
         // Initial render
-        renderMath();
+        renderMath()
         // Re-render when content changes (for SPA navigation)
-        new MutationObserver(renderMath).observe(document.getElementById('root'), { childList: true, subtree: true });
-      });
+        new MutationObserver(renderMath).observe(
+          document.getElementById("root"),
+          { childList: true, subtree: true },
+        )
+      })
     </script>
   </head>
   <body>

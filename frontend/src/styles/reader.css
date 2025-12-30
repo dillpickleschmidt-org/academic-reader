@@ -6,7 +6,7 @@
 .reader-output {
   --reader-bg: #fff;
   --reader-text: #333;
-  --reader-text-heading: #1a1a1a;
+  --reader-text-heading: oklch(0.218 0 0);
   --reader-text-muted: #666;
   --reader-border: #eee;
   --reader-border-strong: #e0e0e0;
@@ -30,7 +30,7 @@
 }
 
 .reader-output[data-theme="dark"] {
-  --reader-bg: #1a1a1a;
+  --reader-bg: oklch(0.218 0 0);
   --reader-text: #d4d4d4;
   --reader-text-heading: #e8e8e8;
   --reader-text-muted: #999;

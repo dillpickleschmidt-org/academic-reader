@@ -192,20 +192,30 @@
 /* Tables */
 .reader-output table {
   border-collapse: collapse;
-  width: 100%;
+  width: auto;
   margin: 1.5rem 0;
+  font-size: 1rem;
+  text-align: left;
 }
 
 .reader-output th,
 .reader-output td {
   border: 1px solid var(--reader-border-strong);
-  padding: 0.75rem;
-  text-align: left;
+  padding: 0.4rem 0.6rem;
+}
+
+.reader-output thead {
+  background: var(--reader-border);
 }
 
 .reader-output th {
-  background: var(--reader-code-bg);
+  font-family: "Inter", sans-serif;
+  font-size: 0.9rem;
   font-weight: 600;
+}
+
+.reader-output tbody {
+  background: color-mix(in srgb, var(--reader-code-bg) 30%, transparent);
 }
 
 /* Horizontal rules */

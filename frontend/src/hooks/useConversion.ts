@@ -1,6 +1,7 @@
 import { useState } from "react"
 import * as api from "../api"
-import readerCss from "../styles/reader.css?raw"
+import baseResultCss from "../styles/base-result.css?raw"
+import htmlResultCss from "../styles/html-result.css?raw"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type OutputFormat = "html" | "markdown" | "json"
@@ -150,7 +151,8 @@ export function useConversion() {
   <title>${fileName.replace(/\.[^/.]+$/, "")}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <style>
-${readerCss}
+${baseResultCss}
+${htmlResultCss}
   </style>
 </head>
 <body class="reader-output">

@@ -1,0 +1,138 @@
+/* ========================================
+   Base Result Styles
+   Shared layout for all result pages
+   ======================================== */
+
+/* Theme Variables */
+.reader-output {
+  --reader-bg: #fff;
+  --reader-text: #333;
+  --reader-text-muted: #666;
+  --reader-border: #eee;
+  --reader-border-strong: #e0e0e0;
+  --reader-link: #0066cc;
+  --reader-code-bg: #f5f5f5;
+}
+
+.reader-output[data-theme="comfort"] {
+  --reader-bg: #f5f1e8;
+  --reader-text: #3d3632;
+  --reader-text-muted: #6b5f54;
+  --reader-border: #e0d9cc;
+  --reader-border-strong: #d4cbbf;
+  --reader-link: #1a5f8a;
+  --reader-code-bg: #ebe6db;
+}
+
+.reader-output[data-theme="dark"] {
+  --reader-bg: oklch(0.218 0 0);
+  --reader-text: #d4d4d4;
+  --reader-text-muted: #999;
+  --reader-border: #333;
+  --reader-border-strong: #444;
+  --reader-link: #6db3f2;
+  --reader-code-bg: #2d2d2d;
+}
+
+.reader-output {
+  min-height: 100vh;
+  color: var(--reader-text);
+  background: var(--reader-bg);
+  transition:
+    background 0.3s,
+    color 0.3s;
+}
+
+.reader-content {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.reader-output * {
+  box-sizing: border-box;
+}
+
+/* Theme toggle - fixed top right */
+.reader-theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  gap: 2px;
+  background: var(--reader-code-bg);
+  padding: 4px;
+  border-radius: 8px;
+  z-index: 1000;
+}
+
+.reader-theme-toggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  color: var(--reader-text-muted);
+  transition: all 0.15s ease;
+}
+
+.reader-theme-toggle button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.reader-theme-toggle button:hover {
+  background: var(--reader-border);
+  color: var(--reader-text);
+}
+
+.reader-theme-toggle button.active {
+  background: var(--reader-bg);
+  color: var(--reader-text);
+}
+
+/* Actions (download/new) - fixed top left */
+.reader-actions {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  z-index: 1000;
+}
+
+.reader-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--reader-code-bg);
+  border: 1px solid var(--reader-border);
+  cursor: pointer;
+  border-radius: 8px;
+  color: var(--reader-text-muted);
+  transition: all 0.15s ease;
+}
+
+.reader-actions button:hover {
+  background: var(--reader-border);
+  border-color: var(--reader-border-strong);
+  color: var(--reader-text);
+}
+
+.reader-actions button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .reader-content {
+    padding: 1.5rem 1rem;
+  }
+}

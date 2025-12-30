@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
+import type { ReaderTheme } from "../constants/themes"
 
-export type ReaderTheme = "light" | "comfort" | "dark"
+export type { ReaderTheme }
 
 export function useReaderTheme() {
   const [theme, setTheme] = useState<ReaderTheme>(() => {

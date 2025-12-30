@@ -15,12 +15,19 @@ export interface ConversionOptions {
 
 export interface JobStatus {
   job_id: string
-  status: "pending" | "processing" | "completed" | "failed"
+  status: "pending" | "processing" | "html_ready" | "completed" | "failed"
   result?: {
     content: string
     metadata: Record<string, unknown>
   }
   error?: string
+}
+
+export interface ConversionProgress {
+  stage: string
+  current: number
+  total: number
+  elapsed: number
 }
 
 export async function uploadFile(file: File): Promise<UploadResponse> {
@@ -100,11 +107,17 @@ export async function warmModels(): Promise<void> {
 
 export function subscribeToJob(
   jobId: string,
+  onProgress: (progress: ConversionProgress) => void,
   onHtmlReady: (content: string) => void,
   onComplete: (result: NonNullable<JobStatus["result"]>) => void,
   onError: (error: string) => void,
 ): () => void {
   const eventSource = new EventSource(`${API_URL}/jobs/${jobId}/stream`)
+
+  eventSource.addEventListener("progress", (e: MessageEvent) => {
+    const progress = JSON.parse(e.data)
+    onProgress(progress)
+  })
 
   eventSource.addEventListener("html_ready", (e: MessageEvent) => {
     const data = JSON.parse(e.data)

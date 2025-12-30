@@ -9,6 +9,8 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
+  Circle,
+  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -22,7 +24,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { OutputFormat } from "../hooks/useConversion"
+import type { OutputFormat, StageInfo } from "../hooks/useConversion"
+
+const FORMAT_OPTIONS: {
+  value: OutputFormat
+  icon: LucideIcon
+  label: string
+  recommended?: boolean
+}[] = [
+  { value: "html", icon: Code, label: "HTML", recommended: true },
+  { value: "markdown", icon: AlignLeft, label: "Markdown" },
+  { value: "json", icon: Braces, label: "JSON" },
+]
+
+const PROCESSING_STEPS = [
+  { id: "layout", label: "Recognizing layout" },
+  { id: "ocr-error", label: "Running OCR Error Detection" },
+  { id: "bboxes", label: "Detecting bboxes" },
+  { id: "text", label: "Recognizing Text" },
+]
 
 interface Props {
   fileName: string
@@ -34,6 +54,7 @@ interface Props {
   pageRange: string
   error: string
   isProcessing: boolean
+  stages: StageInfo[]
   onOutputFormatChange: (format: OutputFormat) => void
   onUseLlmChange: (value: boolean) => void
   onForceOcrChange: (value: boolean) => void
@@ -89,6 +110,141 @@ function StepIndicator({
   )
 }
 
+function ProcessingStepItem({
+  label,
+  status,
+  progress,
+}: {
+  label: string
+  status: "pending" | "active" | "completed"
+  progress: { current: number; total: number; elapsed: number } | null
+}) {
+  const isExpanded = status === "active" && progress
+  const percentage = progress
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0
+
+  return (
+    <div className="py-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          {status === "completed" ? (
+            <Check className="w-4 h-4 text-green-600 dark:text-green-500" />
+          ) : status === "active" ? (
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          ) : (
+            <Circle className="w-4 h-4 text-muted-foreground/40" />
+          )}
+          <span
+            className={cn(
+              "text-sm transition-colors",
+              status === "pending"
+                ? "text-muted-foreground/60"
+                : "text-foreground",
+            )}
+          >
+            {label}
+          </span>
+        </div>
+        {status === "completed" && progress && (
+          <span className="text-sm tabular-nums text-muted-foreground">
+            {progress.elapsed.toFixed(1)}s
+          </span>
+        )}
+      </div>
+
+      {/* Expandable progress section */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-300 ease-out ml-6.5",
+          isExpanded ? "max-h-20 opacity-100 mt-2" : "max-h-0 opacity-0",
+        )}
+      >
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+            <span className="text-xs tabular-nums text-muted-foreground w-10">
+              {progress?.elapsed.toFixed(1)}s
+            </span>
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>
+              {progress?.current} / {progress?.total}
+            </span>
+            <span className="mr-13">{percentage}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProcessingView({ stages }: { stages: StageInfo[] }) {
+  // Map stage names to our known steps
+  const getStepStatus = (
+    stepLabel: string,
+  ): {
+    status: "pending" | "active" | "completed"
+    progress: { current: number; total: number; elapsed: number } | null
+  } => {
+    const stage = stages.find((s) => s.stage === stepLabel)
+    if (!stage) {
+      // Check if any later step is active/completed (meaning this one is done)
+      const stepIndex = PROCESSING_STEPS.findIndex((s) => s.label === stepLabel)
+      const laterStageActive = stages.some((s) => {
+        const sIndex = PROCESSING_STEPS.findIndex((ps) => ps.label === s.stage)
+        return sIndex > stepIndex
+      })
+      if (laterStageActive) {
+        return { status: "completed", progress: null }
+      }
+      return { status: "pending", progress: null }
+    }
+
+    if (stage.completed) {
+      return {
+        status: "completed",
+        progress: {
+          current: stage.total,
+          total: stage.total,
+          elapsed: stage.elapsed,
+        },
+      }
+    }
+
+    return {
+      status: "active",
+      progress: {
+        current: stage.current,
+        total: stage.total,
+        elapsed: stage.elapsed,
+      },
+    }
+  }
+
+  return (
+    <div className="flex flex-col">
+      {PROCESSING_STEPS.map((step) => {
+        const { status, progress } = getStepStatus(step.label)
+        return (
+          <ProcessingStepItem
+            key={step.id}
+            label={step.label}
+            status={status}
+            progress={progress}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 export function ConfigureProcessingPage({
   fileName,
   uploadProgress,
@@ -99,6 +255,7 @@ export function ConfigureProcessingPage({
   pageRange,
   error,
   isProcessing,
+  stages,
   onOutputFormatChange,
   onUseLlmChange,
   onForceOcrChange,
@@ -115,23 +272,15 @@ export function ConfigureProcessingPage({
       </div>
 
       <main className="flex flex-col items-center justify-center flex-1 pb-16">
-        <div
-          className={cn(
-            "w-full max-w-[720px] grid gap-8 transition-all duration-300 ease-out",
-            isProcessing
-              ? "grid-cols-1 max-w-[320px]"
-              : "grid-cols-[240px_1fr] max-sm:grid-cols-1",
-          )}
-        >
+        <div className="w-full max-w-[720px] grid gap-8 grid-cols-[240px_1fr] max-sm:grid-cols-1">
           {/* Steps Panel */}
           <div
             className={cn(
               "flex flex-col gap-5 p-6 rounded-xl border border-border",
               "transition-all duration-300 ease-out",
-              isProcessing && "items-center text-center",
             )}
           >
-            {/* File info - at top */}
+            {/* File info */}
             <div className="pb-4 border-b border-border">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <FileText className="w-4 h-4 shrink-0" strokeWidth={1.5} />
@@ -175,21 +324,19 @@ export function ConfigureProcessingPage({
               />
             </div>
 
-            {isProcessing && (
-              <p className="text-xs text-muted-foreground max-w-[200px] mt-2">
-                This may take a moment depending on the document size
-              </p>
-            )}
           </div>
 
-          {/* Configuration Panel */}
+          {/* Right Panel - Config or Processing */}
           <div
             className={cn(
               "flex flex-col gap-6 p-6 rounded-xl border border-border",
               "transition-all duration-300 ease-out",
-              isProcessing && "opacity-0 scale-95 absolute pointer-events-none",
             )}
           >
+            {isProcessing ? (
+              <ProcessingView stages={stages} />
+            ) : (
+              <>
             {/* Output Format */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
@@ -203,47 +350,41 @@ export function ConfigureProcessingPage({
               >
                 <SelectTrigger className="w-full h-10">
                   <SelectValue>
-                    <span className="flex items-center gap-2">
-                      {outputFormat === "html" && (
-                        <>
-                          <Code className="w-4 h-4" strokeWidth={1.5} />
-                          <span>HTML</span>
-                          <span className="text-muted-foreground text-xs">
-                            (Recommended)
-                          </span>
-                        </>
-                      )}
-                      {outputFormat === "markdown" && (
-                        <>
-                          <AlignLeft className="w-4 h-4" strokeWidth={1.5} />
-                          <span>Markdown</span>
-                        </>
-                      )}
-                      {outputFormat === "json" && (
-                        <>
-                          <Braces className="w-4 h-4" strokeWidth={1.5} />
-                          <span>JSON</span>
-                        </>
-                      )}
-                    </span>
+                    {(() => {
+                      const opt = FORMAT_OPTIONS.find(
+                        (o) => o.value === outputFormat,
+                      )
+                      if (!opt) return null
+                      const Icon = opt.icon
+                      return (
+                        <span className="flex items-center gap-2">
+                          <Icon className="w-4 h-4" strokeWidth={1.5} />
+                          <span>{opt.label}</span>
+                          {opt.recommended && (
+                            <span className="text-muted-foreground text-xs">
+                              (Recommended)
+                            </span>
+                          )}
+                        </span>
+                      )
+                    })()}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="html">
-                    <Code className="w-4 h-4" strokeWidth={1.5} />
-                    HTML
-                    <span className="text-muted-foreground text-xs ml-1">
-                      (Recommended)
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="markdown">
-                    <AlignLeft className="w-4 h-4" strokeWidth={1.5} />
-                    Markdown
-                  </SelectItem>
-                  <SelectItem value="json">
-                    <Braces className="w-4 h-4" strokeWidth={1.5} />
-                    JSON
-                  </SelectItem>
+                  {FORMAT_OPTIONS.map((opt) => {
+                    const Icon = opt.icon
+                    return (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <Icon className="w-4 h-4" strokeWidth={1.5} />
+                        {opt.label}
+                        {opt.recommended && (
+                          <span className="text-muted-foreground text-xs ml-1">
+                            (Recommended)
+                          </span>
+                        )}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -337,6 +478,8 @@ export function ConfigureProcessingPage({
                 )}
               </Button>
             </div>
+              </>
+            )}
           </div>
         </div>
 

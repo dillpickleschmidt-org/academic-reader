@@ -1,13 +1,8 @@
 import type { ReactNode } from "react"
 import { useEffect, useRef } from "react"
-import { Download, Plus, Sun, BookOpen, Moon } from "lucide-react"
-import { useReaderTheme, type ReaderTheme } from "../hooks/useReaderTheme"
-
-const THEMES: { id: ReaderTheme; icon: ReactNode; title: string }[] = [
-  { id: "light", icon: <Sun size={18} />, title: "Light" },
-  { id: "comfort", icon: <BookOpen size={18} />, title: "Comfort" },
-  { id: "dark", icon: <Moon size={18} />, title: "Dark" },
-]
+import { Download, Plus } from "lucide-react"
+import { THEMES, type ReaderTheme } from "../constants/themes"
+import { useReaderTheme } from "../hooks/useReaderTheme"
 
 interface Props {
   children: ReactNode
@@ -66,11 +61,14 @@ export function ReaderLayout({
       <div className="reader-output">
         {showThemeToggle && (
           <div className="reader-theme-toggle">
-            {THEMES.map((t) => (
-              <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
-                {t.icon}
-              </label>
-            ))}
+            {THEMES.map((t) => {
+              const Icon = t.icon
+              return (
+                <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
+                  <Icon size={18} />
+                </label>
+              )
+            })}
           </div>
         )}
         <div className="reader-actions">
@@ -78,7 +76,7 @@ export function ReaderLayout({
             onClick={onDownload}
             title={downloadDisabled ? "Waiting for images..." : "Download"}
             disabled={downloadDisabled}
-            style={{ opacity: downloadDisabled ? 0.5 : 1 }}
+            className={downloadDisabled ? "opacity-50" : ""}
           >
             <Download size={18} />
           </button>

@@ -35,6 +35,7 @@ function App() {
           pageRange={conversion.pageRange}
           error={conversion.error}
           isProcessing={conversion.page === "processing"}
+          stages={conversion.stages}
           onOutputFormatChange={conversion.setOutputFormat}
           onUseLlmChange={conversion.setUseLlm}
           onForceOcrChange={conversion.setForceOcr}

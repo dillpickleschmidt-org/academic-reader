@@ -1,15 +1,21 @@
 import asyncio
 import json
 import logging
-import tempfile
+import time
 import uuid
 from pathlib import Path
+
+# Install tqdm patch BEFORE any marker imports
+from .progress import get_queue, install_tqdm_patch
+
+install_tqdm_patch()
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
+from .config import CORS_ORIGINS, SUPPORTED_EXTENSIONS, UPLOAD_DIR
 from .conversion import run_conversion
 from .jobs import create_job, get_job
 from .models import get_or_create_models
@@ -29,42 +35,16 @@ app = FastAPI(title="Academic Reader")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = Path(tempfile.gettempdir()) / "academic-reader-uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-
-SUPPORTED_EXTENSIONS = {
-    ".pdf",
-    ".docx",
-    ".doc",
-    ".odt",
-    ".xlsx",
-    ".xls",
-    ".ods",
-    ".pptx",
-    ".ppt",
-    ".odp",
-    ".html",
-    ".epub",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".webp",
-    ".gif",
-    ".tiff",
-}
-
-
-def get_file_extension(filename: str) -> str:
-    return Path(filename).suffix.lower()
 
 
 def validate_file_extension(filename: str):
-    ext = get_file_extension(filename)
+    ext = Path(filename).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
@@ -92,7 +72,7 @@ async def upload_file(file: UploadFile):
     validate_file_extension(file.filename)
 
     file_id = str(uuid.uuid4())
-    ext = get_file_extension(file.filename)
+    ext = Path(file.filename).suffix.lower()
     file_path = UPLOAD_DIR / f"{file_id}{ext}"
 
     content = await file.read()
@@ -123,7 +103,7 @@ async def fetch_url(url: str):
         validate_file_extension(filename)
 
         file_id = str(uuid.uuid4())
-        ext = get_file_extension(filename)
+        ext = Path(filename).suffix.lower()
         file_path = UPLOAD_DIR / f"{file_id}{ext}"
 
         file_path.write_bytes(response.content)
@@ -171,7 +151,6 @@ async def convert(
 @app.get("/jobs/{job_id}")
 async def get_job_status(job_id: str):
     job = get_job(job_id)
-
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -191,12 +170,33 @@ async def get_job_status(job_id: str):
 @app.get("/jobs/{job_id}/stream")
 async def stream_job_status(job_id: str):
     """Stream job status updates via Server-Sent Events."""
+    from queue import Empty
+
     html_ready_sent = False
+    queue = get_queue(job_id)
 
     async def event_generator():
         nonlocal html_ready_sent
 
         while True:
+            # Wait for progress event or timeout
+            try:
+                event = await asyncio.to_thread(queue.get, True, 0.5)
+                elapsed = round(time.time() - event.started_at, 1)
+                yield {
+                    "event": "progress",
+                    "data": json.dumps({
+                        "stage": event.stage,
+                        "current": event.current,
+                        "total": event.total,
+                        "elapsed": elapsed,
+                    }),
+                }
+                continue  # Check for more events immediately
+            except Empty:
+                pass  # Timeout - check job status
+
+            # Check job status
             job = get_job(job_id)
 
             if not job:
@@ -210,14 +210,10 @@ async def stream_job_status(job_id: str):
                 yield {"event": "failed", "data": job.get("error", "Unknown error")}
                 return
             elif job["status"] == "html_ready" and not html_ready_sent:
-                # HTML without images is ready
                 yield {
                     "event": "html_ready",
                     "data": json.dumps({"content": job["html_content"]}),
                 }
                 html_ready_sent = True
-                # Continue waiting for images to be embedded
-
-            await asyncio.sleep(0.5)  # Check every 500ms
 
     return EventSourceResponse(event_generator())

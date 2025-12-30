@@ -6,22 +6,28 @@ import latex2mathml.converter
 from bs4 import BeautifulSoup, NavigableString
 
 
+def _replace_image_src(html: str, old_src: str, new_src: str) -> str:
+    """Replace image src attribute handling both quote styles."""
+    return html.replace(f"src='{old_src}'", f"src='{new_src}'").replace(
+        f'src="{old_src}"', f'src="{new_src}"'
+    )
+
+
 def inject_image_dimensions(html: str, images: dict) -> str:
     """Add width/height attributes to img tags to prevent layout shift."""
     if not images:
         return html
 
     for image_name, pil_image in images.items():
-        # Add dimensions to img tags
         width, height = pil_image.width, pil_image.height
-        # Handle both quote styles
+        # Add dimensions to img tags (both quote styles)
         html = html.replace(
             f"src='{image_name}'",
-            f"src='{image_name}' width='{width}' height='{height}'"
+            f"src='{image_name}' width='{width}' height='{height}'",
         )
         html = html.replace(
             f'src="{image_name}"',
-            f'src="{image_name}" width="{width}" height="{height}"'
+            f'src="{image_name}" width="{width}" height="{height}"',
         )
 
     return html
@@ -42,8 +48,7 @@ def embed_images_as_base64(html: str, images: dict, jpeg_quality: int = 85) -> s
 
         # Replace src reference with data URL
         data_url = f"data:image/jpeg;base64,{b64_data}"
-        html = html.replace(f"src='{image_name}'", f'src="{data_url}"')
-        html = html.replace(f'src="{image_name}"', f'src="{data_url}"')
+        html = _replace_image_src(html, image_name, data_url)
 
     return html
 
@@ -121,8 +126,8 @@ def enhance_html_for_reader(html: str) -> str:
                 mathml_soup = BeautifulSoup(mathml, "html.parser")
                 wrapper.append(mathml_soup)
                 math_el.replace_with(wrapper)
-            except Exception:
-                # Leave original if conversion fails
-                pass
+            except Exception as e:
+                # Log failure but leave original
+                print(f"[html] LaTeX conversion failed for: {latex[:50]}... - {e}", flush=True)
 
     return str(soup)

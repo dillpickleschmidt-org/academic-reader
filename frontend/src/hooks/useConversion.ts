@@ -1,10 +1,96 @@
 import { useState, useRef } from "react"
 import * as api from "../api"
+import type { ConversionProgress } from "../api"
+import { SUN_ICON, BOOK_ICON, MOON_ICON } from "../constants/icons"
 import baseResultCss from "../styles/base-result.css?raw"
 import htmlResultCss from "../styles/html-result.css?raw"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type OutputFormat = "html" | "markdown" | "json"
+
+// Download helpers
+const getDownloadExtension = (format: OutputFormat): string =>
+  format === "html" ? "html" : format === "json" ? "json" : "md"
+
+const getDownloadMimeType = (format: OutputFormat): string =>
+  format === "html"
+    ? "text/html"
+    : format === "json"
+      ? "application/json"
+      : "text/markdown"
+
+const downloadBlob = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const generateHtmlDocument = (
+  renderedContent: string,
+  title: string,
+): string => {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+${baseResultCss}
+${htmlResultCss}
+  </style>
+</head>
+<body>
+  <!-- Theme radio inputs - must be siblings before .reader-output for CSS selectors -->
+  <input type="radio" name="theme" id="theme-light" class="theme-radios" checked>
+  <input type="radio" name="theme" id="theme-comfort" class="theme-radios">
+  <input type="radio" name="theme" id="theme-dark" class="theme-radios">
+  <script>
+    // Eagerly apply saved theme before render
+    (function() {
+      var theme = localStorage.getItem('reader-theme');
+      if (theme && theme !== 'light') {
+        document.getElementById('theme-light').checked = false;
+        document.getElementById('theme-' + theme).checked = true;
+      }
+    })();
+  </script>
+
+  <div class="reader-output">
+    <div class="reader-theme-toggle">
+      <label for="theme-light" title="Light">${SUN_ICON}</label>
+      <label for="theme-comfort" title="Comfort">${BOOK_ICON}</label>
+      <label for="theme-dark" title="Dark">${MOON_ICON}</label>
+    </div>
+    <div class="reader-content">
+${renderedContent}
+    </div>
+  </div>
+
+  <script>
+    // Persist theme changes to localStorage
+    document.querySelectorAll('input[name="theme"]').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        localStorage.setItem('reader-theme', this.id.replace('theme-', ''));
+      });
+    });
+  </script>
+</body>
+</html>`
+}
+
+export interface StageInfo {
+  stage: string
+  current: number
+  total: number
+  elapsed: number
+  completed: boolean
+}
 
 const POLL_INTERVAL = 10000 // 10 seconds fallback
 
@@ -29,6 +115,7 @@ export function useConversion() {
   const [content, setContent] = useState("")
   const [error, setError] = useState("")
   const [imagesReady, setImagesReady] = useState(false)
+  const [stages, setStages] = useState<StageInfo[]>([])
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
@@ -53,6 +140,7 @@ export function useConversion() {
     setContent("")
     setError("")
     setImagesReady(false)
+    setStages([])
   }
 
   const uploadFile = async (file: File) => {
@@ -116,6 +204,7 @@ export function useConversion() {
     setPage("processing")
     setError("")
     setImagesReady(false)
+    setStages([])
 
     try {
       const { job_id } = await api.startConversion(fileId, {
@@ -131,6 +220,28 @@ export function useConversion() {
 
       const cleanup = api.subscribeToJob(
         job_id,
+        // onProgress - update stages
+        (progress: ConversionProgress) => {
+          sseConnected = true
+          setStages((prev) => {
+            const existing = prev.find((s) => s.stage === progress.stage)
+            if (existing) {
+              // Update existing stage
+              return prev.map((s) =>
+                s.stage === progress.stage
+                  ? { ...progress, completed: progress.current >= progress.total }
+                  : s
+              )
+            }
+            // New stage - mark all previous as completed with current=total
+            const updated = prev.map((s) => ({
+              ...s,
+              completed: true,
+              current: s.total,
+            }))
+            return [...updated, { ...progress, completed: false }]
+          })
+        },
         // onHtmlReady - show content immediately (images still loading)
         (htmlContent) => {
           sseConnected = true
@@ -197,86 +308,19 @@ export function useConversion() {
   }
 
   const downloadResult = () => {
-    const ext =
-      outputFormat === "html" ? "html" : outputFormat === "json" ? "json" : "md"
-    const mimeType =
-      outputFormat === "html"
-        ? "text/html"
-        : outputFormat === "json"
-          ? "application/json"
-          : "text/markdown"
+    const ext = getDownloadExtension(outputFormat)
+    const mimeType = getDownloadMimeType(outputFormat)
+    const baseName = fileName.replace(/\.[^/.]+$/, "")
 
     let downloadContent = content
 
-    // Wrap HTML in a full document with inline styles and theme toggle
     if (outputFormat === "html") {
-      // Get the rendered DOM content (includes KaTeX-rendered math)
       const renderedContent =
         document.querySelector(".reader-content")?.innerHTML || content
-
-      // SVG icons for theme toggle
-      const sunIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`
-      const bookIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>`
-      const moonIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`
-
-      downloadContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${fileName.replace(/\.[^/.]+$/, "")}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-  <style>
-${baseResultCss}
-${htmlResultCss}
-  </style>
-</head>
-<body>
-  <!-- Theme radio inputs - must be siblings before .reader-output for CSS selectors -->
-  <input type="radio" name="theme" id="theme-light" class="theme-radios" checked>
-  <input type="radio" name="theme" id="theme-comfort" class="theme-radios">
-  <input type="radio" name="theme" id="theme-dark" class="theme-radios">
-  <script>
-    // Eagerly apply saved theme before render
-    (function() {
-      var theme = localStorage.getItem('reader-theme');
-      if (theme && theme !== 'light') {
-        document.getElementById('theme-light').checked = false;
-        document.getElementById('theme-' + theme).checked = true;
-      }
-    })();
-  </script>
-
-  <div class="reader-output">
-    <div class="reader-theme-toggle">
-      <label for="theme-light" title="Light">${sunIcon}</label>
-      <label for="theme-comfort" title="Comfort">${bookIcon}</label>
-      <label for="theme-dark" title="Dark">${moonIcon}</label>
-    </div>
-    <div class="reader-content">
-${renderedContent}
-    </div>
-  </div>
-
-  <script>
-    // Persist theme changes to localStorage
-    document.querySelectorAll('input[name="theme"]').forEach(function(radio) {
-      radio.addEventListener('change', function() {
-        localStorage.setItem('reader-theme', this.id.replace('theme-', ''));
-      });
-    });
-  </script>
-</body>
-</html>`
+      downloadContent = generateHtmlDocument(renderedContent, baseName)
     }
 
-    const blob = new Blob([downloadContent], { type: mimeType })
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = blobUrl
-    a.download = `${fileName.replace(/\.[^/.]+$/, "")}.${ext}`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
+    downloadBlob(downloadContent, `${baseName}.${ext}`, mimeType)
   }
 
   return {
@@ -294,6 +338,7 @@ ${renderedContent}
     content,
     error,
     imagesReady,
+    stages,
 
     // Setters
     setUrl,

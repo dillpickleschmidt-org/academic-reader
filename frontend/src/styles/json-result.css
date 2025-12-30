@@ -3,14 +3,4 @@
    Styles for JSON output with syntax highlighting
    ======================================== */
 
-.reader-output pre {
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  padding: 1.5rem;
-  border-radius: 8px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  margin: 0;
-}
+/* Pre styles are in base-result.css */

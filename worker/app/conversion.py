@@ -1,9 +1,9 @@
-import time
 from pathlib import Path
 
 from .html_processing import embed_images_as_base64, enhance_html_for_reader, inject_image_dimensions
 from .jobs import update_job
 from .models import get_or_create_models
+from .progress import clear_queue, set_active_job
 
 
 def run_conversion(
@@ -20,9 +20,11 @@ def run_conversion(
     1. html_ready - HTML without embedded images (fast)
     2. completed - HTML with embedded images (final)
     """
+    # Set this job as active for progress tracking
+    set_active_job(job_id)
+
     try:
         update_job(job_id, status="processing")
-        total_start = time.time()
 
         from marker.config.parser import ConfigParser
         from marker.converters.pdf import PdfConverter
@@ -42,11 +44,8 @@ def run_conversion(
             processor_list=config_parser.get_processors(),
             renderer=config_parser.get_renderer(),
         )
-        print(f"[conversion] Converter setup in {time.time() - total_start:.1f}s", flush=True)
 
-        convert_start = time.time()
         result = converter(str(file_path))
-        print(f"[conversion] Marker finished in {time.time() - convert_start:.1f}s", flush=True)
 
         if output_format == "html":
             # Phase 1: HTML without embedded images
@@ -54,7 +53,7 @@ def run_conversion(
             html_content = enhance_html_for_reader(html_content)
 
             # Inject image dimensions for shimmer placeholders (prevents layout shift)
-            images = result.images if hasattr(result, "images") else {}
+            images = getattr(result, "images", None) or {}
             if images:
                 html_content = inject_image_dimensions(html_content, images)
 
@@ -62,12 +61,8 @@ def run_conversion(
             update_job(job_id, status="html_ready", html_content=html_content)
 
             # Phase 2: Embed images (if any)
-            image_count = len(result.images) if hasattr(result, "images") and result.images else 0
-            print(f"[conversion] html_ready sent, {image_count} images to embed", flush=True)
-            if image_count > 0:
-                import time as _time
-                _time.sleep(10)  # TODO: Remove - temporary delay to test shimmer
-                content = embed_images_as_base64(html_content, result.images)
+            if images:
+                content = embed_images_as_base64(html_content, images)
             else:
                 content = html_content
 
@@ -76,7 +71,6 @@ def run_conversion(
         else:
             content = result.markdown
 
-        print(f"[conversion] Total time: {time.time() - total_start:.1f}s", flush=True)
         update_job(
             job_id,
             status="completed",
@@ -85,8 +79,14 @@ def run_conversion(
                 "metadata": result.metadata,
             },
         )
-    except Exception as e:
-        update_job(job_id, status="failed", error=str(e))
+    except FileNotFoundError:
+        update_job(job_id, status="failed", error="File not found")
+    except ValueError as e:
+        update_job(job_id, status="failed", error=f"Invalid input: {e}")
+    except Exception:
+        update_job(job_id, status="failed", error="Conversion failed unexpectedly")
     finally:
+        set_active_job(None)
+        clear_queue(job_id)
         if file_path.exists():
             file_path.unlink()

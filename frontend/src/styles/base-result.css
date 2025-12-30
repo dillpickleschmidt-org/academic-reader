@@ -201,6 +201,20 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   height: 18px;
 }
 
+/* Shared pre/code styles for markdown and json views */
+.reader-output pre {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  background: var(--reader-code-bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .reader-content {

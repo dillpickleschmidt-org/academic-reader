@@ -6,6 +6,11 @@ from pathlib import Path
 import httpx
 import runpod
 
+from .progress import install_webhook_tqdm_patch, set_webhook_callback
+
+# Install webhook tqdm patch before any marker imports
+install_webhook_tqdm_patch()
+
 from .conversion import run_conversion_sync
 
 
@@ -19,12 +24,14 @@ def handler(job: dict) -> dict:
         use_llm: bool (default: False)
         force_ocr: bool (default: False)
         page_range: str | None (default: None)
+        progress_webhook_url: str | None - URL to POST progress updates to
 
     Returns:
         content: The converted document
         metadata: Document metadata
     """
     job_input = job["input"]
+    job_id = job["id"]
 
     file_url = job_input.get("file_url")
     if not file_url:
@@ -34,6 +41,28 @@ def handler(job: dict) -> dict:
     use_llm = job_input.get("use_llm", False)
     force_ocr = job_input.get("force_ocr", False)
     page_range = job_input.get("page_range")
+    progress_webhook_url = job_input.get("progress_webhook_url")
+
+    # Set up progress webhook callback if URL provided
+    if progress_webhook_url:
+        def send_progress(stage: str, current: int, total: int):
+            try:
+                httpx.post(
+                    progress_webhook_url,
+                    json={
+                        "job_id": job_id,
+                        "stage": stage,
+                        "current": current,
+                        "total": total,
+                    },
+                    timeout=5.0,
+                )
+            except Exception:
+                pass  # Don't fail job on progress webhook errors
+
+        set_webhook_callback(send_progress)
+    else:
+        set_webhook_callback(None)
 
     # Extract file extension from URL
     url_path = file_url.split("?")[0]  # Remove query params
@@ -64,6 +93,7 @@ def handler(job: dict) -> dict:
         return {"error": f"Conversion failed: {e}"}
     finally:
         temp_path.unlink(missing_ok=True)
+        set_webhook_callback(None)  # Clear callback
 
 
 if __name__ == "__main__":

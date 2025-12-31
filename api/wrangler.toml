@@ -1,0 +1,56 @@
+name = "academic-reader-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Development defaults
+[vars]
+CONVERSION_BACKEND = "local"
+LOCAL_WORKER_URL = "http://localhost:8000"
+CORS_ORIGINS = "http://localhost:5173,http://localhost:3000"
+
+# KV namespace for job state (used for webhooks and caching)
+[[kv_namespaces]]
+binding = "JOBS_KV"
+id = "73ff3d7cbe354d45988bea037f73f2bf"
+
+# ============================================
+# Runpod Environment
+# ============================================
+[env.runpod]
+name = "academic-reader-api-runpod"
+
+[env.runpod.vars]
+CONVERSION_BACKEND = "runpod"
+CORS_ORIGINS = "https://academic-reader-2w0.pages.dev"
+WEBHOOK_BASE_URL = "https://academic-reader-api-runpod.academic-reader.workers.dev"
+
+[[env.runpod.kv_namespaces]]
+binding = "JOBS_KV"
+id = "73ff3d7cbe354d45988bea037f73f2bf"
+
+# Secrets (set via wrangler secret put):
+# - RUNPOD_ENDPOINT_ID
+# - RUNPOD_API_KEY
+# - WEBHOOK_SECRET
+# - S3_ENDPOINT (e.g., https://<account>.r2.cloudflarestorage.com)
+# - S3_ACCESS_KEY
+# - S3_SECRET_KEY
+# - S3_BUCKET
+
+# ============================================
+# Datalab Environment
+# ============================================
+[env.datalab]
+name = "academic-reader-api-datalab"
+
+[env.datalab.vars]
+CONVERSION_BACKEND = "datalab"
+CORS_ORIGINS = "https://academic-reader-2w0.pages.dev"
+
+[[env.datalab.kv_namespaces]]
+binding = "JOBS_KV"
+id = "73ff3d7cbe354d45988bea037f73f2bf"
+
+# Secrets (set via wrangler secret put):
+# - DATALAB_API_KEY

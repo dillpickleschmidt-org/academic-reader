@@ -2,25 +2,22 @@
 node_modules/
 venv/
 __pycache__/
+*.lock
+!bun.lock
 
 # Environment
 .env
-*.local
+.env.local
+.dev.vars
+api/.dev.vars
+frontend/.env.local
 
 # Build outputs
 dist/
-dist-ssr/
-build/
-*.egg-info/
+.wrangler/
 
 # Logs
-logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
 # IDE
 .vscode/*

@@ -1,96 +1,85 @@
-# Architecture Overview
+# Architecture
+
+## Repository Structure
+
+```
+academic-reader/
+├── package.json          # Bun workspace root
+├── frontend/             # React + Vite (Cloudflare Pages)
+├── api/                  # Cloudflare Worker (API gateway)
+└── worker/               # Python FastAPI + Marker (Docker/Runpod)
+```
 
 ## Deployment Modes
 
-| Mode | Use Case |
-|------|----------|
-| **Self-hosted** | `docker compose up` - runs everything locally with your GPU |
-| **Cloud** | Runpod Serverless + Cloudflare Workers + R2 |
+| Mode | Frontend | API | GPU Worker |
+|------|----------|-----|------------|
+| **Local Dev** | `bun run dev` | Direct to worker | `docker compose up` |
+| **Cloud (Runpod)** | Cloudflare Pages | Cloudflare Worker | Runpod Serverless |
+| **Cloud (Datalab)** | Cloudflare Pages | Cloudflare Worker | Datalab API |
 
 ## Cloud Architecture
 
 ```
-┌──────────────┐     ┌─────────────────────┐     ┌─────────────┐
-│   Frontend   │────▶│  Cloudflare Worker  │────▶│   Runpod    │
-│ (Static/CDN) │     │   (Auth + Storage)  │     │ (Serverless)│
-└──────────────┘     └─────────────────────┘     └─────────────┘
-                              │  ▲                      │
-                              ▼  │ webhook              │
+┌──────────────┐     ┌─────────────────────┐     ┌─────────────────┐
+│   Frontend   │────▶│  Cloudflare Worker  │────▶│ Runpod/Datalab  │
+│    (Pages)   │     │    (API Gateway)    │     │   (GPU/API)     │
+└──────────────┘     └─────────────────────┘     └─────────────────┘
+                              │                         │
+                              ▼                         │ webhook
                      ┌─────────────────────┐            │
-                     │   Cloudflare R2     │◀───────────┘
-                     │  (File Storage)     │   (result)
+                     │    Cloudflare R2    │◀───────────┘
+                     │   (File Storage)    │
                      └─────────────────────┘
 ```
 
-## Components
+## API Gateway (Cloudflare Worker)
 
-### Frontend (Static)
-- **Host**: Cloudflare Pages / Vercel (free tier)
-- **Auth**: WorkOS SDK - handles login, returns JWT
-- **Uploads**: Direct to R2 via presigned URL from Worker
+The `/api` package routes requests to one of three backends:
 
-### Cloudflare Worker (Thin Backend)
-- **Endpoints**:
-  - `POST /upload-url` - Validate JWT, return presigned R2 upload URL
-  - `POST /convert` - Validate JWT, submit job to Runpod
-  - `POST /webhook` - Receive Runpod results, store in R2
-  - `GET /files` - List user's converted files
-- **Storage**: D1 (SQLite) for user-file associations
-- **Auth**: Verify WorkOS JWT on every request
+| Backend | Config | Use Case |
+|---------|--------|----------|
+| `local` | `CONVERSION_BACKEND=local` | Development |
+| `runpod` | `CONVERSION_BACKEND=runpod` | Self-hosted GPU |
+| `datalab` | `CONVERSION_BACKEND=datalab` | Hosted Marker API |
 
-### Runpod Serverless (GPU Compute)
-- **Image**: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
-- **Handler**: Downloads file from URL, runs conversion, returns result via webhook
-- **Scaling**: Zero when idle, spins up on demand (~1-2s cold start)
-- **Limits**: Page limit enforced to keep jobs under 100s timeout
+### Endpoints
 
-### Cloudflare R2 (File Storage)
-- **Uploads**: User PDFs (presigned URLs, scoped to user)
-- **Results**: Converted HTML/MD/JSON
-- **Cost**: Free egress, 10GB free storage
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /upload` | Upload file to R2 |
+| `POST /convert/:fileId` | Start conversion job |
+| `GET /jobs/:jobId` | Poll job status |
+| `GET /jobs/:jobId/stream` | SSE progress stream |
+| `POST /webhooks/runpod` | Runpod completion callback |
 
-## Self-Hosted Mode
+### Storage
 
-```yaml
-# docker-compose.yml
-services:
-  worker:
-    build: ./worker
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    # GPU passthrough, local storage, no auth required
+- **R2**: PDF uploads, conversion results
+- **KV**: Job state (24hr TTL)
+
+## Local Development
+
+```bash
+# All-in-one (starts frontend, API, and worker based on mode)
+bun run dev
+
+# Or specify a mode explicitly
+bun run dev:local    # Uses local Docker GPU worker
+bun run dev:runpod   # Uses Runpod serverless
+bun run dev:datalab  # Uses Datalab API
 ```
 
-- Same conversion code, different entry point
-- No Cloudflare/WorkOS - direct API access
-- Files stored locally in container volume
+## Scripts
 
-## Request Flow (Cloud)
-
-1. **Login**: Frontend → WorkOS → JWT stored in browser
-2. **Upload**: Frontend → Worker `/upload-url` → Presigned URL → Direct upload to R2
-3. **Convert**: Frontend → Worker `/convert` → Runpod `/run` (async)
-4. **Result**: Runpod → Worker `/webhook` → Store result in R2 → Update D1
-5. **Fetch**: Frontend polls Worker `/files` → Gets download URL → Fetches from R2
-
-## Key Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| URL-based file transfer | Runpod payload limit is 10-20MB |
-| Page limit | Keep processing under 100s timeout |
-| Webhooks (not polling Runpod) | Cleaner with backend, needed for auth anyway |
-| Single Docker image | Same image works local + cloud, PyTorch pre-installed |
-| CUDA 12.4 | Required by PyTorch 2.4+ (marker-pdf dependency), needs driver 550+ |
-
-## Costs (Cloud)
-
-| Component | Free Tier | Paid |
-|-----------|-----------|------|
-| Cloudflare Pages | Unlimited sites | - |
-| Cloudflare Workers | 100k req/day | $5/mo unlimited |
-| Cloudflare R2 | 10GB storage, free egress | $0.015/GB/mo |
-| Cloudflare D1 | 5GB storage | $0.75/GB/mo |
-| Runpod Serverless | - | ~$0.01-0.02/conversion |
-| WorkOS | 1M MAU free | - |
-
-**Estimated cost for low usage**: $0-5/month
+| Command | Description |
+|---------|-------------|
+| `bun run dev` | Start full dev environment |
+| `bun run dev:local` | Dev with local Docker worker |
+| `bun run dev:runpod` | Dev with Runpod backend |
+| `bun run dev:datalab` | Dev with Datalab backend |
+| `bun run deploy` | Deploy to Cloudflare |
+| `bun run config:status` | Check configuration status |
+| `bun run config:sync` | Sync env to wrangler secrets |
+| `bun run build` | Build frontend |
+| `bun run typecheck` | Typecheck all packages |

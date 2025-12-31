@@ -1,0 +1,25 @@
+{
+  "name": "academic-reader",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "api"
+  ],
+  "scripts": {
+    "dev": "bun scripts/dev.ts dev",
+    "dev:local": "bun scripts/dev.ts dev --mode local",
+    "dev:runpod": "bun scripts/dev.ts dev --mode runpod",
+    "dev:datalab": "bun scripts/dev.ts dev --mode datalab",
+    "deploy": "bun scripts/dev.ts deploy",
+    "config:status": "bun scripts/dev.ts status",
+    "config:sync": "bun scripts/dev.ts sync",
+    "build": "bun run --cwd frontend build",
+    "typecheck": "bun run --cwd api typecheck && bun run --cwd frontend tsc -b && tsc --project scripts/tsconfig.json",
+    "lint": "bun run --cwd frontend lint"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "typescript": "~5.9.3",
+    "wrangler": "^4.54.0"
+  }
+}

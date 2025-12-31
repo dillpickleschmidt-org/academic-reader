@@ -1,16 +1,17 @@
 services:
+  # GPU worker for local processing
+  # Profile: local
   worker:
     build: ./worker
+    profiles: ["local"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    environment:
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - ACADEMIC_READER_SERVICE_KEY=${ACADEMIC_READER_SERVICE_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:-}
+    env_file:
+      - .env.local
     volumes:
-      - ./worker/app:/app/app  # Hot reload during dev
-      - marker-cache:/root/.cache  # Cache downloaded models
+      - ./worker/app:/app/app
+      - marker-cache:/root/.cache
     deploy:
       resources:
         reservations:
@@ -19,14 +20,94 @@ services:
               count: 1
               capabilities: [gpu]
 
-  frontend:
-    build: ./frontend
+  # Self-hosted API (Hono on Bun)
+  # Profiles: local, datalab, runpod
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    profiles: ["local", "datalab", "runpod"]
     ports:
-      - "3000:3000"
+      - "8787:8787"
+    env_file:
+      - .env.local
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - PORT=8787
+      - CONVERSION_BACKEND=${BACKEND_MODE:-local}
+      - LOCAL_WORKER_URL=http://worker:8000
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+    volumes:
+      - tunnel_url:/tunnel:ro
     depends_on:
-      - worker
+      worker:
+        condition: service_started
+        required: false
+      minio:
+        condition: service_started
+        required: false
+
+  # MinIO for self-hosted Runpod (S3-compatible storage)
+  # Profile: runpod
+  minio:
+    image: minio/minio
+    profiles: ["runpod"]
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Cloudflare tunnel for exposing MinIO to Runpod workers
+  cloudflared:
+    image: alpine:latest
+    profiles: ["runpod"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared
+        chmod +x /usr/local/bin/cloudflared
+        cloudflared tunnel --url http://minio:9000 2>&1 | while IFS= read -r line; do
+          echo "$$line"
+          case "$$line" in *trycloudflare.com*)
+            echo "$$line" | grep -oE 'https://[^ ]+' > /tunnel/url ;;
+          esac
+        done
+    volumes:
+      - tunnel_url:/tunnel
+
+  # MinIO bucket initialization
+  minio-init:
+    image: minio/mc
+    profiles: ["runpod"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/$${S3_BUCKET:-academic-reader} --ignore-existing;
+      mc anonymous set download myminio/$${S3_BUCKET:-academic-reader};
+      exit 0;
+      "
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-academic-reader}
 
 volumes:
   marker-cache:
+  minio_data:
+  tunnel_url:

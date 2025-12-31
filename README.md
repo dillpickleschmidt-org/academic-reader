@@ -4,77 +4,76 @@ Document to HTML/Markdown converter using [Marker](https://github.com/datalab-to
 
 Supports PDF, DOCX, XLSX, PPTX, HTML, EPUB, and images.
 
-## Prerequisites
-
-- Docker with [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-- NVIDIA GPU (optional but recommended)
-- Gemini API key (optional, for LLM-enhanced accuracy)
-
-## Setup
+## Quick Start
 
 ```bash
-cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY (optional)
+# 1. Configure
+cp .env.example .env.local
+# Edit .env.local - set BACKEND_MODE and required API keys
+
+# 2. Run
+bun run dev
 ```
 
-## Run
+## Backend Modes
+
+| Mode | Requirements | Best For |
+|------|--------------|----------|
+| `local` | Docker + NVIDIA GPU | Development, full control |
+| `runpod` | Runpod API key | Cloud GPU, serverless |
+| `datalab` | Datalab API key | Easiest setup, no GPU needed |
+
+Set `BACKEND_MODE` in `.env.local` to choose.
+
+## Development Commands
 
 ```bash
-# Start the worker
-docker compose up worker --build
-
-# Or run everything (frontend + worker)
-docker compose up --build
+bun run dev              # Start with mode from .env.local
+bun run dev:local        # Force local GPU mode
+bun run dev:datalab      # Force Datalab API mode
+bun run config:status    # Show current configuration
 ```
 
-First build downloads ~5GB of models.
+## Deployment
+
+```bash
+# Set BACKEND_MODE to runpod or datalab in .env.local
+bun run deploy
+```
+
+## Configuration Reference
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `BACKEND_MODE` | Yes | `local`, `runpod`, or `datalab` |
+| `GOOGLE_API_KEY` | No | Gemini API for LLM features |
+| `DATALAB_API_KEY` | datalab mode | Get from [datalab.to](https://datalab.to) |
+| `RUNPOD_API_KEY` | runpod mode | Get from Runpod dashboard |
+| `RUNPOD_ENDPOINT_ID` | runpod mode | Your Runpod endpoint ID |
+
+See `.env.example` for all options.
 
 ## API
 
 ### Upload a file
 ```bash
-curl -X POST http://localhost:8000/upload \
-  -F "file=@paper.pdf"
+curl -X POST http://localhost:8000/upload -F "file=@paper.pdf"
 # Returns: { "file_id": "...", "filename": "...", "size": ... }
 ```
 
 ### Fetch from URL
 ```bash
 curl -X POST "http://localhost:8000/fetch-url?url=https://example.com/paper.pdf"
-# Returns: { "file_id": "...", "filename": "...", "size": ... }
 ```
 
 ### Convert
 ```bash
-curl -X POST "http://localhost:8000/convert/{file_id}?output_format=markdown&use_llm=false"
+curl -X POST "http://localhost:8000/convert/{file_id}?output_format=markdown"
 ```
 
-**Parameters:**
-| Name | Default | Description |
-|------|---------|-------------|
+| Parameter | Default | Description |
+|-----------|---------|-------------|
 | `output_format` | `html` | `html`, `markdown`, or `json` |
 | `use_llm` | `false` | Enable LLM for complex tables/equations |
 | `force_ocr` | `false` | Force OCR for scanned documents |
-| `page_range` | all | Page range (e.g., `1-5,10,15-20`) |
-
-### Legacy (upload + convert in one request)
-```bash
-curl -X POST http://localhost:8000/convert \
-  -F "file=@paper.pdf" \
-  -F "output_format=html"
-```
-
-### Health check
-```bash
-curl http://localhost:8000/health
-```
-
-## Local Development
-
-```bash
-# Terminal 1: Worker
-docker compose up worker --build
-
-# Terminal 2: Frontend (hot reload)
-cd frontend && bun dev
-```
+| `page_range` | all | e.g., `1-5,10,15-20` |

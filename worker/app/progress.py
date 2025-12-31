@@ -1,12 +1,14 @@
-"""Progress tracking via event queue.
+"""Progress tracking via event queue or webhook.
 
-Events flow: tqdm patch → queue → SSE → frontend
+Local mode: tqdm patch → queue → SSE → frontend
+Cloud mode: tqdm patch → HTTP webhook → KV → SSE → frontend
 """
 
 import threading
 import time
 from dataclasses import dataclass
 from queue import Queue
+from typing import Callable
 
 
 @dataclass
@@ -90,3 +92,60 @@ def install_tqdm_patch():
     tqdm.tqdm = TrackedTqdm
     tqdm.std.tqdm = TrackedTqdm
     tqdm.auto.tqdm = TrackedTqdm
+
+
+# Webhook-based progress tracking for cloud deployments
+_webhook_callback: Callable[[str, int, int], None] | None = None
+
+
+def set_webhook_callback(callback: Callable[[str, int, int], None] | None):
+    """Set callback function for webhook-based progress reporting."""
+    global _webhook_callback
+    _webhook_callback = callback
+
+
+def get_webhook_callback() -> Callable[[str, int, int], None] | None:
+    """Get the current webhook callback."""
+    return _webhook_callback
+
+
+def install_webhook_tqdm_patch():
+    """Install tqdm patch that sends progress via webhook callback."""
+    import tqdm
+    import tqdm.auto
+    import tqdm.std
+
+    original_tqdm = tqdm.std.tqdm
+
+    class WebhookTqdm(original_tqdm):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._stage = kwargs.get("desc", "Processing")
+            self._tracked = False
+            self._last_sent = 0
+
+            callback = get_webhook_callback()
+            if callback and self.total and self.total > 0:
+                self._tracked = True
+                self._callback = callback
+                # Send initial progress
+                callback(self._stage, 0, self.total)
+
+        def update(self, n=1):
+            result = super().update(n)
+            if self._tracked:
+                # Throttle updates to avoid overwhelming the API (max every 500ms)
+                now = time.time()
+                if now - self._last_sent >= 0.5 or self.n >= self.total:
+                    self._callback(self._stage, self.n, self.total)
+                    self._last_sent = now
+            return result
+
+        def close(self):
+            if self._tracked:
+                self._callback(self._stage, self.total, self.total)
+            super().close()
+
+    tqdm.tqdm = WebhookTqdm
+    tqdm.std.tqdm = WebhookTqdm
+    tqdm.auto.tqdm = WebhookTqdm

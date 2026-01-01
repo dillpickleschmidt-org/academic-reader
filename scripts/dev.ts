@@ -158,11 +158,8 @@ function syncConfigs(config: Config): void {
   }
 
   // Generate frontend/.env.local for Vite
-  const apiUrl =
-    config.API_URL ||
-    (config.BACKEND_MODE === "local"
-      ? "http://localhost:8000"
-      : "http://localhost:8787");
+  // Always use :8787 (Hono API) - it handles all backends and SSE properly
+  const apiUrl = config.API_URL || "http://localhost:8787";
   writeFileSync(
     resolve(ROOT_DIR, "frontend/.env.local"),
     `VITE_API_URL=${apiUrl}\n`,

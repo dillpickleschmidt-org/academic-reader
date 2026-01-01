@@ -21,6 +21,7 @@ export interface JobStatus {
     metadata: Record<string, unknown>
   }
   error?: string
+  progress?: ConversionProgress
 }
 
 export interface ConversionProgress {
@@ -141,7 +142,8 @@ export function subscribeToJob(
   })
 
   eventSource.onerror = () => {
-    // Connection error - caller should fall back to polling
+    // Connection error - notify caller to fall back to polling
+    onError("Connection failed")
     eventSource.close()
   }
 

@@ -213,6 +213,31 @@ export function useConversion() {
     try {
       const job = await api.getJobStatus(jobId)
 
+      // Update progress if available
+      if (job.progress) {
+        setStages((prev) => {
+          const existing = prev.find((s) => s.stage === job.progress!.stage)
+          if (existing) {
+            return prev.map((s) =>
+              s.stage === job.progress!.stage
+                ? {
+                    ...job.progress!,
+                    elapsed: 0,
+                    completed: job.progress!.current >= job.progress!.total,
+                  }
+                : s
+            )
+          }
+          // New stage - mark all previous as completed
+          const updated = prev.map((s) => ({
+            ...s,
+            completed: true,
+            current: s.total,
+          }))
+          return [...updated, { ...job.progress!, elapsed: 0, completed: false }]
+        })
+      }
+
       if (job.status === "completed") {
         setContent(job.result?.content || "")
         setImagesReady(true)

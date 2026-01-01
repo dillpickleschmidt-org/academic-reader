@@ -8,6 +8,21 @@ import { transformSSEStream } from '../utils/sse-transform';
 
 const jobs = new Hono<{ Bindings: Env }>();
 
+const SSE_HEADERS = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  Connection: 'keep-alive',
+} as const;
+
+function enhanceJobHtml(job: ConversionJob): void {
+  if (job.result?.content) {
+    job.result.content = enhanceHtmlForReader(job.result.content);
+  }
+  if (job.htmlContent) {
+    job.htmlContent = enhanceHtmlForReader(job.htmlContent);
+  }
+}
+
 jobs.get('/jobs/:jobId', async (c) => {
   const jobId = c.req.param('jobId');
 
@@ -17,10 +32,7 @@ jobs.get('/jobs/:jobId', async (c) => {
       const cached = await c.env.JOBS_KV.get(`${KV_KEYS.RESULT}${jobId}`);
       if (cached) {
         const job = JSON.parse(cached) as ConversionJob;
-        // Apply HTML enhancements to content
-        if (job.result?.content) {
-          job.result.content = enhanceHtmlForReader(job.result.content);
-        }
+        enhanceJobHtml(job);
         return c.json({
           job_id: jobId,
           status: job.status,
@@ -33,14 +45,7 @@ jobs.get('/jobs/:jobId', async (c) => {
     // Fetch from backend directly
     const backend = createBackend(c.env);
     const job = await backend.getJobStatus(jobId);
-
-    // Apply HTML enhancements to content
-    if (job.result?.content) {
-      job.result.content = enhanceHtmlForReader(job.result.content);
-    }
-    if (job.htmlContent) {
-      job.htmlContent = enhanceHtmlForReader(job.htmlContent);
-    }
+    enhanceJobHtml(job);
 
     return c.json({
       job_id: jobId,
@@ -85,13 +90,7 @@ jobs.get('/jobs/:jobId/stream', async (c) => {
       return data;
     });
 
-    return new Response(transformedStream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
+    return new Response(transformedStream, { headers: SSE_HEADERS });
   }
 
   // For cloud backends, poll and emit SSE events
@@ -104,6 +103,8 @@ jobs.get('/jobs/:jobId/stream', async (c) => {
 
       let completed = false;
       let pollCount = 0;
+      let lastProgressKey = '';
+      let htmlReadySent = false;
 
       while (!completed && pollCount < POLLING.MAX_POLLS) {
         try {
@@ -120,26 +121,29 @@ jobs.get('/jobs/:jobId/stream', async (c) => {
 
             // Read progress from KV (sent by worker via progress webhook)
             const progressData = await c.env.JOBS_KV.get(`${KV_KEYS.PROGRESS}${jobId}`);
-            if (progressData) {
-              const progress = JSON.parse(progressData);
-              sendEvent('progress', progress);
-            } else if (job.progress) {
-              sendEvent('progress', job.progress);
+            const progress = progressData ? JSON.parse(progressData) : job.progress;
+            if (progress) {
+              const key = `${progress.stage}:${progress.current}:${progress.total}`;
+              if (key !== lastProgressKey) {
+                sendEvent('progress', progress);
+                lastProgressKey = key;
+              }
             }
           } else {
             // No KV - just poll backend directly
             job = await backend.getJobStatus(jobId);
             if (job.progress) {
-              sendEvent('progress', job.progress);
+              const key = `${job.progress.stage}:${job.progress.current}:${job.progress.total}`;
+              if (key !== lastProgressKey) {
+                sendEvent('progress', job.progress);
+                lastProgressKey = key;
+              }
             }
           }
 
           switch (job.status) {
             case 'completed':
-              // Apply HTML enhancements to content
-              if (job.result?.content) {
-                job.result.content = enhanceHtmlForReader(job.result.content);
-              }
+              enhanceJobHtml(job);
               sendEvent('completed', job.result);
               completed = true;
               break;
@@ -148,11 +152,11 @@ jobs.get('/jobs/:jobId/stream', async (c) => {
               completed = true;
               break;
             case 'html_ready':
-              // Apply HTML enhancements to content
-              const enhancedContent = job.htmlContent
-                ? enhanceHtmlForReader(job.htmlContent)
-                : job.htmlContent;
-              sendEvent('html_ready', { content: enhancedContent });
+              if (!htmlReadySent) {
+                enhanceJobHtml(job);
+                sendEvent('html_ready', { content: job.htmlContent });
+                htmlReadySent = true;
+              }
               break;
           }
 
@@ -174,13 +178,7 @@ jobs.get('/jobs/:jobId/stream', async (c) => {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 });
 
 export { jobs };

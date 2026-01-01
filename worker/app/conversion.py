@@ -1,3 +1,5 @@
+import json
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -5,6 +7,13 @@ from .html_processing import embed_images_as_base64, inject_image_dimensions
 from .jobs import update_job
 from .models import get_or_create_models
 from .progress import clear_queue, set_active_job
+
+
+def _to_dict(obj: Any) -> Any:
+    """Convert pydantic model to dict, or return as-is if already a dict."""
+    if hasattr(obj, 'model_dump_json'):
+        return json.loads(obj.model_dump_json())
+    return obj
 
 
 def _create_converter(
@@ -48,17 +57,22 @@ def _render_all_formats(document: Any) -> dict:
         from marker.renderers.chunk import ChunkRenderer
         chunk_output = ChunkRenderer()(document)
         chunks = {
-            "blocks": chunk_output.blocks,
-            "page_info": chunk_output.page_info,
-            "metadata": chunk_output.metadata,
+            "blocks": [_to_dict(b) for b in chunk_output.blocks],
+            "page_info": _to_dict(chunk_output.page_info) if chunk_output.page_info else None,
+            "metadata": _to_dict(chunk_output.metadata) if chunk_output.metadata else None,
         } if chunk_output else None
     except ImportError:
         chunks = None
 
+    # Convert JSON output children to plain dicts for serialization
+    json_children = None
+    if hasattr(json_output, 'children') and json_output.children:
+        json_children = [_to_dict(c) for c in json_output.children]
+
     return {
         "html": html_output.html,
         "markdown": markdown_output.markdown,
-        "json": json_output.children if hasattr(json_output, 'children') else None,
+        "json": json_children,
         "chunks": chunks,
         "images": html_output.images,
         "metadata": html_output.metadata,
@@ -200,8 +214,9 @@ def run_conversion(
         update_job(job_id, status="failed", error="File not found")
     except ValueError as e:
         update_job(job_id, status="failed", error=f"Invalid input: {e}")
-    except Exception:
-        update_job(job_id, status="failed", error="Conversion failed unexpectedly")
+    except Exception as e:
+        traceback.print_exc()
+        update_job(job_id, status="failed", error=f"Conversion failed: {e}")
     finally:
         set_active_job(None)
         clear_queue(job_id)

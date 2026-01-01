@@ -36,6 +36,9 @@ export function transformSSEStream(
 
           buffer += decoder.decode(value, { stream: true });
 
+          // Normalize CRLF to LF (Python SSE uses CRLF line endings)
+          buffer = buffer.replace(/\r\n/g, '\n');
+
           // Process complete SSE blocks (ending with \n\n)
           const blocks = buffer.split('\n\n');
           buffer = blocks.pop() || ''; // Keep incomplete block in buffer
@@ -57,6 +60,7 @@ export function transformSSEStream(
 
 /**
  * Process a single SSE block, applying transform to data.
+ * Handles multi-line data per SSE spec.
  */
 function processSSEBlock(
   block: string,
@@ -64,18 +68,19 @@ function processSSEBlock(
 ): string {
   const lines = block.split('\n');
   let event = 'message';
-  let data = '';
+  const dataLines: string[] = [];
 
   for (const line of lines) {
     if (line.startsWith('event:')) {
       event = line.slice(6).trim();
     } else if (line.startsWith('data:')) {
-      data = line.slice(5).trim();
+      dataLines.push(line.slice(5).trimStart());
     }
   }
 
-  if (!data) return block; // No data to transform
+  if (dataLines.length === 0) return block;
 
+  const data = dataLines.join('\n');
   const transformedData = transform(event, data);
   return `event: ${event}\ndata: ${transformedData}`;
 }

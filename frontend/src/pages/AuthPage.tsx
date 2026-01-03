@@ -55,6 +55,7 @@ export function AuthPage() {
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign in failed")
+    } finally {
       setLoading(false)
     }
   }

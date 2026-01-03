@@ -110,7 +110,7 @@ services:
   # Self-hosted Convex backend
   # Profiles: all dev modes (local, runpod, datalab)
   convex-backend:
-    image: ghcr.io/get-convex/convex-backend:latest
+    image: ghcr.io/get-convex/convex-backend:523c6812d3020300314f386b89a9c29560f21027
     profiles: ["local", "runpod", "datalab"]
     ports:
       - "3210:3210"

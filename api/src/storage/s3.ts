@@ -9,7 +9,6 @@ export interface S3Config {
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
-  publicUrl?: string; // Optional public URL for self-hosted (e.g., tunnel URL)
 }
 
 /**
@@ -34,10 +33,14 @@ export class S3Storage {
     return new URL(`${this.config.endpoint}/${this.config.bucket}/${key}`);
   }
 
-  async uploadFile(file: ArrayBuffer, filename: string, contentType: string): Promise<UploadResult> {
+  private generateKey(filename: string): { fileId: string; key: string } {
     const fileId = crypto.randomUUID();
     const ext = filename.split('.').pop() || 'pdf';
-    const key = `uploads/${fileId}.${ext}`;
+    return { fileId, key: `uploads/${fileId}.${ext}` };
+  }
+
+  async uploadFile(file: ArrayBuffer, filename: string, contentType: string): Promise<UploadResult> {
+    const { fileId, key } = this.generateKey(filename);
 
     const url = this.getObjectUrl(key);
 
@@ -63,13 +66,7 @@ export class S3Storage {
   }
 
   async getPresignedUploadUrl(filename: string): Promise<PresignedUrlResult> {
-    const fileId = crypto.randomUUID();
-    const ext = filename.split('.').pop() || 'pdf';
-    const key = `uploads/${fileId}.${ext}`;
-
-    const expiresIn = 3600; // 1 hour
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
+    const { fileId, key } = this.generateKey(filename);
     const url = this.getObjectUrl(key);
 
     const signedRequest = await this.client.sign(
@@ -80,20 +77,17 @@ export class S3Storage {
     return {
       uploadUrl: signedRequest.url,
       fileId,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     };
   }
 
-  private getPublicUrl(): string | undefined {
-    if (this.config.publicUrl) return this.config.publicUrl;
-
+  private getTunnelUrl(): string | undefined {
     try {
       if (existsSync(TUNNEL_URL_FILE)) {
         const url = readFileSync(TUNNEL_URL_FILE, 'utf-8').trim();
         if (url) return url;
       }
     } catch {}
-
     return undefined;
   }
 
@@ -101,9 +95,9 @@ export class S3Storage {
     const key = await this.findFileKey(fileId);
     const url = this.getObjectUrl(key);
 
-    const publicUrl = this.getPublicUrl();
-    if (publicUrl) {
-      return `${publicUrl}/${this.config.bucket}/${key}`;
+    const tunnelUrl = this.getTunnelUrl();
+    if (tunnelUrl) {
+      return `${tunnelUrl}/${this.config.bucket}/${key}`;
     }
 
     const signedRequest = await this.client.sign(

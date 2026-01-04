@@ -11,7 +11,6 @@ services:
       - .env.local
     volumes:
       - ./worker/app:/app/app
-      - marker-cache:/root/.cache
     deploy:
       resources:
         reservations:
@@ -39,6 +38,7 @@ services:
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin
     volumes:
+      - ./api/src:/app/src
       - tunnel_url:/tunnel:ro
     depends_on:
       worker:
@@ -115,6 +115,10 @@ services:
     ports:
       - "3210:3210"
       - "3211:3211"
+    environment:
+      - CONVEX_CLOUD_ORIGIN=http://localhost:3210
+      - CONVEX_SITE_ORIGIN=http://localhost:3211
+      - DISABLE_BEACON=true
     volumes:
       - convex_data:/convex/data
     healthcheck:
@@ -123,11 +127,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Self-hosted Convex dashboard
-  # Profiles: all dev modes (local, runpod, datalab)
+  # Self-hosted Convex dashboard (opt-in with --dashboard flag)
   convex-dashboard:
-    image: ghcr.io/get-convex/convex-dashboard:0.1.0  # Pin to specific version
-    profiles: ["local", "runpod", "datalab"]
+    image: ghcr.io/get-convex/convex-dashboard:523c6812d3020300314f386b89a9c29560f21027
+    profiles: ["dashboard"]
     ports:
       - "6791:6791"
     environment:
@@ -142,7 +145,6 @@ services:
       retries: 5
 
 volumes:
-  marker-cache:
   minio_data:
   tunnel_url:
   convex_data:

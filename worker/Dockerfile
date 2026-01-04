@@ -19,6 +19,17 @@ COPY app/ ./app/
 # Download and cache marker models during build
 RUN python -c "from marker.models import create_model_dict; create_model_dict()"
 
+# Pre-download font for offline operation
+RUN python -c "\
+import os, urllib.request; \
+from marker.settings import settings; \
+os.makedirs(settings.FONT_DIR, exist_ok=True); \
+font_url = f'{settings.ARTIFACT_URL}/{settings.FONT_NAME}'; \
+font_path = os.path.join(settings.FONT_DIR, settings.FONT_NAME); \
+print(f'Downloading {font_url}'); \
+urllib.request.urlretrieve(font_url, font_path); \
+print(f'Saved to {font_path}')"
+
 EXPOSE 8000
 
 # No CMD - specified at runtime:

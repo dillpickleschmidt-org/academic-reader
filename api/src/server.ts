@@ -30,7 +30,6 @@ const storage = createStorage({
   S3_ACCESS_KEY: env.S3_ACCESS_KEY,
   S3_SECRET_KEY: env.S3_SECRET_KEY,
   S3_BUCKET: env.S3_BUCKET,
-  S3_PUBLIC_URL: env.S3_PUBLIC_URL,
 });
 
 // Middleware to inject environment and storage
@@ -47,7 +46,6 @@ app.use('*', async (c, next) => {
     S3_ACCESS_KEY: env.S3_ACCESS_KEY,
     S3_SECRET_KEY: env.S3_SECRET_KEY,
     S3_BUCKET: env.S3_BUCKET,
-    S3_PUBLIC_URL: env.S3_PUBLIC_URL,
     CORS_ORIGINS: env.CORS_ORIGINS,
     // No KV in self-hosted mode
     JOBS_KV: undefined,

@@ -6,23 +6,18 @@ import type { DataModel } from "./_generated/dataModel"
 import type { GenericCtx } from "@convex-dev/better-auth"
 import authConfig from "./auth.config"
 
-const siteUrl = process.env.SITE_URL || "http://localhost:5173"
-
-function getRequiredEnvVar(name: string): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-  return value
-}
-
-const googleClientId = getRequiredEnvVar("GOOGLE_CLIENT_ID")
-const googleClientSecret = getRequiredEnvVar("GOOGLE_CLIENT_SECRET")
-const convexSiteUrl = getRequiredEnvVar("CONVEX_SITE_URL")
+// SITE_URL for frontend origin (set via `convex env set` for production)
+const siteUrl = process.env.SITE_URL?.trim() || "http://localhost:5173"
+// CONVEX_SITE_URL auto-provided by self-hosted backend via CONVEX_SITE_ORIGIN
+const convexSiteUrl = process.env.CONVEX_SITE_URL?.trim() || "http://localhost:3211"
 
 export const authComponent = createClient<DataModel>(components.betterAuth)
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
+  const googleEnabled = googleClientId && googleClientSecret
+
   return betterAuth({
     baseURL: convexSiteUrl,
     trustedOrigins: [siteUrl],
@@ -31,13 +26,15 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       enabled: true,
       requireEmailVerification: false,
     },
-    socialProviders: {
-      google: {
-        clientId: googleClientId,
-        clientSecret: googleClientSecret,
-        prompt: "select_account",
-      },
-    },
+    socialProviders: googleEnabled
+      ? {
+          google: {
+            clientId: googleClientId,
+            clientSecret: googleClientSecret,
+            prompt: "select_account",
+          },
+        }
+      : {},
     plugins: [crossDomain({ siteUrl }), convex({ authConfig })],
   })
 }

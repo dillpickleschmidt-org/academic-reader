@@ -15,7 +15,7 @@
     "config:status": "bun scripts/dev.ts status",
     "config:sync": "bun scripts/dev.ts sync",
     "build": "bun run --cwd frontend build",
-    "typecheck": "bun run --cwd api typecheck && bun run --cwd frontend tsc -b && tsc --project scripts/tsconfig.json",
+    "typecheck": "bun run --cwd api typecheck && bun run --cwd frontend tsc --noEmit && tsc --project scripts/tsconfig.json",
     "lint": "bun run --cwd frontend lint"
   },
   "devDependencies": {

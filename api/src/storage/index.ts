@@ -10,7 +10,6 @@ interface StorageEnv {
   S3_ACCESS_KEY?: string;
   S3_SECRET_KEY?: string;
   S3_BUCKET?: string;
-  S3_PUBLIC_URL?: string;
 }
 
 /**
@@ -18,7 +17,6 @@ interface StorageEnv {
  * Returns null for backends that don't need storage (local, datalab).
  */
 export function createStorage(env: StorageEnv): S3Storage | null {
-  // Only Runpod needs file storage
   if (env.BACKEND_MODE !== 'runpod') {
     return null;
   }
@@ -32,6 +30,5 @@ export function createStorage(env: StorageEnv): S3Storage | null {
     accessKeyId: env.S3_ACCESS_KEY,
     secretAccessKey: env.S3_SECRET_KEY,
     bucket: env.S3_BUCKET,
-    publicUrl: env.S3_PUBLIC_URL,
   });
 }

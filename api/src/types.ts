@@ -102,7 +102,6 @@ export interface Env {
   S3_ACCESS_KEY?: string;
   S3_SECRET_KEY?: string;
   S3_BUCKET?: string;
-  S3_PUBLIC_URL?: string;
 
   // KV for job state (Cloudflare Workers only)
   JOBS_KV?: KVNamespace;

@@ -2,7 +2,7 @@
  * HTML post-processing for reader enhancements.
  */
 import * as cheerio from 'cheerio';
-import temml from 'temml';
+import katex from 'katex';
 
 /**
  * Apply reader enhancements to HTML: citations, math, figure captions, etc.
@@ -16,8 +16,8 @@ export function enhanceHtmlForReader(html: string): string {
   // 2. Single-pass paragraph processing (author meta, figures, continuations)
   processParagraphs($);
 
-  // 3. Convert <math> LaTeX to MathML with data-latex fallback
-  convertMathToMathML($);
+  // 3. Convert <math> LaTeX to HTML via KaTeX (universal browser support)
+  convertMathToHtml($);
 
   return $('body').html() || '';
 }
@@ -105,29 +105,22 @@ function processParagraphs($: cheerio.CheerioAPI): void {
 }
 
 /**
- * Convert <math> tags containing LaTeX to MathML with data-latex fallback for KaTeX.
+ * Convert <math> tags containing LaTeX to HTML via KaTeX.
+ * KaTeX outputs HTML+CSS that works on all browsers (no MathML dependency).
  */
-function convertMathToMathML($: cheerio.CheerioAPI): void {
+function convertMathToHtml($: cheerio.CheerioAPI): void {
   $('math').each(function () {
     const latex = $(this).text().trim();
     if (!latex) return;
 
     try {
-      const mathml = temml.renderToString(latex, {
+      const html = katex.renderToString(latex, {
         throwOnError: false,
         displayMode: false,
       });
-
-      // Wrap in container with data-latex for KaTeX progressive enhancement
-      const wrapper = $('<span>')
-        .addClass('math-render')
-        .attr('data-latex', latex)
-        .html(mathml);
-
-      $(this).replaceWith(wrapper);
+      $(this).replaceWith(html);
     } catch (e) {
-      // Log failure but leave original
-      console.warn(`[html] LaTeX conversion failed for: ${latex.slice(0, 50)}...`, e);
+      console.warn(`[html] KaTeX failed for: ${latex.slice(0, 50)}...`, e);
     }
   });
 }

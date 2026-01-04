@@ -11,10 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/katex": "^0.16.7",
     "aws4fetch": "^1.0.20",
     "cheerio": "^1.1.2",
     "hono": "^4.6.0",
-    "temml": "^0.13.1"
+    "katex": "^0.16.27"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",

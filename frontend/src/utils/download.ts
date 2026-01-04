@@ -1,4 +1,5 @@
 import { SUN_ICON, BOOK_ICON, MOON_ICON } from "../constants/icons"
+import katexCss from "katex/dist/katex.min.css?raw"
 import baseResultCss from "../styles/base-result.css?raw"
 import htmlResultCss from "../styles/html-result.css?raw"
 
@@ -38,8 +39,8 @@ export const generateHtmlDocument = (
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <style>
+${katexCss}
 ${baseResultCss}
 ${htmlResultCss}
   </style>

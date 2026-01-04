@@ -71,6 +71,6 @@ See `.env.example` for all options.
 | Development         | Self-hosted (Docker)               | None - starts automatically   |
 | Production (deploy) | [Convex Cloud](https://convex.dev) | Convex account + Google OAuth |
 
-**Development (`bun run dev`):** All modes (local, runpod, datalab) use self-hosted Convex via Docker - no account needed. A Convex dashboard is available at <http://localhost:6791> for browsing data.
+**Development (`bun run dev`):** All modes (local, runpod, datalab) use self-hosted Convex via Docker - no account needed. A Convex dashboard is available at <http://localhost:6791> for browsing data when run with the `--dashboard` flag.
 
 **Production (`bun run deploy`):** Requires Convex Cloud. Run `bunx convex deploy` in `frontend/` to create a production deployment, then add `CONVEX_DEPLOYMENT` and `CONVEX_URL` to `.env.local`. Also add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` for OAuth.

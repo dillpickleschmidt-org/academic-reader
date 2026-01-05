@@ -1,9 +1,7 @@
-/**
- * Download endpoint - generates complete HTML with embedded subsetted fonts.
- * All font subsetting is done server-side to avoid sending the HTML twice.
- */
+/** Download endpoint - generates complete HTML with embedded subsetted fonts. */
 import { Hono } from 'hono';
 import * as cheerio from 'cheerio';
+import { minify } from 'html-minifier-terser';
 import type { Env, ConversionJob } from '../types';
 import { createBackend } from '../backends/factory';
 import { KV_KEYS } from '../constants';
@@ -146,7 +144,15 @@ download.get('/api/jobs/:jobId/download', async (c) => {
     const fontCss = `${sourceSansCss}\n${katexFontsCss}`;
     const fullHtml = generateHtmlDocument(html, title, fontCss, katexCssRules);
 
-    return new Response(fullHtml, {
+    // Minify HTML and embedded CSS/JS
+    const minifiedHtml = await minify(fullHtml, {
+      collapseWhitespace: true,
+      removeComments: true,
+      minifyCSS: true,
+      minifyJS: true,
+    });
+
+    return new Response(minifiedHtml, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Disposition': `attachment; filename="${encodeURIComponent(title)}.html"; filename*=UTF-8''${encodeURIComponent(title)}.html`,

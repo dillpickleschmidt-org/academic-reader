@@ -11,13 +11,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.2",
     "@types/katex": "^0.16.7",
+    "ai": "^6.0.7",
     "aws4fetch": "^1.0.20",
     "cheerio": "^1.1.2",
-    "hono": "^4.6.0",
-    "katex": "^0.16.27",
     "fonteditor-core": "^2.4.2",
-    "html-minifier-terser": "^7.2.0"
+    "hono": "^4.6.0",
+    "html-minifier-terser": "^7.2.0",
+    "katex": "^0.16.27"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",

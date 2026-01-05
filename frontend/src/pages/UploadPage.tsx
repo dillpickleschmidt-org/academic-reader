@@ -4,6 +4,9 @@ import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { useAppConfig } from "@/hooks/useAppConfig"
+import { authClient } from "@/lib/auth-client"
+import { AuthDialog } from "@/components/AuthDialog"
 
 const SUPPORTED_FORMATS = {
   Documents: "PDF, DOCX, ODT",
@@ -47,6 +50,7 @@ export function UploadPage({
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const { user } = useAppConfig()
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -76,8 +80,21 @@ export function UploadPage({
 
   return (
     <div className="min-h-screen flex flex-col p-6 px-5 bg-background">
-      <div className="flex items-center gap-2 text-base font-medium text-muted-foreground">
-        Academic Reader
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-base font-medium text-muted-foreground">
+          Academic Reader
+        </div>
+        {user ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => authClient.signOut()}
+          >
+            Logout
+          </Button>
+        ) : (
+          <AuthDialog />
+        )}
       </div>
 
       <main className="flex flex-col items-center justify-center flex-1 pb-16">

@@ -10,13 +10,16 @@ import katex from 'katex';
 export function enhanceHtmlForReader(html: string): string {
   const $ = cheerio.load(html);
 
-  // 1. Citation detection & wrapping
+  // 1. Remove redundant img-description elements (alt is already on img)
+  $('.img-description').remove();
+
+  // 2. Citation detection & wrapping
   wrapCitations($);
 
-  // 2. Single-pass paragraph processing (author meta, figures, continuations)
+  // 3. Single-pass paragraph processing (author meta, figures, continuations)
   processParagraphs($);
 
-  // 3. Convert <math> LaTeX to HTML via KaTeX (universal browser support)
+  // 4. Convert <math> LaTeX to HTML via KaTeX (universal browser support)
   convertMathToHtml($);
 
   return $('body').html() || '';
@@ -117,6 +120,7 @@ function convertMathToHtml($: cheerio.CheerioAPI): void {
       const html = katex.renderToString(latex, {
         throwOnError: false,
         displayMode: false,
+        output: 'htmlAndMathml',
       });
       $(this).replaceWith(html);
     } catch (e) {

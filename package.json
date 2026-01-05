@@ -6,6 +6,7 @@
     "api"
   ],
   "scripts": {
+    "postinstall": "node scripts/apply-font-patches.js",
     "dev": "bun scripts/dev.ts dev",
     "dev:local": "bun scripts/dev.ts dev --mode local",
     "dev:runpod": "bun scripts/dev.ts dev --mode runpod",

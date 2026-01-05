@@ -64,30 +64,20 @@ export async function generateConvexAdminKey(
   return adminKey;
 }
 
-export async function syncConvexEnv(env: Env): Promise<void> {
-  const convexEnvVars: Record<string, string | undefined> = {
-    GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
-    BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
-  };
-
-  const varsToSet = Object.entries(convexEnvVars).filter(
-    ([, value]) => value !== undefined,
-  );
+async function setConvexEnvVars(
+  vars: Record<string, string | undefined>,
+  processEnv: Record<string, string>,
+): Promise<void> {
+  const varsToSet = Object.entries(vars).filter(([, v]) => v !== undefined);
   if (varsToSet.length === 0) return;
 
   console.log(colors.cyan("Syncing Convex environment variables..."));
-
-  const convexEnv = {
-    ...getSystemEnv(),
-    ...getConvexEnv(env.CONVEX_SELF_HOSTED_ADMIN_KEY!),
-  };
 
   for (const [key, value] of varsToSet) {
     const proc = spawn({
       cmd: ["bunx", "convex", "env", "set", key, value!],
       cwd: resolve(ROOT_DIR, "frontend"),
-      env: convexEnv,
+      env: processEnv,
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -102,4 +92,33 @@ export async function syncConvexEnv(env: Env): Promise<void> {
       );
     }
   }
+}
+
+export async function syncConvexEnvDev(env: Env): Promise<void> {
+  await setConvexEnvVars(
+    {
+      GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
+      BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
+    },
+    { ...getSystemEnv(), ...getConvexEnv(env.CONVEX_SELF_HOSTED_ADMIN_KEY!) },
+  );
+}
+
+export async function syncConvexEnvProd(
+  env: Env,
+  siteUrl: string,
+): Promise<void> {
+  await setConvexEnvVars(
+    {
+      SITE_URL: siteUrl,
+      GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
+      BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
+    },
+    {
+      ...getSystemEnv(),
+      CONVEX_DEPLOYMENT: env.CONVEX_DEPLOYMENT!,
+    },
+  );
 }

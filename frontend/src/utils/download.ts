@@ -1,7 +1,9 @@
-import { SUN_ICON, BOOK_ICON, MOON_ICON } from "../constants/icons"
-import katexCss from "katex/dist/katex.min.css?raw"
-import baseResultCss from "../styles/base-result.css?raw"
-import htmlResultCss from "../styles/html-result.css?raw"
+/**
+ * Download utilities for saving conversion results.
+ * HTML downloads use server-side font subsetting for optimal file size.
+ */
+
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")
 
 export type OutputFormat = "html" | "markdown" | "json"
 
@@ -15,12 +17,13 @@ export const getDownloadMimeType = (format: OutputFormat): string =>
       ? "application/json"
       : "text/markdown"
 
-export const downloadBlob = (
-  content: string,
+const downloadBlob = (
+  content: string | Blob,
   filename: string,
   mimeType: string,
 ) => {
-  const blob = new Blob([content], { type: mimeType })
+  const blob =
+    content instanceof Blob ? content : new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
   a.href = url
@@ -29,77 +32,29 @@ export const downloadBlob = (
   URL.revokeObjectURL(url)
 }
 
-export const generateHtmlDocument = (
-  renderedContent: string,
-  title: string,
-): string => {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-${katexCss}
-${baseResultCss}
-${htmlResultCss}
-  </style>
-</head>
-<body>
-  <!-- Theme radio inputs - must be siblings before .reader-output for CSS selectors -->
-  <input type="radio" name="theme" id="theme-light" class="theme-radios" checked>
-  <input type="radio" name="theme" id="theme-comfort" class="theme-radios">
-  <input type="radio" name="theme" id="theme-dark" class="theme-radios">
-  <script>
-    // Eagerly apply saved theme before render
-    (function() {
-      var theme = localStorage.getItem('reader-theme');
-      if (theme && theme !== 'light') {
-        document.getElementById('theme-light').checked = false;
-        document.getElementById('theme-' + theme).checked = true;
-      }
-    })();
-  </script>
+/**
+ * Download HTML from the API with server-side font subsetting.
+ * Uses direct link to show native browser download progress.
+ */
+export const downloadFromApi = (jobId: string, fileName: string): void => {
+  const baseName = fileName.replace(/\.[^/.]+$/, "")
+  const url = `${API_URL}/api/jobs/${jobId}/download?title=${encodeURIComponent(baseName)}`
 
-  <div class="reader-output">
-    <div class="reader-theme-toggle">
-      <label for="theme-light" title="Light">${SUN_ICON}</label>
-      <label for="theme-comfort" title="Comfort">${BOOK_ICON}</label>
-      <label for="theme-dark" title="Dark">${MOON_ICON}</label>
-    </div>
-    <div class="reader-content">
-${renderedContent}
-    </div>
-  </div>
-
-  <script>
-    // Persist theme changes to localStorage
-    document.querySelectorAll('input[name="theme"]').forEach(function(radio) {
-      radio.addEventListener('change', function() {
-        localStorage.setItem('reader-theme', this.id.replace('theme-', ''));
-      });
-    });
-  </script>
-</body>
-</html>`
+  const a = document.createElement("a")
+  a.href = url
+  a.click()
 }
 
-export const downloadResult = (
+/**
+ * Download non-HTML content (markdown, json) directly.
+ */
+export const downloadContent = (
   content: string,
   fileName: string,
   outputFormat: OutputFormat,
-) => {
+): void => {
   const ext = getDownloadExtension(outputFormat)
   const mimeType = getDownloadMimeType(outputFormat)
   const baseName = fileName.replace(/\.[^/.]+$/, "")
-
-  let downloadContent = content
-
-  if (outputFormat === "html") {
-    const renderedContent =
-      document.querySelector(".reader-content")?.innerHTML || content
-    downloadContent = generateHtmlDocument(renderedContent, baseName)
-  }
-
-  downloadBlob(downloadContent, `${baseName}.${ext}`, mimeType)
+  downloadBlob(content, `${baseName}.${ext}`, mimeType)
 }

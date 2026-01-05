@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react"
 import * as api from "../api"
 import type { ConversionProgress } from "../api"
-import { downloadResult, type OutputFormat } from "../utils/download"
+import { downloadFromApi, downloadContent, type OutputFormat } from "../utils/download"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type { OutputFormat }
@@ -34,6 +34,7 @@ export function useConversion() {
   const [pageRange, setPageRange] = useState("")
 
   // Processing state
+  const [jobId, setJobId] = useState("")
   const [content, setContent] = useState("")
   const [error, setError] = useState("")
   const [imagesReady, setImagesReady] = useState(false)
@@ -83,6 +84,7 @@ export function useConversion() {
     setUseLlm(false)
     setForceOcr(false)
     setPageRange("")
+    setJobId("")
     setContent("")
     setError("")
     setImagesReady(false)
@@ -160,6 +162,7 @@ export function useConversion() {
         forceOcr,
         pageRange,
       })
+      setJobId(job_id)
 
       const cleanup = api.subscribeToJob(
         job_id,
@@ -230,7 +233,11 @@ export function useConversion() {
   }
 
   const handleDownload = () => {
-    downloadResult(content, fileName, outputFormat)
+    if (outputFormat === "html" && jobId) {
+      downloadFromApi(jobId, fileName)
+    } else {
+      downloadContent(content, fileName, outputFormat)
+    }
   }
 
   return {

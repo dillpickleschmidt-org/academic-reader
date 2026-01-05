@@ -89,19 +89,7 @@
   text-indent: 1.5em;
 }
 
-.reader-output h1 + p,
-.reader-output h2 + p,
-.reader-output h3 + p,
-.reader-output h4 + p,
-.reader-output h5 + p,
-.reader-output h6 + p,
-.reader-output img + p,
-.reader-output figure + p,
-.reader-output blockquote + p,
-.reader-output ul + p,
-.reader-output ol + p,
-.reader-output table + p,
-.reader-output pre + p {
+.reader-output :is(h1, h2, h3, h4, h5, h6, img, figure, blockquote, ul, ol, table, pre) + p {
   text-indent: 0;
 }
 

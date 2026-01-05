@@ -13,7 +13,8 @@ import {
 import {
   getConvexEnv,
   generateConvexAdminKey,
-  syncConvexEnv,
+  syncConvexEnvDev,
+  syncConvexEnvProd,
 } from "./convex";
 
 // =============================================================================
@@ -124,7 +125,7 @@ const devCommand: Command = {
     }
 
     syncConfigs(env);
-    await syncConvexEnv(env);
+    await syncConvexEnvDev(env);
 
     processes.push(
       await runProcess(["docker", "compose", ...profileArgs, "logs", "-f"], {
@@ -191,6 +192,14 @@ const deployCommand: Command = {
       },
     );
     await apiDeploy.exited;
+
+    if (!env.DEPLOY_SITE_URL) {
+      console.error(colors.red("DEPLOY_SITE_URL is required for deployment"));
+      console.log("Set it in .env.local to your Cloudflare Pages URL");
+      process.exit(1);
+    }
+
+    await syncConvexEnvProd(env, env.DEPLOY_SITE_URL);
 
     console.log(colors.cyan("\nBuilding frontend..."));
     if (!env.DEPLOY_API_URL) {

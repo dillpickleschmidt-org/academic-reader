@@ -7,6 +7,7 @@ import { cors } from 'hono/cors';
 import { upload } from './routes/upload';
 import { convert } from './routes/convert';
 import { jobs } from './routes/jobs';
+import { download } from './routes/download';
 import { createStorage, MemoryTempStorage, type S3Storage, type TempStorage } from './storage';
 import type { Env } from './types';
 
@@ -71,6 +72,7 @@ app.use('*', cors({
 app.route('/', upload);
 app.route('/', convert);
 app.route('/', jobs);
+app.route('/', download);
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', mode: 'self-hosted' }));

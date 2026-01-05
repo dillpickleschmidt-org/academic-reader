@@ -3,6 +3,19 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Asset loading rules
+# CompiledWasm pre-compiles WASM at deploy time (faster instantiation in Workers)
+rules = [
+  { type = "Text", globs = ["**/*.css"] },
+  { type = "Data", globs = ["**/*.woff2"] },
+  { type = "CompiledWasm", globs = ["**/*.wasm"] }
+]
+
+# Override Node.js detection so Emscripten WASM modules use browser code path
+# (Workers has process via nodejs_compat but not __dirname)
+[define]
+"process.versions.node" = "undefined"
+
 # Development defaults
 [vars]
 BACKEND_MODE = "local"
@@ -19,6 +32,9 @@ id = "73ff3d7cbe354d45988bea037f73f2bf"
 # ============================================
 [env.runpod]
 name = "academic-reader-api-runpod"
+
+[env.runpod.define]
+"process.versions.node" = "undefined"
 
 [env.runpod.vars]
 BACKEND_MODE = "runpod"
@@ -42,6 +58,9 @@ id = "73ff3d7cbe354d45988bea037f73f2bf"
 # ============================================
 [env.datalab]
 name = "academic-reader-api-datalab"
+
+[env.datalab.define]
+"process.versions.node" = "undefined"
 
 [env.datalab.vars]
 BACKEND_MODE = "datalab"

@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types';
-import { upload, convert, jobs, webhooks } from './routes';
+import { upload, convert, jobs, download, webhooks } from './routes';
 import { createStorage, KVTempStorage, type S3Storage, type TempStorage } from './storage';
 
 // Extended context with storage adapters
@@ -61,6 +61,7 @@ app.get('/health', (c) => c.json({ status: 'ok', backend: c.env.BACKEND_MODE, mo
 app.route('/', upload);
 app.route('/', convert);
 app.route('/', jobs);
+app.route('/', download);
 app.route('/', webhooks);
 
 export default app;

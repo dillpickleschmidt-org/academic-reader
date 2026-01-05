@@ -54,8 +54,15 @@
   padding-bottom: 0.5rem;
 }
 
-.reader-output h2 {
+.reader-output h2,
+.reader-output h3,
+.reader-output h4,
+.reader-output h5,
+.reader-output h6 {
   font-family: "Source Sans 3 Variable", "Source Sans Pro", sans-serif;
+}
+
+.reader-output h2 {
   font-size: 1.3rem;
   margin-top: 3.5rem;
   margin-bottom: 1.5rem;

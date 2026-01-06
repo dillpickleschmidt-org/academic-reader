@@ -15,7 +15,7 @@
     "deploy:datalab": "bun scripts/dev.ts deploy --mode datalab",
     "config:status": "bun scripts/dev.ts status",
     "build": "bun run --cwd frontend build",
-    "typecheck": "bun run --cwd api typecheck && bun run --cwd frontend tsc --noEmit && tsc --project scripts/tsconfig.json",
+    "typecheck": "bun run --cwd api typecheck && bun run --cwd frontend tsc -p tsconfig.app.json --noEmit && bun run --cwd frontend tsc -p tsconfig.node.json --noEmit && bun run --cwd frontend tsc -p convex/tsconfig.json --noEmit && tsc --project scripts/tsconfig.json",
     "lint": "bun run --cwd frontend lint"
   },
   "devDependencies": {

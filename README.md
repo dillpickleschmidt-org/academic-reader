@@ -21,6 +21,36 @@ bun run dev                    # Start development servers
 
 Set `BACKEND_MODE` in `.env.dev` for development.
 
+## Architecture
+
+```
+┌──────────────┐     ┌─────────────────────┐     ┌─────────────────┐
+│   Frontend   │────▶│         VPS         │────▶│ Runpod/Datalab  │
+│ (Static CDN) │     │   (Bun API Server)  │     │   (GPU/API)     │
+└──────────────┘     └─────────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────────┐
+                     │  Cloudflare R2 or   │
+                     │  MinIO (S3 Storage) │
+                     └─────────────────────┘
+```
+
+### API Endpoints
+
+| Endpoint                  | Purpose                     |
+| ------------------------- | --------------------------- |
+| `POST /upload`            | Upload file (to S3 or temp) |
+| `POST /convert/:fileId`   | Start conversion job        |
+| `GET /jobs/:jobId/stream` | SSE progress stream         |
+| `GET /download/:jobId`    | Download converted HTML     |
+
+### Storage
+
+- **local mode** - /tmp/academic-reader-uploads/{uuid}.{ext} (dev mode only)
+- **datalab mode** - In-Memory: API accepts files directly for processing
+- **runpod mode** - S3/R2 cloud for prod, and stored locally with MinIO and exposed to runpod instance via anonymous temp cloudflared tunnel for dev mode
+
 ## Development
 
 ```bash
@@ -115,17 +145,17 @@ This will:
 
 ### Production (.env.production on VPS)
 
-| Variable                        | Required | Description                       |
-| ------------------------------- | -------- | --------------------------------- |
-| `BACKEND_MODE`                  | Yes      | `datalab` or `runpod`             |
-| `SITE_URL`                      | Yes      | https://yourdomain.com            |
-| `PROD_CONVEX_URL`               | Yes      | https://convex.yourdomain.com     |
-| `PROD_CONVEX_SITE_URL`          | Yes      | https://convex-site.yourdomain.com|
-| `CLOUDFLARE_TUNNEL_TOKEN`       | Yes      | From Cloudflare Zero Trust        |
-| `CONVEX_SELF_HOSTED_ADMIN_KEY`  | Yes      | Copy from local .env.dev          |
-| `BETTER_AUTH_SECRET`            | Yes      | Copy from local .env.dev          |
-| `DATALAB_API_KEY`               | datalab  | Production API key                |
-| `PROD_S3_*`                     | runpod   | S3/R2 credentials                 |
+| Variable                       | Required | Description                          |
+| ------------------------------ | -------- | ------------------------------------ |
+| `BACKEND_MODE`                 | Yes      | `datalab` or `runpod`                |
+| `SITE_URL`                     | Yes      | <https://yourdomain.com>             |
+| `PROD_CONVEX_URL`              | Yes      | <https://convex.yourdomain.com>      |
+| `PROD_CONVEX_SITE_URL`         | Yes      | <https://convex-site.yourdomain.com> |
+| `CLOUDFLARE_TUNNEL_TOKEN`      | Yes      | From Cloudflare Zero Trust           |
+| `CONVEX_SELF_HOSTED_ADMIN_KEY` | Yes      | Copy from local .env.dev             |
+| `BETTER_AUTH_SECRET`           | Yes      | Copy from local .env.dev             |
+| `DATALAB_API_KEY`              | datalab  | Production API key                   |
+| `PROD_S3_*`                    | runpod   | S3/R2 credentials                    |
 
 ### Deploy Metadata (in .env.dev)
 

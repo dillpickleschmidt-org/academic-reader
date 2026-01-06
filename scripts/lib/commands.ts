@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import type { Subprocess } from "bun";
+import { spawn, type Subprocess } from "bun";
 import type { Command, CommandOptions, Env } from "./types";
 import {
   ROOT_DIR,
@@ -11,10 +11,9 @@ import {
 import {
   getConvexEnv,
   generateConvexAdminKey,
-  syncConvexEnvDev,
-  getProdConvexEnv,
+  parseAdminKey,
+  syncConvexEnv,
   deployConvexFunctions,
-  syncConvexEnvProd,
 } from "./convex";
 import { validateEnv, devEnvRules, deployEnvRules } from "./env";
 
@@ -124,8 +123,9 @@ const devCommand: Command = {
       env.BETTER_AUTH_SECRET = generateBetterAuthSecret();
     }
 
+    const convexEnv = getConvexEnv(env.CONVEX_SELF_HOSTED_ADMIN_KEY!);
     syncConfigs(env);
-    await syncConvexEnvDev(env);
+    await syncConvexEnv(env, convexEnv);
 
     processes.push(
       await runProcess(
@@ -141,8 +141,6 @@ const devCommand: Command = {
         { cwd: ROOT_DIR },
       ),
     );
-
-    const convexEnv = getConvexEnv(env.CONVEX_SELF_HOSTED_ADMIN_KEY!);
     processes.push(
       await runProcess(["bunx", "convex", "dev"], {
         cwd: resolve(ROOT_DIR, "frontend"),
@@ -198,11 +196,62 @@ const deployCommand: Command = {
     }
     console.log(colors.green("✓ Containers deployed to VPS\n"));
 
-    // 2. Deploy Convex functions
-    const convexEnv = getProdConvexEnv(
-      convexUrl,
-      env.CONVEX_SELF_HOSTED_ADMIN_KEY!,
-    );
+    // 2. Fetch or generate prod admin key from VPS
+    console.log(colors.cyan("Fetching Convex admin key from VPS..."));
+    const fetchKeyProc = spawn({
+      cmd: [
+        "ssh",
+        sshTarget,
+        `grep '^CONVEX_SELF_HOSTED_ADMIN_KEY=' ${vpsPath}/.env.production | cut -d'=' -f2-`,
+      ],
+      cwd: ROOT_DIR,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    let prodAdminKey = (await new Response(fetchKeyProc.stdout).text()).trim();
+    await fetchKeyProc.exited;
+
+    if (!prodAdminKey) {
+      console.log(colors.yellow("Admin key not found, generating..."));
+      const genKeyProc = spawn({
+        cmd: [
+          "ssh",
+          sshTarget,
+          `docker exec academic-reader-convex-backend-1 ./generate_admin_key.sh`,
+        ],
+        cwd: ROOT_DIR,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const genOutput = await new Response(genKeyProc.stdout).text();
+      await genKeyProc.exited;
+
+      prodAdminKey = parseAdminKey(genOutput) ?? "";
+      if (!prodAdminKey) {
+        console.error(colors.red("Failed to generate admin key on VPS"));
+        console.error(genOutput || "(empty output)");
+        process.exit(1);
+      }
+
+      // Save to .env.production on VPS
+      const saveKeyProc = spawn({
+        cmd: [
+          "ssh",
+          sshTarget,
+          `echo 'CONVEX_SELF_HOSTED_ADMIN_KEY=${prodAdminKey}' >> ${vpsPath}/.env.production`,
+        ],
+        cwd: ROOT_DIR,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      await saveKeyProc.exited;
+      console.log(colors.green("✓ Admin key generated and saved to VPS\n"));
+    } else {
+      console.log(colors.green("✓ Admin key retrieved\n"));
+    }
+
+    // 3. Deploy Convex functions
+    const convexEnv = getConvexEnv(prodAdminKey, convexUrl);
 
     const convexDeployed = await deployConvexFunctions(convexEnv);
     if (!convexDeployed) {
@@ -211,11 +260,11 @@ const deployCommand: Command = {
     }
     console.log(colors.green("✓ Convex functions deployed\n"));
 
-    // 3. Sync Convex environment variables
-    await syncConvexEnvProd(env, siteUrl, convexEnv);
+    // 4. Sync Convex environment variables
+    await syncConvexEnv(env, convexEnv, siteUrl);
     console.log(colors.green("✓ Convex environment synced\n"));
 
-    // 4. Build frontend with prod vars
+    // 5. Build frontend with prod vars
     console.log(colors.cyan("Building frontend..."));
     const buildProcess = await runProcess(["bun", "run", "build"], {
       cwd: resolve(ROOT_DIR, "frontend"),
@@ -232,7 +281,7 @@ const deployCommand: Command = {
     }
     console.log(colors.green("✓ Frontend built\n"));
 
-    // 5. Deploy to Cloudflare Pages
+    // 6. Deploy to Cloudflare Pages
     console.log(colors.cyan("Deploying to Cloudflare Pages..."));
     const pagesProcess = await runProcess([
       "bunx",

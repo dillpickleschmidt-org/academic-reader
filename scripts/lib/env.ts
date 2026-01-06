@@ -29,8 +29,6 @@ export const deployEnvRules: EnvRule[] = [
   { key: "PROD_VPS_PATH", required: true },
   { key: "PROD_DOMAIN", required: true },
   { key: "PROD_CLOUDFLARE_PROJECT", required: true },
-  // Shared secrets (generated locally, copied to VPS once)
-  { key: "CONVEX_SELF_HOSTED_ADMIN_KEY", required: true, message: "Run 'bun run dev' first to generate CONVEX_SELF_HOSTED_ADMIN_KEY" },
 ];
 
 // =============================================================================

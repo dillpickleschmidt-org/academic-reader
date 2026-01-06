@@ -8,11 +8,19 @@ import { ROOT_DIR, DEV_ENV_FILE, colors, getSystemEnv } from "./utils";
 // Public API
 // =============================================================================
 
-export function getConvexEnv(adminKey: string): Record<string, string> {
+export function getConvexEnv(
+  adminKey: string,
+  url = "http://localhost:3210",
+): Record<string, string> {
   return {
-    CONVEX_SELF_HOSTED_URL: "http://localhost:3210",
+    CONVEX_SELF_HOSTED_URL: url,
     CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
   };
+}
+
+export function parseAdminKey(output: string): string | null {
+  const match = output.match(/(convex-self-hosted\|\S+)/);
+  return match ? match[1] : null;
 }
 
 export async function generateConvexAdminKey(
@@ -43,14 +51,12 @@ export async function generateConvexAdminKey(
     return null;
   }
 
-  const match = output.match(/(convex-self-hosted\|\S+)/);
-  if (!match) {
+  const adminKey = parseAdminKey(output);
+  if (!adminKey) {
     console.error(colors.red("Could not parse admin key from output:"));
     console.error(output || "(empty output)");
     return null;
   }
-
-  const adminKey = match[1];
 
   const envContent = readFileSync(DEV_ENV_FILE, "utf-8");
   // Check for uncommented key with a value (not just a placeholder)
@@ -102,25 +108,20 @@ async function setConvexEnvVars(
   }
 }
 
-export async function syncConvexEnvDev(env: Env): Promise<void> {
+export async function syncConvexEnv(
+  env: Env,
+  convexEnv: Record<string, string>,
+  siteUrl?: string,
+): Promise<void> {
   await setConvexEnvVars(
     {
+      ...(siteUrl && { SITE_URL: siteUrl }),
       GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
       BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
     },
-    { ...getSystemEnv(), ...getConvexEnv(env.CONVEX_SELF_HOSTED_ADMIN_KEY!) },
+    { ...getSystemEnv(), ...convexEnv },
   );
-}
-
-export function getProdConvexEnv(
-  convexUrl: string,
-  adminKey: string,
-): Record<string, string> {
-  return {
-    CONVEX_SELF_HOSTED_URL: convexUrl,
-    CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
-  };
 }
 
 export async function deployConvexFunctions(
@@ -140,18 +141,3 @@ export async function deployConvexFunctions(
   return proc.exitCode === 0;
 }
 
-export async function syncConvexEnvProd(
-  env: Env,
-  siteUrl: string,
-  convexEnv: Record<string, string>,
-): Promise<void> {
-  await setConvexEnvVars(
-    {
-      SITE_URL: siteUrl,
-      GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
-      BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
-    },
-    { ...getSystemEnv(), ...convexEnv },
-  );
-}

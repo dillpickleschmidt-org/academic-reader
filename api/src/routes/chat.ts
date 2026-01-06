@@ -25,7 +25,7 @@ chat.post("/chat", async (c) => {
     })
 
     const result = streamText({
-      model: google("gemini-2.0-flash"),
+      model: google("gemini-3-flash-preview"),
       messages: await convertToModelMessages(messages),
       system: `You are a helpful assistant with access to a knowledge base.
 When users ask questions, search the knowledge base for relevant information.

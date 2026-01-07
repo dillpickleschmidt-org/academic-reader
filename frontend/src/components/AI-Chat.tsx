@@ -39,6 +39,7 @@ export function AIChat({ trigger }: Props) {
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
+      credentials: "same-origin",
     }),
   })
 

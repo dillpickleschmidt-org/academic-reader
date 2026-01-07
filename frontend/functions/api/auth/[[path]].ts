@@ -10,7 +10,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const targetUrl = `https://${convexSiteHost}${url.pathname}${url.search}`
 
   const headers = new Headers(context.request.headers)
-  headers.set("Host", convexSiteHost)
 
   const response = await fetch(targetUrl, {
     method: context.request.method,

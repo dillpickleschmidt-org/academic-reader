@@ -9,12 +9,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const apiHost = context.env.API_HOST
   const targetUrl = `https://${apiHost}${path}${url.search}`
 
-  const headers = new Headers(context.request.headers)
-  headers.set("Host", apiHost)
-
   return fetch(targetUrl, {
     method: context.request.method,
-    headers,
+    headers: context.request.headers,
     body: context.request.body,
   })
 }

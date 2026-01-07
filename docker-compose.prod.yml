@@ -13,11 +13,11 @@ services:
     stop_grace_period: 10s
     stop_signal: SIGINT
     ports:
-      - "8787:8787"
+      - "80:80"
     env_file:
       - .env.production
     environment:
-      - PORT=8787
+      - PORT=80
       - BACKEND_MODE=${BACKEND_MODE}
       - SITE_URL=${PROD_SITE_URL}
       - DATALAB_API_KEY=${DATALAB_API_KEY}

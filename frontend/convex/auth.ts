@@ -6,11 +6,11 @@ import type { DataModel } from "./_generated/dataModel"
 import type { GenericCtx } from "@convex-dev/better-auth"
 import authConfig from "./auth.config"
 
-// SITE_URL for frontend origin (set via `convex env set` for production)
+// SITE_URL for frontend origin and Better Auth baseURL (same origin in production)
 const siteUrl = process.env.SITE_URL?.trim() || "http://localhost:5173"
-// CONVEX_SITE_URL auto-provided by self-hosted backend via CONVEX_SITE_ORIGIN
+// In dev, Convex Site runs on a different port; in prod, same origin via proxy
 const convexSiteUrl =
-  process.env.CONVEX_SITE_URL?.trim() || "http://localhost:3211"
+  process.env.CONVEX_SITE_URL?.trim() || process.env.SITE_URL?.trim() || "http://localhost:3211"
 
 export const authComponent = createClient<DataModel>(components.betterAuth)
 

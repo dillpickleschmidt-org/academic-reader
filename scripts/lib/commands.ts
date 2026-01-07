@@ -172,10 +172,9 @@ const deployCommand: Command = {
 
     // Derive URLs from PROD_DOMAIN
     const domain = env.PROD_DOMAIN!
-    const apiUrl = `https://api.${domain}`
+    const apiUrl = `https://${domain}/api`
     const siteUrl = `https://${domain}`
     const convexUrl = `https://convex.${domain}`
-    const convexSiteUrl = `https://convex-site.${domain}`
 
     const sshTarget = `${env.PROD_VPS_USER}@${env.PROD_VPS_HOST_IP}`
     const vpsPath = env.PROD_VPS_PATH!
@@ -271,7 +270,7 @@ const deployCommand: Command = {
       env: {
         VITE_API_URL: apiUrl,
         VITE_CONVEX_URL: convexUrl,
-        VITE_CONVEX_SITE_URL: convexSiteUrl,
+        VITE_CONVEX_SITE_URL: siteUrl,
       },
     })
     await buildProcess.exited

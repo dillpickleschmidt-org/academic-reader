@@ -36,7 +36,7 @@ services:
     stop_signal: SIGINT
     environment:
       - CONVEX_CLOUD_ORIGIN=${PROD_CONVEX_URL}
-      - CONVEX_SITE_ORIGIN=${PROD_CONVEX_SITE_URL}
+      - CONVEX_SITE_ORIGIN=${PROD_SITE_URL}
       - DISABLE_BEACON=true
     volumes:
       - convex_data:/convex/data

@@ -184,7 +184,7 @@ const deployCommand: Command = {
     const deployProcess = await runProcess([
       "ssh",
       sshTarget,
-      `cd ${vpsPath} && git pull && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`,
+      `cd ${vpsPath} && git pull && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans`,
     ])
     await deployProcess.exited
     if (deployProcess.exitCode !== 0) {

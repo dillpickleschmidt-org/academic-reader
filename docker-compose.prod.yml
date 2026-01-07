@@ -13,11 +13,15 @@ services:
     stop_grace_period: 10s
     stop_signal: SIGINT
     ports:
-      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/app/certs:ro
     env_file:
       - .env.production
     environment:
-      - PORT=80
+      - PORT=443
+      - TLS_CERT=/app/certs/cert.pem
+      - TLS_KEY=/app/certs/key.pem
       - BACKEND_MODE=${BACKEND_MODE}
       - SITE_URL=${PROD_SITE_URL}
       - DATALAB_API_KEY=${DATALAB_API_KEY}

@@ -115,11 +115,23 @@ app.use("/*", serveStatic({ path: "./frontend/dist/index.html" })) // SPA fallba
 
 // Start server
 const port = parseInt(env.PORT || "8787", 10)
+const tlsCert = env.TLS_CERT
+const tlsKey = env.TLS_KEY
+
 console.log(`Starting server on port ${port}`)
 console.log(`Backend: ${env.BACKEND_MODE || "datalab"}`)
+if (tlsCert && tlsKey) console.log("TLS: enabled")
 
 export default {
   port,
   fetch: app.fetch,
   idleTimeout: 0, // Disable timeout for SSE streams
+  ...(tlsCert && tlsKey
+    ? {
+        tls: {
+          cert: Bun.file(tlsCert),
+          key: Bun.file(tlsKey),
+        },
+      }
+    : {}),
 }

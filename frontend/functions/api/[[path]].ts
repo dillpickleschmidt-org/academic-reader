@@ -5,6 +5,12 @@ interface Env {
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
+
+  // Let the auth function handle /api/auth/* routes
+  if (url.pathname.startsWith("/api/auth")) {
+    return context.next()
+  }
+
   const path = url.pathname.replace("/api", "")
   const apiHost = context.env.API_HOST
   const targetUrl = `https://${apiHost}${path}${url.search}`

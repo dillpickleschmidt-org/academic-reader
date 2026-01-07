@@ -290,14 +290,6 @@ CONVEX_SITE_HOST = "convex-site.${domain}"
 `
     await Bun.write(resolve(ROOT_DIR, "frontend/wrangler.toml"), wranglerConfig)
 
-    // Write _routes.json to route /api/* to functions
-    const routesConfig = JSON.stringify(
-      { version: 1, include: ["/api/*"], exclude: [] },
-      null,
-      2,
-    )
-    await Bun.write(resolve(ROOT_DIR, "frontend/dist/_routes.json"), routesConfig)
-
     // 7. Deploy to Cloudflare Pages
     console.log(colors.cyan("Deploying to Cloudflare Pages..."))
     const pagesProcess = await runProcess(

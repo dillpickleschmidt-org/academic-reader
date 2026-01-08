@@ -10,7 +10,7 @@ export async function getUser(ctx: QueryCtx | MutationCtx) {
   }
 }
 
-// Throws if not authenticated - for required auth scenarios
+// Throws if not authenticated
 export async function requireAuth(ctx: QueryCtx | MutationCtx) {
   const user = await getUser(ctx)
   if (!user) throw new Error("Unauthenticated")

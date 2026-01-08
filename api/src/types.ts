@@ -155,4 +155,7 @@ export interface Env {
 
   // Frontend URL (used for CORS)
   SITE_URL?: string
+
+  // Convex HTTP actions URL (for auth proxy)
+  CONVEX_HTTP_URL?: string
 }

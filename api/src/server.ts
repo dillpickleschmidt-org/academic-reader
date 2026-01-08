@@ -81,14 +81,16 @@ app.use(
 // ─────────────────────────────────────────────────────────────
 const authProxy = async (c: Context) => {
   const url = new URL(c.req.url)
-  const targetUrl = `http://convex-backend:3211${url.pathname}${url.search}`
+  const convexHttpUrl = env.CONVEX_HTTP_URL || "http://localhost:3211"
+  const targetUrl = `${convexHttpUrl}${url.pathname}${url.search}`
+  const targetHost = new URL(convexHttpUrl).host
 
   try {
     return await proxy(targetUrl, {
       ...c.req,
       headers: {
         ...c.req.header(),
-        host: "convex-backend:3211",
+        host: targetHost,
       },
       redirect: "manual", // Don't follow redirects, pass them to browser
     })

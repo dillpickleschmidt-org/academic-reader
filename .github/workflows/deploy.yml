@@ -21,7 +21,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: dillpickleschmidt/academic-reader:latest
+          tags: |
+            dillpickleschmidt/academic-reader:latest
+            dillpickleschmidt/academic-reader:${{ github.sha }}
           build-args: |
             VITE_CONVEX_URL=https://convex.academic-reader.com
           cache-from: type=gha
@@ -29,15 +31,25 @@ jobs:
 
   deploy-convex:
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.modified, 'frontend/convex/')
     steps:
       - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            convex:
+              - 'frontend/convex/**'
+
       - uses: oven-sh/setup-bun@v1
+        if: steps.changes.outputs.convex == 'true'
 
       - run: bun install
+        if: steps.changes.outputs.convex == 'true'
         working-directory: frontend
 
       - name: Deploy Convex functions
+        if: steps.changes.outputs.convex == 'true'
         run: bunx convex deploy --yes
         working-directory: frontend
         env:
@@ -45,12 +57,17 @@ jobs:
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
 
       - name: Set Convex env vars
+        if: steps.changes.outputs.convex == 'true'
+      - name: Set Convex env vars
         run: |
           bunx convex env set SITE_URL https://academic-reader.com
-          bunx convex env set GOOGLE_CLIENT_ID "${{ secrets.GOOGLE_CLIENT_ID }}"
-          bunx convex env set GOOGLE_CLIENT_SECRET "${{ secrets.GOOGLE_CLIENT_SECRET }}"
-          bunx convex env set BETTER_AUTH_SECRET "${{ secrets.BETTER_AUTH_SECRET }}"
+          bunx convex env set GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
+          bunx convex env set GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
+          bunx convex env set BETTER_AUTH_SECRET "$BETTER_AUTH_SECRET"
         working-directory: frontend
         env:
           CONVEX_SELF_HOSTED_URL: https://convex.academic-reader.com
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}

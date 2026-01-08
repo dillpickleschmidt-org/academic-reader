@@ -168,6 +168,7 @@ The dashboard is not publicly exposed. Access options:
 | `BACKEND_MODE`    | Yes      | `datalab` or `runpod`    |
 | `SITE_URL`        | Yes      | <https://yourdomain.com> |
 | `DATALAB_API_KEY` | datalab  | Production API key       |
+| `RUNPOD_ENDPOINT_ID` | runpod | Your Runpod endpoint ID |
 | `S3_*`            | runpod   | S3/R2 credentials        |
 
 **Convex Container:**

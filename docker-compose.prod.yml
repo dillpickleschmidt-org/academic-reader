@@ -6,7 +6,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: api/Dockerfile
+      dockerfile: Dockerfile
       args:
         VITE_CONVEX_URL: ${PROD_CONVEX_URL}
     restart: always

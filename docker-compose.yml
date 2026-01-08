@@ -22,7 +22,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: api/Dockerfile
+      dockerfile: Dockerfile
     profiles: ["local", "datalab", "runpod"]
     stop_grace_period: 10s
     stop_signal: SIGINT

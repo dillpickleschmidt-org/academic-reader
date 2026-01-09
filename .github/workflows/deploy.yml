@@ -35,22 +35,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            convex:
-              - 'frontend/convex/**'
-
       - uses: oven-sh/setup-bun@v1
-        if: steps.changes.outputs.convex == 'true'
 
       - run: bun install
-        if: steps.changes.outputs.convex == 'true'
         working-directory: frontend
 
       - name: Deploy Convex functions
-        if: steps.changes.outputs.convex == 'true'
         run: bunx convex deploy --yes
         working-directory: frontend
         env:
@@ -58,7 +48,6 @@ jobs:
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
 
       - name: Set Convex env vars
-        if: steps.changes.outputs.convex == 'true'
         run: |
           bunx convex env set SITE_URL https://academic-reader.com
           bunx convex env set GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"

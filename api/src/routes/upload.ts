@@ -1,6 +1,6 @@
 import { Hono } from "hono"
+import type { BackendType } from "../types"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
-import type { Env } from "../types"
 import type { S3Storage, TempStorage } from "../storage"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 
@@ -22,17 +22,17 @@ type Variables = {
   tempStorage: TempStorage | null
 }
 
-export const upload = new Hono<{ Bindings: Env; Variables: Variables }>()
+export const upload = new Hono<{ Variables: Variables }>()
 
 // Upload file directly
 upload.post("/upload", async (c) => {
   const event = c.get("event")
-  const backend = c.env.BACKEND_MODE || "local"
-  event.backend = backend
+  const backend = process.env.BACKEND_MODE || "local"
+  event.backend = backend as BackendType
 
   // Local mode: passthrough to FastAPI worker
   if (backend === "local") {
-    const localUrl = c.env.LOCAL_WORKER_URL || "http://localhost:8000"
+    const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
 
     const formDataResult = await tryCatch(c.req.formData())
     if (!formDataResult.success) {
@@ -173,8 +173,8 @@ upload.post("/upload", async (c) => {
 // Get presigned upload URL (Runpod mode only)
 upload.post("/upload-url", async (c) => {
   const event = c.get("event")
-  const backend = c.env.BACKEND_MODE || "local"
-  event.backend = backend
+  const backend = process.env.BACKEND_MODE || "local"
+  event.backend = backend as BackendType
 
   if (backend !== "runpod") {
     event.error = { category: "validation", message: "Presigned URLs only available for Runpod mode", code: "WRONG_BACKEND" }
@@ -216,12 +216,12 @@ upload.post("/fetch-url", async (c) => {
   }
 
   event.sourceUrl = url
-  const backend = c.env.BACKEND_MODE || "local"
-  event.backend = backend
+  const backend = process.env.BACKEND_MODE || "local"
+  event.backend = backend as BackendType
 
   // Local mode: passthrough to FastAPI worker
   if (backend === "local") {
-    const localUrl = c.env.LOCAL_WORKER_URL || "http://localhost:8000"
+    const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
 
     const responseResult = await tryCatch(
       fetch(`${localUrl}/fetch-url?url=${encodeURIComponent(url)}`, { method: "POST" })

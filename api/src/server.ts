@@ -18,45 +18,29 @@ import {
   type TempStorage,
 } from "./storage"
 import { wideEvent } from "./middleware/wide-event"
-import type { Env } from "./types"
-
-const env = Bun.env
 
 type Variables = {
   storage: S3Storage | null
   tempStorage: TempStorage | null
 }
 
-const app = new Hono<{ Bindings: Env; Variables: Variables }>()
+const app = new Hono<{ Variables: Variables }>()
 
 // Create storage instances (singleton for the process lifetime)
 const tempStorage = new MemoryTempStorage()
 const storage = createStorage({
-  BACKEND_MODE: env.BACKEND_MODE || "datalab",
-  S3_ENDPOINT: env.S3_ENDPOINT,
-  S3_ACCESS_KEY: env.S3_ACCESS_KEY,
-  S3_SECRET_KEY: env.S3_SECRET_KEY,
-  S3_BUCKET: env.S3_BUCKET,
+  BACKEND_MODE: (process.env.BACKEND_MODE as "local" | "runpod" | "datalab") || "datalab",
+  S3_ENDPOINT: process.env.S3_ENDPOINT,
+  S3_ACCESS_KEY: process.env.S3_ACCESS_KEY,
+  S3_SECRET_KEY: process.env.S3_SECRET_KEY,
+  S3_BUCKET: process.env.S3_BUCKET,
 })
 
 // Wide event middleware for API routes only (not static files)
 app.use("/api/*", wideEvent)
 
-// Middleware to inject environment and storage
+// Middleware to inject storage
 app.use("*", async (c, next) => {
-  c.env = {
-    BACKEND_MODE: (env.BACKEND_MODE || "datalab") as Env["BACKEND_MODE"],
-    LOCAL_WORKER_URL: env.LOCAL_WORKER_URL,
-    RUNPOD_ENDPOINT_ID: env.RUNPOD_ENDPOINT_ID,
-    RUNPOD_API_KEY: env.RUNPOD_API_KEY,
-    DATALAB_API_KEY: env.DATALAB_API_KEY,
-    GOOGLE_API_KEY: env.GOOGLE_API_KEY,
-    S3_ENDPOINT: env.S3_ENDPOINT,
-    S3_ACCESS_KEY: env.S3_ACCESS_KEY,
-    S3_SECRET_KEY: env.S3_SECRET_KEY,
-    S3_BUCKET: env.S3_BUCKET,
-    SITE_URL: env.SITE_URL,
-  }
   c.set("storage", storage)
   c.set("tempStorage", tempStorage)
   await next()
@@ -67,7 +51,7 @@ app.use(
   "/api/*",
   cors({
     origin: (origin) => {
-      const siteUrl = env.SITE_URL
+      const siteUrl = process.env.SITE_URL
       if (!siteUrl) return origin
       // Only allow requests from the configured site URL
       return origin === siteUrl ? origin : null
@@ -81,7 +65,7 @@ app.use(
 // ─────────────────────────────────────────────────────────────
 const authProxy = async (c: Context) => {
   const url = new URL(c.req.url)
-  const convexHttpUrl = env.CONVEX_HTTP_URL || "http://localhost:3211"
+  const convexHttpUrl = process.env.CONVEX_HTTP_URL || "http://localhost:3211"
   const targetUrl = `${convexHttpUrl}${url.pathname}${url.search}`
   const targetHost = new URL(convexHttpUrl).host
 
@@ -106,13 +90,13 @@ app.all("/api/auth/*", authProxy)
 // ─────────────────────────────────────────────────────────────
 // API Routes
 // ─────────────────────────────────────────────────────────────
-const api = new Hono<{ Bindings: Env; Variables: Variables }>()
+const api = new Hono<{ Variables: Variables }>()
 api.route("/", upload)
 api.route("/", convert)
 api.route("/", jobs)
 api.route("/", download)
 api.route("/", chat)
-api.get("/health", (c) => c.json({ status: "ok", mode: env.BACKEND_MODE }))
+api.get("/health", (c) => c.json({ status: "ok", mode: process.env.BACKEND_MODE }))
 app.route("/api", api)
 
 // ─────────────────────────────────────────────────────────────
@@ -122,12 +106,12 @@ app.use("/*", serveStatic({ root: "./frontend/dist" }))
 app.use("/*", serveStatic({ path: "./frontend/dist/index.html" })) // SPA fallback
 
 // Start server
-const port = parseInt(env.PORT || "8787", 10)
-const tlsCert = env.TLS_CERT
-const tlsKey = env.TLS_KEY
+const port = parseInt(process.env.PORT || "8787", 10)
+const tlsCert = process.env.TLS_CERT
+const tlsKey = process.env.TLS_KEY
 
 console.log(`Starting server on port ${port}`)
-console.log(`Backend: ${env.BACKEND_MODE || "datalab"}`)
+console.log(`Backend: ${process.env.BACKEND_MODE || "datalab"}`)
 if (tlsCert && tlsKey) console.log("TLS: enabled")
 
 export default {

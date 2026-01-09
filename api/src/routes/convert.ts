@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Env, OutputFormat, ConversionInput } from "../types"
+import type { BackendType, OutputFormat, ConversionInput } from "../types"
 import type { S3Storage, TempStorage } from "../storage"
 import { createBackend } from "../backends/factory"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
@@ -10,21 +10,21 @@ type Variables = {
   tempStorage: TempStorage | null
 }
 
-export const convert = new Hono<{ Bindings: Env; Variables: Variables }>()
+export const convert = new Hono<{ Variables: Variables }>()
 
 convert.post("/convert/:fileId", async (c) => {
   const event = c.get("event")
   const fileId = c.req.param("fileId")
   const query = c.req.query()
-  const backendType = c.env.BACKEND_MODE || "local"
+  const backendType = process.env.BACKEND_MODE || "local"
 
   event.fileId = fileId
-  event.backend = backendType
+  event.backend = backendType as BackendType
   event.outputFormat = (query.output_format as OutputFormat) || "html"
   event.useLlm = query.use_llm === "true"
   event.forceOcr = query.force_ocr === "true"
 
-  const backendResult = await tryCatch(async () => createBackend(c.env))
+  const backendResult = await tryCatch(async () => createBackend())
   if (!backendResult.success) {
     event.error = { category: "backend", message: getErrorMessage(backendResult.error), code: "BACKEND_INIT_ERROR" }
     return c.json({ error: getErrorMessage(backendResult.error) }, { status: 500 })
@@ -35,7 +35,7 @@ convert.post("/convert/:fileId", async (c) => {
 
   // Local mode: just pass fileId, worker has the file
   if (backendType === "local") {
-    const localUrl = c.env.LOCAL_WORKER_URL || "http://localhost:8000"
+    const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
     input = {
       fileId,
       fileUrl: `${localUrl}/files/${fileId}`,
@@ -116,8 +116,8 @@ convert.post("/convert/:fileId", async (c) => {
 // Warm models (passthrough for local only)
 convert.post("/warm-models", async (c) => {
   const event = c.get("event")
-  const backendType = c.env.BACKEND_MODE || "local"
-  event.backend = backendType
+  const backendType = process.env.BACKEND_MODE || "local"
+  event.backend = backendType as BackendType
 
   if (backendType !== "local") {
     return c.json({
@@ -126,7 +126,7 @@ convert.post("/warm-models", async (c) => {
     })
   }
 
-  const localUrl = c.env.LOCAL_WORKER_URL || "http://localhost:8000"
+  const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
 
   const warmResult = await tryCatch(
     fetch(`${localUrl}/warm-models`, { method: "POST" })

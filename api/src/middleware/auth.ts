@@ -1,13 +1,12 @@
 import { createMiddleware } from "hono/factory"
 import { getCookie } from "hono/cookie"
-import type { Env } from "../types"
 
 // Convex HTTP actions URL (auth endpoints)
 // Defaults to localhost for local development
 const CONVEX_HTTP_URL =
   process.env.CONVEX_HTTP_URL || "http://localhost:3211"
 
-export const requireAuth = createMiddleware<{ Bindings: Env }>(
+export const requireAuth = createMiddleware(
   async (c, next) => {
     // Cookie name has __Secure- prefix in production (HTTPS)
     const secureCookieName = "__Secure-better-auth.session_token"

@@ -7,7 +7,7 @@
  */
 
 import { createMiddleware } from "hono/factory"
-import type { Env, WideEvent } from "../types"
+import type { WideEvent } from "../types"
 import { createWideEvent, emitEvent } from "../utils/wide-event"
 
 // Extend Hono's context variable types
@@ -38,37 +38,36 @@ function isStreamingRoute(path: string): boolean {
  * Wide event middleware.
  * Captures request lifecycle and emits a single structured log per request.
  */
-export const wideEvent = createMiddleware<{ Bindings: Env }>(
-  async (c, next) => {
-    const start = performance.now()
+export const wideEvent = createMiddleware(async (c, next) => {
+  const start = performance.now()
 
-    // Create and store wide event
-    const event = createWideEvent(c.req.method, c.req.path, {
-      backendMode: c.env.BACKEND_MODE || "local",
-      siteUrl: c.env.SITE_URL,
-    })
-    c.set("event", event)
+  // Create and store wide event
+  const event = createWideEvent(c.req.method, c.req.path, {
+    backendMode:
+      (process.env.BACKEND_MODE as "local" | "runpod" | "datalab") || "local",
+    siteUrl: process.env.SITE_URL,
+  })
+  c.set("event", event)
 
-    // Check if this is a streaming route
-    const isStreaming = isStreamingRoute(c.req.path)
-    if (isStreaming) {
-      event.isStreaming = true
+  // Check if this is a streaming route
+  const isStreaming = isStreamingRoute(c.req.path)
+  if (isStreaming) {
+    event.isStreaming = true
+  }
+
+  try {
+    await next()
+  } finally {
+    event.durationMs = Math.round(performance.now() - start)
+    event.status = c.res.status
+
+    // For non-streaming routes, emit the event now
+    // Streaming routes emit via emitStreamingEvent() when stream completes
+    if (!isStreaming) {
+      emitEvent(event)
     }
-
-    try {
-      await next()
-    } finally {
-      event.durationMs = Math.round(performance.now() - start)
-      event.status = c.res.status
-
-      // For non-streaming routes, emit the event now
-      // Streaming routes emit via emitStreamingEvent() when stream completes
-      if (!isStreaming) {
-        emitEvent(event)
-      }
-    }
-  },
-)
+  }
+})
 
 /**
  * Emit event for SSE streaming routes.

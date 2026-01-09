@@ -2,7 +2,7 @@
 import { Hono } from "hono"
 import * as cheerio from "cheerio"
 import { minify } from "html-minifier-terser"
-import type { Env } from "../types"
+import type { BackendType } from "../types"
 import { createBackend } from "../backends/factory"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { enhanceHtmlForReader } from "../utils/html-processing"
@@ -32,7 +32,7 @@ const MOON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18
 // Load KaTeX CSS rules (without @font-face)
 const katexCssRules = getKatexCssRules()
 
-export const download = new Hono<{ Bindings: Env }>()
+export const download = new Hono()
 
 /**
  * Generate complete HTML document with embedded fonts.
@@ -111,9 +111,9 @@ download.get("/api/jobs/:jobId/download", async (c) => {
   const title = c.req.query("title") || "Document"
 
   event.jobId = jobId
-  event.backend = c.env.BACKEND_MODE || "local"
+  event.backend = (process.env.BACKEND_MODE || "local") as BackendType
 
-  const backendResult = await tryCatch(async () => createBackend(c.env))
+  const backendResult = await tryCatch(async () => createBackend())
   if (!backendResult.success) {
     event.error = { category: "backend", message: getErrorMessage(backendResult.error), code: "BACKEND_INIT_ERROR" }
     return c.json({ error: "Failed to initialize backend" }, { status: 500 })

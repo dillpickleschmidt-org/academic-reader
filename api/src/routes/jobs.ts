@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Env, ConversionJob } from "../types"
+import type { BackendType, ConversionJob } from "../types"
 import { createBackend } from "../backends/factory"
 import { LocalBackend } from "../backends/local"
 import { POLLING } from "../constants"
@@ -8,7 +8,7 @@ import { transformSSEStream } from "../utils/sse-transform"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event"
 
-export const jobs = new Hono<{ Bindings: Env }>()
+export const jobs = new Hono()
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -28,12 +28,12 @@ function enhanceJobHtml(job: ConversionJob): void {
 jobs.get("/jobs/:jobId/stream", async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
-  const backendType = c.env.BACKEND_MODE || "local"
+  const backendType = process.env.BACKEND_MODE || "local"
 
   event.jobId = jobId
-  event.backend = backendType
+  event.backend = backendType as BackendType
 
-  const backendResult = await tryCatch(async () => createBackend(c.env))
+  const backendResult = await tryCatch(async () => createBackend())
   if (!backendResult.success) {
     event.error = { category: "backend", message: getErrorMessage(backendResult.error), code: "BACKEND_INIT_ERROR" }
     emitStreamingEvent(event)

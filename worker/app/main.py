@@ -4,11 +4,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
-
-# Install tqdm patch BEFORE any marker imports
-from .progress import get_queue, install_tqdm_patch
-
-install_tqdm_patch()
+from queue import Empty
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
@@ -16,9 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from .config import CORS_ORIGINS, SUPPORTED_EXTENSIONS, UPLOAD_DIR
-from .conversion import run_conversion
-from .jobs import create_job, get_job
 from .models import get_or_create_models
+from .process_manager import get_process_manager
 
 
 class PollFilter(logging.Filter):
@@ -120,7 +115,6 @@ async def fetch_url(url: str):
 @app.post("/convert/{file_id}")
 async def convert(
     file_id: str,
-    background_tasks: BackgroundTasks,
     output_format: str = "html",
     use_llm: bool = False,
     force_ocr: bool = False,
@@ -133,10 +127,9 @@ async def convert(
     file_path = matching_files[0]
     job_id = str(uuid.uuid4())
 
-    create_job(job_id, file_id, output_format)
-
-    background_tasks.add_task(
-        run_conversion,
+    manager = get_process_manager()
+    manager.create_job(job_id, file_id, output_format)
+    manager.start_job(
         job_id,
         file_path,
         output_format,
@@ -150,7 +143,8 @@ async def convert(
 
 @app.get("/jobs/{job_id}")
 async def get_job_status(job_id: str):
-    job = get_job(job_id)
+    manager = get_process_manager()
+    job = manager.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -161,8 +155,12 @@ async def get_job_status(job_id: str):
 
     if job["status"] == "completed":
         response["result"] = job["result"]
+        manager.cleanup_finished(job_id)
     elif job["status"] == "failed":
         response["error"] = job.get("error", "Unknown error")
+        manager.cleanup_finished(job_id)
+    elif job["status"] == "cancelled":
+        response["error"] = "Job was cancelled"
 
     return response
 
@@ -170,10 +168,9 @@ async def get_job_status(job_id: str):
 @app.get("/jobs/{job_id}/stream")
 async def stream_job_status(job_id: str):
     """Stream job status updates via Server-Sent Events."""
-    from queue import Empty
-
+    manager = get_process_manager()
     html_ready_sent = False
-    queue = get_queue(job_id)
+    queue = manager.get_queue(job_id)
 
     async def event_generator():
         nonlocal html_ready_sent
@@ -197,7 +194,7 @@ async def stream_job_status(job_id: str):
                 pass  # Timeout - check job status
 
             # Check job status
-            job = get_job(job_id)
+            job = manager.get_job(job_id)
 
             if not job:
                 yield {"event": "error", "data": "Job not found"}
@@ -205,9 +202,15 @@ async def stream_job_status(job_id: str):
 
             if job["status"] == "completed":
                 yield {"event": "completed", "data": json.dumps(job["result"])}
+                manager.cleanup_finished(job_id)
                 return
             elif job["status"] == "failed":
                 yield {"event": "failed", "data": job.get("error", "Unknown error")}
+                manager.cleanup_finished(job_id)
+                return
+            elif job["status"] == "cancelled":
+                yield {"event": "cancelled", "data": "Job was cancelled"}
+                manager.cleanup_finished(job_id)
                 return
             elif job["status"] == "html_ready" and not html_ready_sent:
                 yield {
@@ -217,3 +220,22 @@ async def stream_job_status(job_id: str):
                 html_ready_sent = True
 
     return EventSourceResponse(event_generator())
+
+
+@app.post("/cancel/{job_id}")
+async def cancel_job(job_id: str):
+    """Cancel a running conversion job."""
+    manager = get_process_manager()
+
+    job = manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["status"] in ("completed", "failed", "cancelled"):
+        return {"status": job["status"], "message": "Job already finished"}
+
+    success = await asyncio.to_thread(manager.cancel_job, job_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to cancel job")
+
+    return {"status": "cancelled", "job_id": job_id}

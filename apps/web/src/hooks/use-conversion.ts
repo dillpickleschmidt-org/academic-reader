@@ -4,6 +4,7 @@ import {
   uploadFile as apiUploadFile,
   fetchFromUrl as apiFetchFromUrl,
   startConversion as apiStartConversion,
+  cancelJob as apiCancelJob,
   subscribeToJob,
   type ConversionProgress,
   type OutputFormat,
@@ -52,6 +53,9 @@ export function useConversion() {
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
+
+  // Cancellation state
+  const [isCancelling, setIsCancelling] = useState(false)
 
   // Shared stage update logic for SSE and polling
   const updateStages = useCallback((progress: ConversionProgress) => {
@@ -217,6 +221,34 @@ export function useConversion() {
     }
   }
 
+  const cancelConversion = async () => {
+    // Close SSE connection first
+    if (sseCleanupRef.current) {
+      sseCleanupRef.current()
+      sseCleanupRef.current = null
+    }
+
+    if (!jobId) {
+      setPage("configure")
+      return
+    }
+
+    setIsCancelling(true)
+
+    try {
+      await apiCancelJob(jobId)
+    } catch {
+      // Best-effort - redirect even on error
+    }
+
+    // Reset to configure page
+    setIsCancelling(false)
+    setPage("configure")
+    setJobId("")
+    setStages([])
+    setError("")
+  }
+
   return {
     // State
     page,
@@ -233,6 +265,7 @@ export function useConversion() {
     error,
     imagesReady,
     stages,
+    isCancelling,
     // Document context for AI chat
     chunks,
     markdown,
@@ -249,6 +282,7 @@ export function useConversion() {
     uploadFile,
     fetchFromUrl,
     startConversion,
+    cancelConversion,
     downloadResult: handleDownload,
   }
 }

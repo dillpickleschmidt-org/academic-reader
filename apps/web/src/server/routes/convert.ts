@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import type { BackendType, OutputFormat, ConversionInput } from "../types"
 import type { S3Storage, TempStorage } from "../storage"
+import { jobFileMap } from "../storage"
 import { createBackend } from "../backends/factory"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 
@@ -142,6 +143,9 @@ convert.post("/convert/:fileId", async (c) => {
   }
 
   event.jobId = jobResult.data
+
+  // Track job-file association for cleanup on cancel/failure
+  jobFileMap.set(jobResult.data, fileId, backendType as BackendType)
 
   // Best-effort cleanup for datalab temp files (don't fail request on cleanup errors)
   if (backendType === "datalab") {

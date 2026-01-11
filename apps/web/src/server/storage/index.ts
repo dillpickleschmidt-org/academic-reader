@@ -1,6 +1,7 @@
 export type { UploadResult, PresignedUrlResult } from "../types"
 export { S3Storage, type S3Config } from "./s3"
 export { MemoryTempStorage, type TempStorage, type TempFile } from "./temp"
+export { jobFileMap } from "./job-file-map"
 
 import { S3Storage } from "./s3"
 

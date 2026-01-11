@@ -1,5 +1,8 @@
 import { Hono } from "hono"
 import type { BackendType, ConversionJob } from "../types"
+import type { S3Storage } from "../storage"
+import { jobFileMap } from "../storage"
+import { cleanupJob } from "../cleanup"
 import { createBackend } from "../backends/factory"
 import { LocalBackend } from "../backends/local"
 import { POLLING } from "../constants"
@@ -8,7 +11,11 @@ import { transformSSEStream } from "../utils/sse-transform"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 
-export const jobs = new Hono()
+type Variables = {
+  storage: S3Storage | null
+}
+
+export const jobs = new Hono<{ Variables: Variables }>()
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -114,11 +121,23 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
       let finalStatus: "completed" | "failed" | "timeout" | "cancelled" =
         "timeout"
 
+      const storage = c.get("storage")
+
       while (!completed && pollCount < POLLING.MAX_POLLS) {
         // Check if client disconnected
         if (signal.aborted) {
           finalStatus = "cancelled"
           completed = true
+          // Cancel backend job and cleanup S3 file
+          if (backend.supportsCancellation() && backend.cancelJob) {
+            void backend.cancelJob(jobId).catch(() => {})
+          }
+          const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
+          if (cleanupResult.success) {
+            event.cleanup = { reason: "client_disconnect", ...cleanupResult.data }
+          } else {
+            event.cleanup = { reason: "client_disconnect", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
+          }
           break
         }
 
@@ -146,14 +165,23 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
             enhanceJobHtml(job)
             sendEvent("completed", job.result)
             finalStatus = "completed"
+            // Remove tracking (but keep S3 file on success)
+            jobFileMap.delete(jobId)
             completed = true
             break
-          case "failed":
+          case "failed": {
             sendEvent("failed", { error: job.error })
             finalStatus = "failed"
             event.error = { category: "backend", message: job.error || "Job failed", code: "JOB_FAILED" }
+            const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
+            if (cleanupResult.success) {
+              event.cleanup = { reason: "failed", ...cleanupResult.data }
+            } else {
+              event.cleanup = { reason: "failed", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
+            }
             completed = true
             break
+          }
           case "html_ready":
             if (!htmlReadySent) {
               enhanceJobHtml(job)
@@ -172,6 +200,16 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
       if (!completed) {
         sendEvent("error", { message: "Polling timeout" })
         event.error = { category: "backend", message: "Polling timeout", code: "POLL_TIMEOUT" }
+        // Cleanup on timeout
+        if (backend.supportsCancellation() && backend.cancelJob) {
+          void backend.cancelJob(jobId).catch(() => {})
+        }
+        const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
+        if (cleanupResult.success) {
+          event.cleanup = { reason: "timeout", ...cleanupResult.data }
+        } else {
+          event.cleanup = { reason: "timeout", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
+        }
       }
 
       controller.close()
@@ -187,4 +225,42 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
   })
 
   return new Response(stream, { headers: SSE_HEADERS })
+})
+
+// Cancel a running job
+jobs.post("/jobs/:jobId/cancel", async (c) => {
+  const event = c.get("event")
+  const jobId = c.req.param("jobId")
+  const backendType = process.env.BACKEND_MODE || "local"
+  const storage = c.get("storage")
+
+  event.jobId = jobId
+  event.backend = backendType as BackendType
+
+  const backendResult = await tryCatch(async () => createBackend())
+  if (!backendResult.success) {
+    event.error = { category: "backend", message: getErrorMessage(backendResult.error), code: "BACKEND_INIT_ERROR" }
+    return c.json({ error: "Failed to initialize backend" }, 500)
+  }
+  const backend = backendResult.data
+
+  if (!backend.supportsCancellation()) {
+    return c.json({ error: "Backend does not support cancellation" }, 400)
+  }
+
+  const cancelResult = await tryCatch(backend.cancelJob!(jobId))
+  if (!cancelResult.success) {
+    event.error = { category: "backend", message: getErrorMessage(cancelResult.error), code: "CANCEL_ERROR" }
+    return c.json({ error: "Failed to cancel job" }, 500)
+  }
+
+  // Cleanup S3 file
+  const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
+  if (cleanupResult.success) {
+    event.cleanup = { reason: "cancelled", ...cleanupResult.data }
+  } else {
+    event.cleanup = { reason: "cancelled", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
+  }
+
+  return c.json({ status: "cancelled", jobId })
 })

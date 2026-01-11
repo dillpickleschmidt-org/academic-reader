@@ -156,6 +156,10 @@ export class DatalabBackend implements ConversionBackend {
   supportsStreaming(): boolean {
     return false
   }
+
+  supportsCancellation(): boolean {
+    return false
+  }
 }
 
 /**

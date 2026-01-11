@@ -83,4 +83,21 @@ export class LocalBackend implements ConversionBackend {
   getStreamUrl(jobId: string): string {
     return `${this.baseUrl}/jobs/${jobId}/stream`
   }
+
+  supportsCancellation(): boolean {
+    return true
+  }
+
+  async cancelJob(jobId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/cancel/${jobId}`, {
+        method: "POST",
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      return response.ok
+    } catch (error) {
+      console.warn(`[Local] Failed to cancel job ${jobId}:`, error)
+      return false
+    }
+  }
 }

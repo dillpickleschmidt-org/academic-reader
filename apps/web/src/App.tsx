@@ -47,12 +47,14 @@ function App() {
             pageRange={conversion.pageRange}
             error={conversion.error}
             isProcessing={conversion.page === "processing"}
+            isCancelling={conversion.isCancelling}
             stages={conversion.stages}
             onOutputFormatChange={conversion.setOutputFormat}
             onUseLlmChange={conversion.setUseLlm}
             onForceOcrChange={conversion.setForceOcr}
             onPageRangeChange={conversion.setPageRange}
             onStartConversion={conversion.startConversion}
+            onCancel={conversion.cancelConversion}
             onBack={conversion.reset}
           />
         </Suspense>

@@ -96,6 +96,19 @@ export async function warmModels(): Promise<void> {
   fetch("/api/warm-models", { method: "POST" }).catch(() => {})
 }
 
+export async function cancelJob(jobId: string): Promise<{ status: string }> {
+  const res = await fetch(`/api/jobs/${jobId}/cancel`, {
+    method: "POST",
+  })
+
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || "Failed to cancel job")
+  }
+
+  return res.json()
+}
+
 export function subscribeToJob(
   jobId: string,
   onProgress: (progress: ConversionProgress) => void,

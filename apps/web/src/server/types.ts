@@ -65,6 +65,15 @@ export interface WideEvent {
   isStreaming?: boolean
   streamEvents?: number
 
+  // Job cleanup (on cancel/failure/timeout/disconnect)
+  cleanup?: {
+    reason: "cancelled" | "failed" | "timeout" | "client_disconnect"
+    cleaned: boolean
+    fileId?: string
+    s3Deleted?: boolean
+    s3Error?: string
+  }
+
   // Extensible
   [key: string]: unknown
 }

@@ -33,4 +33,15 @@ export interface ConversionBackend {
    * @returns Stream URL or null if not supported
    */
   getStreamUrl?(jobId: string): string | null
+
+  /**
+   * Check if backend supports job cancellation
+   */
+  supportsCancellation(): boolean
+
+  /**
+   * Cancel a running job
+   * @returns true if cancel request was accepted, false otherwise
+   */
+  cancelJob?(jobId: string): Promise<boolean>
 }

@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Sparkles,
   Circle,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@repo/core/lib/utils"
@@ -54,12 +55,14 @@ interface Props {
   pageRange: string
   error: string
   isProcessing: boolean
+  isCancelling: boolean
   stages: StageInfo[]
   onOutputFormatChange: (format: OutputFormat) => void
   onUseLlmChange: (value: boolean) => void
   onForceOcrChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
   onStartConversion: () => void
+  onCancel: () => void
   onBack: () => void
 }
 
@@ -121,7 +124,9 @@ function ProcessingStepItem({
 }) {
   const isExpanded = status === "active" && progress
   const percentage = progress
-    ? progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
+    ? progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100)
+      : 0
     : 0
 
   return (
@@ -255,12 +260,14 @@ export function ConfigureProcessingPage({
   pageRange,
   error,
   isProcessing,
+  isCancelling,
   stages,
   onOutputFormatChange,
   onUseLlmChange,
   onForceOcrChange,
   onPageRangeChange,
   onStartConversion,
+  onCancel,
   onBack,
 }: Props) {
   const currentStep: Step = isProcessing ? "convert" : "configure"
@@ -333,7 +340,32 @@ export function ConfigureProcessingPage({
             )}
           >
             {isProcessing ? (
-              <ProcessingView stages={stages} />
+              <>
+                <ProcessingView stages={stages} />
+                <div className="mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    disabled={isCancelling}
+                    className="h-10"
+                  >
+                    {isCancelling ? (
+                      <>
+                        <Loader2
+                          className="w-4 h-4 mr-2 animate-spin"
+                          strokeWidth={2}
+                        />
+                        Cancelling...
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-4 h-4 mr-2" strokeWidth={2} />
+                        Cancel
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
             ) : (
               <>
                 {/* Output Format */}
@@ -350,7 +382,10 @@ export function ConfigureProcessingPage({
                       onOutputFormatChange(value as OutputFormat)
                     }
                   >
-                    <SelectTrigger id="output-format-select" className="w-full h-10">
+                    <SelectTrigger
+                      id="output-format-select"
+                      className="w-full h-10"
+                    >
                       <SelectValue>
                         {(() => {
                           const opt = FORMAT_OPTIONS.find(
@@ -393,7 +428,10 @@ export function ConfigureProcessingPage({
 
                 {/* Page Range */}
                 <div>
-                  <label htmlFor="page-range" className="block text-sm font-medium text-foreground mb-2">
+                  <label
+                    htmlFor="page-range"
+                    className="block text-sm font-medium text-foreground mb-2"
+                  >
                     Page Range{" "}
                     <span className="font-normal text-muted-foreground">
                       (optional)
@@ -491,7 +529,7 @@ export function ConfigureProcessingPage({
 
         {/* Error */}
         {error && (
-          <div className="mt-6 flex items-center gap-2 py-3 px-4 bg-destructive/10 rounded-lg text-destructive text-sm max-w-[720px]">
+          <div className="mt-6 flex items-center gap-2 py-3 px-4 bg-destructive/10 rounded-lg text-destructive text-sm max-w-180">
             <AlertCircle className="w-4 h-4 shrink-0" strokeWidth={1.5} />
             <span>{error}</span>
           </div>

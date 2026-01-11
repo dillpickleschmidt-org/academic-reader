@@ -1,12 +1,9 @@
 import json
-import traceback
 from pathlib import Path
 from typing import Any
 
 from .html_processing import embed_images_as_base64, inject_image_dimensions
-from .jobs import update_job
 from .models import get_or_create_models
-from .progress import clear_queue, set_active_job
 
 
 def _to_dict(obj: Any) -> Any:
@@ -151,74 +148,3 @@ def run_conversion_sync(
             "chunks": all_formats["chunks"],
         },
     }
-
-
-def run_conversion(
-    job_id: str,
-    file_path: Path,
-    output_format: str,
-    use_llm: bool,
-    force_ocr: bool,
-    page_range: str | None,
-) -> None:
-    """Run the document conversion in a background thread.
-
-    For HTML output, this uses two phases:
-    1. html_ready - HTML without embedded images (fast)
-    2. completed - HTML with embedded images (final)
-    """
-    set_active_job(job_id)
-
-    try:
-        update_job(job_id, status="processing")
-
-        all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
-
-        # Phase 1: HTML without embedded images (for quick preview)
-        html_content, images = _process_html(
-            all_formats["html"], all_formats["images"], embed_images=False
-        )
-        update_job(job_id, status="html_ready", html_content=html_content)
-
-        # Phase 2: Embed images
-        if images:
-            html_with_images = embed_images_as_base64(html_content, images)
-        else:
-            html_with_images = html_content
-
-        # Return requested format as content
-        if output_format == "html":
-            content = html_with_images
-        elif output_format == "json":
-            content = all_formats["json"]
-        elif output_format == "markdown":
-            content = all_formats["markdown"]
-        else:
-            content = html_with_images
-
-        update_job(
-            job_id,
-            status="completed",
-            result={
-                "content": content,
-                "metadata": all_formats["metadata"],
-                "formats": {
-                    "html": html_with_images,
-                    "markdown": all_formats["markdown"],
-                    "json": all_formats["json"],
-                    "chunks": all_formats["chunks"],
-                },
-            },
-        )
-    except FileNotFoundError:
-        update_job(job_id, status="failed", error="File not found")
-    except ValueError as e:
-        update_job(job_id, status="failed", error=f"Invalid input: {e}")
-    except Exception as e:
-        traceback.print_exc()
-        update_job(job_id, status="failed", error=f"Conversion failed: {e}")
-    finally:
-        set_active_job(None)
-        clear_queue(job_id)
-        if file_path.exists():
-            file_path.unlink()

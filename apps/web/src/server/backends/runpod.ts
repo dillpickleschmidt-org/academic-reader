@@ -99,6 +99,26 @@ export class RunpodBackend implements ConversionBackend {
   supportsStreaming(): boolean {
     return false
   }
+
+  supportsCancellation(): boolean {
+    return true
+  }
+
+  async cancelJob(jobId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/cancel/${jobId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      })
+      return response.ok
+    } catch (error) {
+      console.warn(`[Runpod] Failed to cancel job ${jobId}:`, error)
+      return false
+    }
+  }
 }
 
 /**

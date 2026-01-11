@@ -141,4 +141,29 @@ export class S3Storage {
 
     return keyMatch[1]
   }
+
+  /**
+   * Delete a file from S3 storage.
+   * @returns true if deleted successfully or already gone, false on error
+   */
+  async deleteFile(fileId: string): Promise<boolean> {
+    try {
+      const key = await this.findFileKey(fileId)
+      const url = this.getObjectUrl(key)
+
+      const response = await this.client.fetch(url.toString(), {
+        method: "DELETE",
+      })
+
+      // 204 = deleted, 404 = already gone - both are success
+      return response.ok || response.status === 404
+    } catch (error) {
+      // File not found in findFileKey means it's already deleted
+      if (error instanceof Error && error.message.includes("File not found")) {
+        return true
+      }
+      console.warn(`[S3] Failed to delete file ${fileId}:`, error)
+      return false
+    }
+  }
 }

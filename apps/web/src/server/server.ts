@@ -10,6 +10,7 @@ import { upload } from "./routes/upload"
 import { convert } from "./routes/convert"
 import { jobs } from "./routes/jobs"
 import { download } from "./routes/download"
+import { documents } from "./routes/documents"
 import { chat } from "./routes/chat"
 import {
   createStorage,
@@ -95,6 +96,7 @@ api.route("/", upload)
 api.route("/", convert)
 api.route("/", jobs)
 api.route("/", download)
+api.route("/", documents)
 api.route("/", chat)
 api.get("/health", (c) => c.json({ status: "ok", mode: process.env.BACKEND_MODE }))
 app.route("/api", api)

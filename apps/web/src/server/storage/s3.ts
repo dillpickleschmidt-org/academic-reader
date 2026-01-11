@@ -75,9 +75,12 @@ export class S3Storage {
     const url = this.getObjectUrl(key)
     const expiresInSeconds = 3600 // 1 hour
 
+    // Add expiration to URL before signing (aws4fetch includes it in signature)
+    url.searchParams.set("X-Amz-Expires", String(expiresInSeconds))
+
     const signedRequest = await this.client.sign(
       new Request(url.toString(), { method: "PUT" }),
-      { aws: { signQuery: true, expiresIn: expiresInSeconds } },
+      { aws: { signQuery: true } },
     )
 
     return {

@@ -1,20 +1,80 @@
 import { Hono } from "hono"
-import {
-  streamText,
-  convertToModelMessages,
-  type UIMessage,
-  type UIDataTypes,
-  type InferUITools,
-} from "ai"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { streamText, convertToModelMessages, stepCountIs, tool, type UIMessage } from "ai"
+import { z } from "zod"
+import { createChatModel } from "../providers/models"
+import { generateEmbedding } from "../services/embeddings"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 
-const tools = {}
+// Document context passed from frontend
+interface DocumentContext {
+  markdown?: string // Full document for summary (first message only)
+  documentId?: string // For RAG searches (after storage)
+  isFirstMessage: boolean
+}
 
-export type ChatTools = InferUITools<typeof tools>
-export type ChatMessage = UIMessage<never, UIDataTypes, ChatTools>
+interface ChatRequest {
+  messages: UIMessage[]
+  documentContext?: DocumentContext
+}
+
+// Create search tool with documentId captured via closure
+function createSearchTool(documentId: string | undefined) {
+  return tool({
+    description:
+      "Search the uploaded document for relevant information to answer the user's question",
+    inputSchema: z.object({
+      query: z.string().describe("The search query to find relevant passages"),
+    }),
+    execute: async ({ query }) => {
+      if (!documentId) {
+        return "No document available for search."
+      }
+
+      try {
+        // Generate embedding for query
+        const queryEmbedding = await generateEmbedding(query)
+
+        // Call Convex to search (admin API on port 3210)
+        const convexUrl = process.env.CONVEX_SITE_URL || "http://localhost:3210"
+        const response = await fetch(`${convexUrl}/api/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            path: "api/documents:search",
+            args: {
+              documentId,
+              queryEmbedding,
+              limit: 5,
+            },
+          }),
+        })
+
+        if (!response.ok) {
+          return "Search failed. Please try again."
+        }
+
+        const chunks = await response.json()
+
+        if (!chunks || chunks.length === 0) {
+          return "No relevant information found in the document."
+        }
+
+        // Format results with page citations
+        return chunks
+          .map(
+            (c: { content: string; page: number; section?: string }, i: number) =>
+              `[${i + 1}] (Page ${c.page}${c.section ? `, ${c.section}` : ""}): ${c.content}`,
+          )
+          .join("\n\n")
+      } catch (error) {
+        console.error("Search error:", error)
+        return "Search encountered an error. Please try again."
+      }
+    },
+  })
+}
 
 export const chat = new Hono()
 
@@ -23,7 +83,7 @@ chat.use("/chat", requireAuth)
 chat.post("/chat", async (c) => {
   const event = c.get("event")
 
-  const bodyResult = await tryCatch(c.req.json<{ messages: ChatMessage[] }>())
+  const bodyResult = await tryCatch(c.req.json<ChatRequest>())
   if (!bodyResult.success) {
     event.error = {
       category: "validation",
@@ -34,33 +94,74 @@ chat.post("/chat", async (c) => {
     return c.json({ error: "Invalid request body" }, 400)
   }
 
-  const { messages } = bodyResult.data
+  const { messages, documentContext } = bodyResult.data
 
-  const apiKey = process.env.GOOGLE_API_KEY
-  if (!apiKey) {
+  // Determine mode: Summary (first message with markdown) vs RAG (follow-ups)
+  const isSummaryMode =
+    documentContext?.isFirstMessage && documentContext?.markdown
+
+  // Build system prompt based on mode
+  let systemPrompt: string
+
+  if (isSummaryMode) {
+    // Summary mode: Include full markdown, request concise summary
+    systemPrompt = `You are an academic assistant helping users understand research papers and documents.
+
+The user has uploaded a document. Here is the full content:
+
+<document>
+${documentContext.markdown}
+</document>
+
+Provide a concise, one-paragraph summary that captures:
+- The main topic or thesis
+- Key findings, arguments, or contributions
+- The significance or implications
+
+Be direct and informative. Avoid phrases like "This document discusses..." - just state the content directly.`
+  } else {
+    // RAG mode: Use search tool for follow-up questions
+    systemPrompt = `You are an academic assistant helping users understand research papers and documents.
+
+The user has a document loaded and may ask questions about it. When answering:
+1. Use the searchDocument tool to find relevant passages from the document
+2. Base your answers on the search results
+3. Cite page numbers when referencing specific information
+4. If the search doesn't return relevant results, say so honestly
+5. Be concise and directly answer what was asked
+
+If the user asks a general question not about the document, answer normally without searching.`
+  }
+
+  // Create model using provider abstraction
+  let model
+  try {
+    model = createChatModel()
+  } catch (error) {
     event.error = {
       category: "configuration",
-      message: "GOOGLE_API_KEY is not configured",
-      code: "MISSING_API_KEY",
+      message: getErrorMessage(error),
+      code: "MODEL_CONFIG_ERROR",
     }
     emitStreamingEvent(event, { status: 500 })
     return c.json({ error: "Server configuration error" }, 500)
   }
 
-  const google = createGoogleGenerativeAI({ apiKey })
+  // Create tools with documentId context (undefined for summary mode)
+  const tools = isSummaryMode
+    ? undefined
+    : { searchDocument: createSearchTool(documentContext?.documentId) }
 
-  const modelName = "gemini-3-flash-preview"
   const streamStart = performance.now()
   let streamError: string | undefined
 
   const streamResult = await tryCatch(async () =>
     streamText({
-      model: google(modelName),
+      model,
       messages: await convertToModelMessages(messages),
-      system: `You are a helpful assistant with access to a knowledge base.
-When users ask questions, search the knowledge base for relevant information.
-Always search before answering if the question might relate to uploaded documents.
-Base your answers on the search results when available. Give concise answers that correctly answer what the user is asking for. Do not flood them with all the information from the search results.`,
+      system: systemPrompt,
+      tools,
+      stopWhen: isSummaryMode ? undefined : stepCountIs(3), // Allow tool use + response
       onError: ({ error }) => {
         streamError = getErrorMessage(error)
       },
@@ -80,6 +181,8 @@ Base your answers on the search results when available. Give concise answers tha
         emitStreamingEvent(event, {
           durationMs: Math.round(performance.now() - streamStart),
           status: 200,
+          // Mode tracking
+          mode: isSummaryMode ? "summary" : "rag",
           // Response metadata
           responseId: response.id,
           modelId: response.modelId,
@@ -109,6 +212,7 @@ Base your answers on the search results when available. Give concise answers tha
       },
     }),
   )
+
   if (!streamResult.success) {
     event.error = {
       category: "backend",

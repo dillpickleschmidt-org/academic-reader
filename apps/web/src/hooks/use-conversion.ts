@@ -7,11 +7,12 @@ import {
   subscribeToJob,
   type ConversionProgress,
   type OutputFormat,
+  type ChunkBlock,
 } from "@repo/core/client/api-client"
 import { downloadFromApi, downloadContent } from "@repo/core/client/download"
 
 export type Page = "upload" | "configure" | "processing" | "result"
-export type { OutputFormat }
+export type { OutputFormat, ChunkBlock }
 
 export interface StageInfo {
   stage: string
@@ -44,6 +45,10 @@ export function useConversion() {
   const [error, setError] = useState("")
   const [imagesReady, setImagesReady] = useState(false)
   const [stages, setStages] = useState<StageInfo[]>([])
+
+  // Document context for AI chat (RAG)
+  const [chunks, setChunks] = useState<ChunkBlock[]>([])
+  const [markdown, setMarkdown] = useState("")
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
@@ -88,6 +93,8 @@ export function useConversion() {
     setError("")
     setImagesReady(false)
     setStages([])
+    setChunks([])
+    setMarkdown("")
   }
 
   const uploadFile = async (file: File) => {
@@ -180,6 +187,13 @@ export function useConversion() {
         (result) => {
           setContent(result.content)
           setImagesReady(true)
+          // Extract chunks and markdown for AI chat
+          if (result.formats?.chunks?.blocks) {
+            setChunks(result.formats.chunks.blocks)
+          }
+          if (result.formats?.markdown) {
+            setMarkdown(result.formats.markdown)
+          }
           setPage("result")
           sseCleanupRef.current = null
         },
@@ -219,6 +233,9 @@ export function useConversion() {
     error,
     imagesReady,
     stages,
+    // Document context for AI chat
+    chunks,
+    markdown,
 
     // Setters
     setUrl,

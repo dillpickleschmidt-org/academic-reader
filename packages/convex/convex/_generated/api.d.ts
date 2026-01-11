@@ -9,9 +9,11 @@
  */
 
 import type * as api_config from "../api/config.js";
+import type * as api_documents from "../api/documents.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as model_auth from "../model/auth.js";
+import type * as model_documents from "../model/documents.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +23,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "api/config": typeof api_config;
+  "api/documents": typeof api_documents;
   auth: typeof auth;
   http: typeof http;
   "model/auth": typeof model_auth;
+  "model/documents": typeof model_documents;
 }>;
 
 /**

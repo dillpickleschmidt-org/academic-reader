@@ -24,7 +24,7 @@ import katexSize2Regular from "../fonts/katex/KaTeX_Size2-Regular.woff2"
 import katexSize3Regular from "../fonts/katex/KaTeX_Size3-Regular.woff2"
 import katexSize4Regular from "../fonts/katex/KaTeX_Size4-Regular.woff2"
 
-import katexCss from "../../node_modules/katex/dist/katex.min.css" with { type: "text" }
+import katexCss from "katex/dist/katex.min.css" with { type: "text" }
 import woff2WasmPath from "../wasm/woff2.wasm"
 
 /** Load font buffer from file path */

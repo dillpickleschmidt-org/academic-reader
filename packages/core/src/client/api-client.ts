@@ -1,6 +1,11 @@
-import type { OutputFormat, ConversionProgress } from "../types/api"
+import type {
+  OutputFormat,
+  ConversionProgress,
+  ChunkBlock,
+  ChunkOutput,
+} from "../types/api"
 
-export type { OutputFormat, ConversionProgress }
+export type { OutputFormat, ConversionProgress, ChunkBlock, ChunkOutput }
 
 export interface UploadResponse {
   file_id: string
@@ -21,6 +26,12 @@ export interface JobStatus {
   result?: {
     content: string
     metadata: Record<string, unknown>
+    formats?: {
+      html: string
+      markdown: string
+      json: unknown
+      chunks?: ChunkOutput
+    }
   }
   error?: string
   progress?: ConversionProgress

@@ -1,6 +1,13 @@
 import { createMiddleware } from "hono/factory"
 import { getCookie } from "hono/cookie"
 
+// Extend Hono's context variable types
+declare module "hono" {
+  interface ContextVariableMap {
+    userId: string
+  }
+}
+
 // Convex HTTP actions URL (auth endpoints)
 function getConvexHttpUrl(): string {
   const url = process.env.CONVEX_HTTP_URL
@@ -13,10 +20,13 @@ function getConvexHttpUrl(): string {
     throw new Error("CONVEX_HTTP_URL is required in production")
   }
 
-  // Allow HTTP only for localhost/127.0.0.1
-  const isLocalhost =
-    url.includes("://localhost") || url.includes("://127.0.0.1")
-  if (!isLocalhost && !url.startsWith("https://")) {
+  // Allow HTTP for localhost/127.0.0.1 and internal Docker hostnames (no dots)
+  const hostname = new URL(url).hostname
+  const isLocalOrInternal =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    !hostname.includes(".") // Docker service names don't have dots
+  if (!isLocalOrInternal && !url.startsWith("https://")) {
     throw new Error("CONVEX_HTTP_URL must use HTTPS for non-local hosts")
   }
 
@@ -67,10 +77,13 @@ export const requireAuth = createMiddleware(
         return c.json({ error: "Auth service unavailable" }, 502)
       }
 
-      const session = (await response.json()) as { user?: unknown }
-      if (!session?.user) {
+      const session = (await response.json()) as { user?: { id?: string } }
+      if (!session?.user?.id) {
         return c.json({ error: "Unauthorized" }, 401)
       }
+
+      // Store userId on context for downstream handlers
+      c.set("userId", session.user.id)
 
       await next()
     } catch (error) {

@@ -65,6 +65,9 @@ function App() {
             outputFormat={conversion.outputFormat}
             content={conversion.content}
             imagesReady={conversion.imagesReady}
+            chunks={conversion.chunks}
+            markdown={conversion.markdown}
+            filename={conversion.fileName}
             onDownload={conversion.downloadResult}
             onReset={conversion.reset}
           />

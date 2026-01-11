@@ -34,6 +34,7 @@ WORKDIR /app
 COPY package.json bun.lock* tsconfig.base.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/core/package.json ./packages/core/
+COPY packages/convex/package.json ./packages/convex/
 
 # Install dependencies
 RUN bun install --frozen-lockfile
@@ -41,16 +42,10 @@ RUN bun install --frozen-lockfile
 # Copy web source (includes server) and packages
 COPY apps/web/ ./apps/web/
 COPY packages/core/ ./packages/core/
+COPY packages/convex/ ./packages/convex/
 
 # Copy frontend build from stage 1
 COPY --from=frontend /app/apps/web/dist ./apps/web/dist
-
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 bunuser && \
-    chown -R bunuser:nodejs /app
-
-USER bunuser
 
 EXPOSE 8787
 

@@ -47,6 +47,8 @@ COPY packages/convex/ ./packages/convex/
 # Copy frontend build from stage 1
 COPY --from=frontend /app/apps/web/dist ./apps/web/dist
 
+ENV NODE_ENV=production
+
 EXPOSE 8787
 
 CMD ["bun", "run", "--cwd", "apps/web", "start"]

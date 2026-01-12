@@ -48,8 +48,9 @@ export interface WideEvent {
   durationMs?: number
 
   // Business context (set by handlers)
-  fileId?: string
+  fileId?: string | null
   jobId?: string
+  documentId?: string
   backend?: BackendType
   filename?: string
   fileSize?: number

@@ -18,9 +18,11 @@ convert.post("/convert/:fileId", async (c) => {
   const fileId = c.req.param("fileId")
   const query = c.req.query()
   const backendType = process.env.BACKEND_MODE || "local"
+  const filename = query.filename || "document.pdf"
 
   event.fileId = fileId
   event.backend = backendType as BackendType
+  event.filename = filename
   event.outputFormat = (query.output_format as OutputFormat) || "html"
   event.useLlm = query.use_llm === "true"
   event.forceOcr = query.force_ocr === "true"
@@ -144,8 +146,8 @@ convert.post("/convert/:fileId", async (c) => {
 
   event.jobId = jobResult.data
 
-  // Track job-file association for cleanup on cancel/failure
-  jobFileMap.set(jobResult.data, fileId, backendType as BackendType)
+  // Track job-file association for cleanup on cancel/failure and persistence
+  jobFileMap.set(jobResult.data, fileId, filename, backendType as BackendType)
 
   // Best-effort cleanup for datalab temp files (don't fail request on cleanup errors)
   if (backendType === "datalab") {

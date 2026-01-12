@@ -1,6 +1,9 @@
-import { lazy, Suspense } from "react"
+import { lazy, Suspense, useCallback } from "react"
 import { Loader2 } from "lucide-react"
+import { useQuery } from "convex/react"
+import { api } from "@repo/convex/convex/_generated/api"
 import { useConversion } from "./hooks/use-conversion"
+import { useAppConfig } from "./hooks/use-app-config"
 import { UploadPage } from "./pages/UploadPage"
 
 const PageLoader = () => (
@@ -20,6 +23,21 @@ const ResultPage = lazy(() =>
 
 function App() {
   const conversion = useConversion()
+  const { user } = useAppConfig()
+  const recentDocuments = useQuery(
+    api.api.documents.listPersisted,
+    user ? { limit: 2 } : "skip",
+  )
+
+  const handleViewDocument = useCallback(
+    (documentId: string) => {
+      const doc = recentDocuments?.find((d) => d._id === documentId)
+      if (doc) {
+        conversion.loadSavedDocument(documentId, doc.filename)
+      }
+    },
+    [recentDocuments, conversion],
+  )
 
   switch (conversion.page) {
     case "upload":
@@ -30,6 +48,8 @@ function App() {
           onUrlChange={conversion.setUrl}
           onFileSelect={conversion.uploadFile}
           onFetchUrl={conversion.fetchFromUrl}
+          recentDocuments={recentDocuments}
+          onViewDocument={handleViewDocument}
         />
       )
 
@@ -67,9 +87,8 @@ function App() {
             outputFormat={conversion.outputFormat}
             content={conversion.content}
             imagesReady={conversion.imagesReady}
-            chunks={conversion.chunks}
+            documentId={conversion.documentId}
             markdown={conversion.markdown}
-            filename={conversion.fileName}
             onDownload={conversion.downloadResult}
             onReset={conversion.reset}
           />

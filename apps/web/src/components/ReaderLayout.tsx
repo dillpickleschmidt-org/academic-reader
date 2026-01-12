@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react"
 import { BotMessageSquare, Download, Plus } from "lucide-react"
-import type { ChunkBlock } from "@repo/core/client/api-client"
 import { THEMES, type ReaderTheme } from "@/constants/themes"
 import { useReaderTheme } from "@/hooks/use-reader-theme"
 
@@ -15,9 +14,8 @@ interface Props {
   showThemeToggle?: boolean
   showAIChat?: boolean
   downloadDisabled?: boolean
-  chunks?: ChunkBlock[]
+  documentId?: string | null
   markdown?: string
-  filename?: string
 }
 
 export function ReaderLayout({
@@ -27,9 +25,8 @@ export function ReaderLayout({
   showThemeToggle = false,
   showAIChat = false,
   downloadDisabled = false,
-  chunks,
+  documentId,
   markdown,
-  filename,
 }: Props) {
   const [theme, setTheme] = useReaderTheme()
   const radioRefs = useRef<Record<ReaderTheme, HTMLInputElement | null>>({
@@ -85,9 +82,8 @@ export function ReaderLayout({
                   <BotMessageSquare size={18} />
                 </button>
               }
-              chunks={chunks}
+              documentId={documentId}
               markdown={markdown}
-              filename={filename}
             />
           </Suspense>
         )}

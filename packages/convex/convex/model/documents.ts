@@ -1,6 +1,6 @@
 /**
  * Document model - business logic for RAG document operations.
- * Note: storeDocument accepts userId from web server (pre-authenticated).
+ * Note: createDocumentWithChunks accepts userId from web server (pre-authenticated).
  * Other functions use requireAuth for Convex-native auth.
  */
 
@@ -18,30 +18,24 @@ export interface ChunkInput {
   section?: string
 }
 
-export interface DocumentInput {
-  userId: string // Passed from web server (pre-authenticated)
+export interface CreateDocumentInput {
+  userId: string
   filename: string
   pageCount?: number
-  chunks: ChunkInput[]
-  embeddings: number[][] // Pre-computed embeddings
+  chunks: ChunkInput[] // Without embeddings
 }
 
 // ===== Mutation Helpers =====
 
 /**
- * Store a document with its chunks and pre-computed embeddings.
- * Called from the web server after embedding generation.
- * Note: Auth is already verified by web server middleware, userId is passed directly.
+ * Create a document with chunks (no embeddings).
+ * Called at conversion completion for authenticated users.
+ * Embeddings are added later when AI chat opens.
  */
-export async function storeDocument(ctx: MutationCtx, input: DocumentInput) {
-  // Validate embeddings match chunks
-  if (input.embeddings.length !== input.chunks.length) {
-    throw new Error(
-      `Embedding count (${input.embeddings.length}) must match chunk count (${input.chunks.length})`,
-    )
-  }
-
-  // Create document record (userId is pre-validated by web server)
+export async function createDocumentWithChunks(
+  ctx: MutationCtx,
+  input: CreateDocumentInput,
+) {
   const documentId = await ctx.db.insert("documents", {
     userId: input.userId,
     filename: input.filename,
@@ -49,9 +43,9 @@ export async function storeDocument(ctx: MutationCtx, input: DocumentInput) {
     createdAt: Date.now(),
   })
 
-  // Create chunk records with embeddings
+  // Store chunks without embeddings
   await Promise.all(
-    input.chunks.map((chunk, i) =>
+    input.chunks.map((chunk) =>
       ctx.db.insert("chunks", {
         documentId,
         blockId: chunk.blockId,
@@ -59,12 +53,47 @@ export async function storeDocument(ctx: MutationCtx, input: DocumentInput) {
         content: chunk.content,
         page: chunk.page,
         section: chunk.section,
-        embedding: input.embeddings[i],
+        // No embedding - will be added when AI chat opens
       }),
     ),
   )
 
   return { documentId, chunkCount: input.chunks.length }
+}
+
+/**
+ * Add embeddings to existing chunks.
+ * Called when AI chat opens to enable vector search.
+ */
+export async function addEmbeddings(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+  embeddings: number[][],
+) {
+  // Verify ownership
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  // Get chunks in insertion order
+  const chunks = await ctx.db
+    .query("chunks")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .collect()
+
+  if (chunks.length !== embeddings.length) {
+    throw new Error(
+      `Embedding count (${embeddings.length}) must match chunk count (${chunks.length})`,
+    )
+  }
+
+  // Update each chunk with its embedding
+  await Promise.all(
+    chunks.map((chunk, i) => ctx.db.patch(chunk._id, { embedding: embeddings[i] })),
+  )
+
+  return { updated: chunks.length }
 }
 
 /**
@@ -114,6 +143,21 @@ export async function getUserDocuments(ctx: QueryCtx) {
 }
 
 /**
+ * Get persisted documents for the current user.
+ * All documents are persisted (files stored alongside chunks).
+ */
+export async function getPersistedDocuments(ctx: QueryCtx, limit?: number) {
+  const user = await requireAuth(ctx)
+
+  const query = ctx.db
+    .query("documents")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .order("desc")
+
+  return limit ? query.take(limit) : query.collect()
+}
+
+/**
  * Get a document by ID (with ownership check).
  */
 export async function getDocument(ctx: QueryCtx, documentId: Id<"documents">) {
@@ -135,6 +179,46 @@ export async function getDocument(ctx: QueryCtx, documentId: Id<"documents">) {
  */
 export async function getChunk(ctx: QueryCtx, chunkId: Id<"chunks">) {
   return ctx.db.get(chunkId)
+}
+
+/**
+ * Get all chunks for a document (for embedding generation).
+ */
+export async function getChunksForDocument(
+  ctx: QueryCtx,
+  documentId: Id<"documents">,
+) {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  return ctx.db
+    .query("chunks")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .collect()
+}
+
+/**
+ * Check if a document has embeddings (at least one chunk with embedding).
+ */
+export async function hasEmbeddings(
+  ctx: QueryCtx,
+  documentId: Id<"documents">,
+): Promise<boolean> {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  const chunks = await ctx.db
+    .query("chunks")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .take(1)
+
+  return chunks.length > 0 && chunks[0].embedding !== undefined
 }
 
 // ===== Action Helpers (for vector search) =====

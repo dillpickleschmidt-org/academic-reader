@@ -166,4 +166,84 @@ export class S3Storage {
       return false
     }
   }
+
+  // ===== Persistent Storage Methods =====
+  // These methods work with specific paths for saved documents
+
+  /**
+   * Save a file to a specific path in S3.
+   * Used for persistent document storage.
+   */
+  async saveFile(relativePath: string, data: Buffer | string): Promise<void> {
+    const url = this.getObjectUrl(relativePath)
+    const buffer = typeof data === "string" ? Buffer.from(data, "utf-8") : data
+
+    const response = await this.client.fetch(url.toString(), {
+      method: "PUT",
+      body: new Uint8Array(buffer),
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`S3 save failed: ${error}`)
+    }
+  }
+
+  /**
+   * Read a file from a specific path in S3.
+   */
+  async readFile(relativePath: string): Promise<Buffer> {
+    const url = this.getObjectUrl(relativePath)
+
+    const response = await this.client.fetch(url.toString(), {
+      method: "GET",
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(`S3 read failed: ${response.status} - ${body}`)
+    }
+
+    return Buffer.from(await response.arrayBuffer())
+  }
+
+  /**
+   * Read a file as string from S3.
+   */
+  async readFileAsString(relativePath: string): Promise<string> {
+    const buffer = await this.readFile(relativePath)
+    return buffer.toString("utf-8")
+  }
+
+  /**
+   * Check if a file exists at a specific path.
+   */
+  async exists(relativePath: string): Promise<boolean> {
+    const url = this.getObjectUrl(relativePath)
+
+    const response = await this.client.fetch(url.toString(), {
+      method: "HEAD",
+    })
+
+    return response.ok
+  }
+
+  /**
+   * Delete a file at a specific path.
+   * @returns true if deleted or doesn't exist, false on error
+   */
+  async deleteFilePath(relativePath: string): Promise<boolean> {
+    try {
+      const url = this.getObjectUrl(relativePath)
+
+      const response = await this.client.fetch(url.toString(), {
+        method: "DELETE",
+      })
+
+      return response.ok || response.status === 404
+    } catch (error) {
+      console.warn(`[S3] Failed to delete ${relativePath}:`, error)
+      return false
+    }
+  }
 }

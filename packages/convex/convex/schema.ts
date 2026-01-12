@@ -18,11 +18,12 @@ export default defineSchema({
     content: v.string(), // Text content (HTML stripped)
     page: v.number(),
     section: v.optional(v.string()), // Section hierarchy flattened
-    embedding: v.array(v.float64()), // 768-dim Gemini embedding
+    embedding: v.optional(v.array(v.float64())), // 768-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 768, // Gemini text-embedding-004
+      filterFields: ["documentId"], // Scope vector search to specific document
     }),
 })

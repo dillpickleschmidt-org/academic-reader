@@ -2,6 +2,7 @@ import type { BackendType } from "@repo/core/types/api"
 
 interface JobFileEntry {
   fileId: string
+  filename: string
   backendType: BackendType
   createdAt: number
 }
@@ -18,8 +19,8 @@ class JobFileMap {
   /**
    * Register a job -> file association.
    */
-  set(jobId: string, fileId: string, backendType: BackendType): void {
-    this.map.set(jobId, { fileId, backendType, createdAt: Date.now() })
+  set(jobId: string, fileId: string, filename: string, backendType: BackendType): void {
+    this.map.set(jobId, { fileId, filename, backendType, createdAt: Date.now() })
   }
 
   /**

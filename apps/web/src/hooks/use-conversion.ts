@@ -5,12 +5,14 @@ import {
   fetchFromUrl as apiFetchFromUrl,
   startConversion as apiStartConversion,
   cancelJob as apiCancelJob,
+  persistDocument as apiPersistDocument,
   subscribeToJob,
   type ConversionProgress,
   type OutputFormat,
   type ChunkBlock,
 } from "@repo/core/client/api-client"
 import { downloadFromApi, downloadContent } from "@repo/core/client/download"
+import { useAppConfig } from "./use-app-config"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type { OutputFormat, ChunkBlock }
@@ -24,6 +26,9 @@ export interface StageInfo {
 }
 
 export function useConversion() {
+  // Auth state
+  const { user } = useAppConfig()
+
   // Navigation
   const [page, setPage] = useState<Page>("upload")
 
@@ -48,6 +53,7 @@ export function useConversion() {
   const [stages, setStages] = useState<StageInfo[]>([])
 
   // Document context for AI chat (RAG)
+  const [documentId, setDocumentId] = useState<string | null>(null)
   const [chunks, setChunks] = useState<ChunkBlock[]>([])
   const [markdown, setMarkdown] = useState("")
 
@@ -97,6 +103,7 @@ export function useConversion() {
     setError("")
     setImagesReady(false)
     setStages([])
+    setDocumentId(null)
     setChunks([])
     setMarkdown("")
   }
@@ -173,7 +180,7 @@ export function useConversion() {
     setStages([])
 
     try {
-      const { job_id } = await apiStartConversion(fileId, {
+      const { job_id } = await apiStartConversion(fileId, fileName, {
         outputFormat,
         useLlm,
         forceOcr,
@@ -188,9 +195,21 @@ export function useConversion() {
           setContent(htmlContent)
           setPage("result")
         },
-        (result) => {
+        async (result) => {
           setContent(result.content)
           setImagesReady(true)
+
+          // Persist document if user is authenticated
+          if (user && result.jobId) {
+            try {
+              const { documentId } = await apiPersistDocument(result.jobId)
+              setDocumentId(documentId)
+            } catch (err) {
+              // Persistence failed - continue without documentId
+              console.warn("[persistence] Failed to persist document:", err)
+            }
+          }
+
           // Extract chunks and markdown for AI chat
           if (result.formats?.chunks?.blocks) {
             setChunks(result.formats.chunks.blocks)
@@ -249,6 +268,32 @@ export function useConversion() {
     setError("")
   }
 
+  const loadSavedDocument = async (docId: string, filename: string) => {
+    setError("")
+    setFileName(filename)
+
+    try {
+      const response = await fetch(`/api/saved-documents/${docId}`, {
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to load document")
+      }
+
+      const data = await response.json()
+      setContent(data.html)
+      setMarkdown(data.markdown || "")
+      setDocumentId(docId)
+      setOutputFormat("html")
+      setImagesReady(true)
+      setPage("result")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load document")
+    }
+  }
+
   return {
     // State
     page,
@@ -267,6 +312,7 @@ export function useConversion() {
     stages,
     isCancelling,
     // Document context for AI chat
+    documentId,
     chunks,
     markdown,
 
@@ -284,5 +330,6 @@ export function useConversion() {
     startConversion,
     cancelConversion,
     downloadResult: handleDownload,
+    loadSavedDocument,
   }
 }

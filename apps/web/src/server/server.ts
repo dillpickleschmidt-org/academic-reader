@@ -10,19 +10,24 @@ import { upload } from "./routes/upload"
 import { convert } from "./routes/convert"
 import { jobs } from "./routes/jobs"
 import { download } from "./routes/download"
-import { documents } from "./routes/documents"
+import { persist } from "./routes/persist"
+import { documentEmbeddings } from "./routes/document-embeddings"
+import { savedDocuments } from "./routes/saved-documents"
 import { chat } from "./routes/chat"
 import {
   createStorage,
+  createPersistentStorage,
   MemoryTempStorage,
   type S3Storage,
   type TempStorage,
+  type PersistentStorage,
 } from "./storage"
 import { wideEvent } from "./middleware/wide-event-middleware"
 
 type Variables = {
   storage: S3Storage | null
   tempStorage: TempStorage | null
+  persistentStorage: PersistentStorage | null
 }
 
 const app = new Hono<{ Variables: Variables }>()
@@ -37,6 +42,20 @@ const storage = createStorage({
   S3_BUCKET: process.env.S3_BUCKET,
 })
 
+// Persistent storage for saved documents (local in dev, S3 in prod)
+let persistentStorage: PersistentStorage | null = null
+try {
+  persistentStorage = createPersistentStorage({
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_ACCESS_KEY: process.env.S3_ACCESS_KEY,
+    S3_SECRET_KEY: process.env.S3_SECRET_KEY,
+    S3_BUCKET: process.env.S3_BUCKET,
+  })
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.warn("Persistent storage not available:", message)
+}
+
 // Wide event middleware for API routes only (not static files)
 app.use("/api/*", wideEvent)
 
@@ -44,6 +63,7 @@ app.use("/api/*", wideEvent)
 app.use("*", async (c, next) => {
   c.set("storage", storage)
   c.set("tempStorage", tempStorage)
+  c.set("persistentStorage", persistentStorage)
   await next()
 })
 
@@ -96,7 +116,9 @@ api.route("/", upload)
 api.route("/", convert)
 api.route("/", jobs)
 api.route("/", download)
-api.route("/", documents)
+api.route("/", persist)
+api.route("/", documentEmbeddings)
+api.route("/", savedDocuments)
 api.route("/", chat)
 api.get("/health", (c) => c.json({ status: "ok", mode: process.env.BACKEND_MODE }))
 app.route("/api", api)

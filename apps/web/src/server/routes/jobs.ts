@@ -1,18 +1,36 @@
 import { Hono } from "hono"
-import type { BackendType, ConversionJob } from "../types"
-import type { S3Storage } from "../storage"
+import type { BackendType, ConversionJob, WideEvent } from "../types"
+import type { S3Storage, TempStorage } from "../storage"
 import { jobFileMap } from "../storage"
+import { resultCache } from "../storage/result-cache"
 import { cleanupJob } from "../cleanup"
 import { createBackend } from "../backends/factory"
 import { LocalBackend } from "../backends/local"
 import { POLLING } from "../constants"
 import { enhanceHtmlForReader } from "../utils/html-processing"
+import { stripHtmlForEmbedding } from "../services/embeddings"
 import { transformSSEStream } from "../utils/sse-transform"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
+import type { ChunkInput } from "../services/document-persistence"
 
 type Variables = {
   storage: S3Storage | null
+  tempStorage: TempStorage | null
+}
+
+type CleanupReason = "cancelled" | "failed" | "timeout" | "client_disconnect"
+
+async function handleCleanup(
+  event: WideEvent,
+  jobId: string,
+  storage: S3Storage | null,
+  reason: CleanupReason,
+): Promise<void> {
+  const result = await tryCatch(cleanupJob(jobId, storage))
+  event.cleanup = result.success
+    ? { reason, ...result.data }
+    : { reason, cleaned: false, s3Error: getErrorMessage(result.error) }
 }
 
 export const jobs = new Hono<{ Variables: Variables }>()
@@ -37,6 +55,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
   const backendType = process.env.BACKEND_MODE || "local"
+  const tempStorage = c.get("tempStorage")
 
   event.jobId = jobId
   event.backend = backendType as BackendType
@@ -132,12 +151,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
           if (backend.supportsCancellation() && backend.cancelJob) {
             void backend.cancelJob(jobId).catch(() => {})
           }
-          const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
-          if (cleanupResult.success) {
-            event.cleanup = { reason: "client_disconnect", ...cleanupResult.data }
-          } else {
-            event.cleanup = { reason: "client_disconnect", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
-          }
+          await handleCleanup(event, jobId, storage, "client_disconnect")
           break
         }
 
@@ -161,24 +175,69 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
         }
 
         switch (job.status) {
-          case "completed":
+          case "completed": {
             enhanceJobHtml(job)
-            sendEvent("completed", job.result)
+
+            // Cache result for potential persistence by authenticated user
+            if (job.result?.formats) {
+              const rawChunks = job.result.formats.chunks?.blocks || []
+              const chunks: ChunkInput[] = rawChunks
+                .map((chunk) => ({
+                  blockId: chunk.id,
+                  blockType: chunk.block_type,
+                  content: stripHtmlForEmbedding(chunk.html),
+                  page: chunk.page,
+                  section: chunk.section_hierarchy
+                    ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
+                    : undefined,
+                }))
+                .filter((c) => c.content.trim().length > 0)
+
+              // Get original PDF from temp/S3 storage
+              const fileInfo = jobFileMap.get(jobId)
+              let originalPdf: Buffer | null = null
+              if (fileInfo?.fileId) {
+                if (tempStorage) {
+                  const temp = await tempStorage.retrieve(fileInfo.fileId)
+                  if (temp) originalPdf = Buffer.from(temp.data)
+                }
+                if (!originalPdf && storage) {
+                  const urlResult = await tryCatch(storage.getFileUrl(fileInfo.fileId))
+                  if (urlResult.success) {
+                    try {
+                      const pdfRes = await fetch(urlResult.data)
+                      if (pdfRes.ok) originalPdf = Buffer.from(await pdfRes.arrayBuffer())
+                    } catch {
+                      // Network error fetching PDF - continue without it
+                    }
+                  }
+                }
+              }
+
+              // Cache for persist endpoint (5 min TTL)
+              resultCache.set(jobId, {
+                html: job.result.formats.html,
+                markdown: job.result.formats.markdown,
+                chunks,
+                metadata: { pages: (job.result.metadata as { pages?: number })?.pages },
+                filename: fileInfo?.filename || "document.pdf",
+                originalPdf,
+              })
+            }
+
+            // Send completed event with jobId for potential persistence
+            sendEvent("completed", { ...job.result, jobId })
             finalStatus = "completed"
-            // Remove tracking (but keep S3 file on success)
+            // Remove file tracking (but keep S3 file on success)
             jobFileMap.delete(jobId)
             completed = true
             break
+          }
           case "failed": {
             sendEvent("failed", { error: job.error })
             finalStatus = "failed"
             event.error = { category: "backend", message: job.error || "Job failed", code: "JOB_FAILED" }
-            const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
-            if (cleanupResult.success) {
-              event.cleanup = { reason: "failed", ...cleanupResult.data }
-            } else {
-              event.cleanup = { reason: "failed", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
-            }
+            await handleCleanup(event, jobId, storage, "failed")
             completed = true
             break
           }
@@ -204,12 +263,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
         if (backend.supportsCancellation() && backend.cancelJob) {
           void backend.cancelJob(jobId).catch(() => {})
         }
-        const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
-        if (cleanupResult.success) {
-          event.cleanup = { reason: "timeout", ...cleanupResult.data }
-        } else {
-          event.cleanup = { reason: "timeout", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
-        }
+        await handleCleanup(event, jobId, storage, "timeout")
       }
 
       controller.close()
@@ -255,12 +309,7 @@ jobs.post("/jobs/:jobId/cancel", async (c) => {
   }
 
   // Cleanup S3 file
-  const cleanupResult = await tryCatch(cleanupJob(jobId, storage))
-  if (cleanupResult.success) {
-    event.cleanup = { reason: "cancelled", ...cleanupResult.data }
-  } else {
-    event.cleanup = { reason: "cancelled", cleaned: false, s3Error: getErrorMessage(cleanupResult.error) }
-  }
+  await handleCleanup(event, jobId, storage, "cancelled")
 
   return c.json({ status: "cancelled", jobId })
 })

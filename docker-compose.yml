@@ -37,6 +37,7 @@ services:
       - CONVEX_HTTP_URL=http://convex-backend:3211
       - CONVEX_SITE_URL=http://convex-backend:3210
       - LOCAL_WORKER_URL=http://worker:8000
+      - LOCAL_STORAGE_DIR=/app/data
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin
@@ -44,6 +45,7 @@ services:
     volumes:
       - ./apps/web/src/server:/app/apps/web/src/server
       - ./packages/core/src:/app/packages/core/src
+      - ${LOCAL_STORAGE_DIR:-./data}:/app/data
       - tunnel_url:/tunnel:ro
     depends_on:
       convex-backend:

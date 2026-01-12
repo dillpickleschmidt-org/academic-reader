@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react"
-import { FileUp, AlertCircle } from "lucide-react"
+import { FileUp, AlertCircle, FileText, Code, Loader2 } from "lucide-react"
 import { cn } from "@repo/core/lib/utils"
 import { Separator } from "@repo/core/ui/primitives/separator"
 import { Input } from "@repo/core/ui/primitives/input"
@@ -7,6 +7,11 @@ import { Button } from "@repo/core/ui/primitives/button"
 import { useAppConfig } from "@/hooks/use-app-config"
 import { authClient } from "@repo/convex/auth-client"
 import { AuthDialog } from "@/components/AuthDialog"
+
+interface RecentDocument {
+  _id: string
+  filename: string
+}
 
 const SUPPORTED_FORMATS = {
   Documents: "PDF, DOCX, ODT",
@@ -42,6 +47,8 @@ interface Props {
   onUrlChange: (url: string) => void
   onFileSelect: (file: File) => void
   onFetchUrl: () => void
+  recentDocuments?: RecentDocument[]
+  onViewDocument?: (documentId: string) => void
 }
 
 export function UploadPage({
@@ -50,6 +57,8 @@ export function UploadPage({
   onUrlChange,
   onFileSelect,
   onFetchUrl,
+  recentDocuments,
+  onViewDocument,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -238,6 +247,60 @@ export function UploadPage({
                 strokeWidth={1.5}
               />
               <span>{fileError || error}</span>
+            </div>
+          )}
+
+          {user && onViewDocument && recentDocuments === undefined && (
+            <div className="mt-4">
+              <div className="text-sm text-muted-foreground mb-3">
+                Recently Viewed
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Loading...</span>
+              </div>
+            </div>
+          )}
+
+          {user && onViewDocument && recentDocuments && recentDocuments.length > 0 && (
+            <div className="mt-4">
+              <div className="text-sm text-muted-foreground mb-3">
+                Recently Viewed
+              </div>
+              <div className="flex flex-col gap-2">
+                {recentDocuments.map((doc) => (
+                  <div
+                    key={doc._id}
+                    className="flex items-center gap-2 py-2 px-3 rounded-lg border border-border bg-card"
+                  >
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2"
+                      disabled
+                      title="PDF viewing coming soon"
+                    >
+                      <FileText className="w-4 h-4" strokeWidth={1.5} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2"
+                      onClick={() => onViewDocument(doc._id)}
+                      title="View HTML"
+                    >
+                      <Code className="w-4 h-4" strokeWidth={1.5} />
+                    </Button>
+                    <span
+                      className="text-sm text-foreground truncate"
+                      style={{ maxWidth: "20ch" }}
+                      title={doc.filename}
+                    >
+                      {doc.filename}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

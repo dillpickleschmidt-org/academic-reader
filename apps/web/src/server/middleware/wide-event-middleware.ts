@@ -17,17 +17,16 @@ declare module "hono" {
   }
 }
 
-// Routes that use streaming responses (don't emit on response end)
-// These routes emit events manually when the stream completes
-const STREAMING_ROUTES = ["/api/jobs/*/stream", "/api/chat"]
+// Routes that call emitStreamingEvent() manually
+const MANUAL_EMIT_ROUTES = ["/api/jobs/*/stream", "/api/chat", "/api/documents/*/embeddings"]
 
 /**
- * Check if a path matches a streaming route.
+ * Check if a path matches a manual-emit route.
  * Supports * as single-segment wildcard.
  */
-function isStreamingRoute(path: string): boolean {
+function isManualEmitRoute(path: string): boolean {
   const pathParts = path.split("/")
-  return STREAMING_ROUTES.some((route) => {
+  return MANUAL_EMIT_ROUTES.some((route) => {
     const routeParts = route.split("/")
     if (pathParts.length !== routeParts.length) return false
     return routeParts.every((part, i) => part === "*" || part === pathParts[i])
@@ -49,18 +48,15 @@ export const wideEvent = createMiddleware(async (c, next) => {
   })
   c.set("event", event)
 
-  // Check if this is a streaming route
-  const isStreaming = isStreamingRoute(c.req.path)
-  if (isStreaming) {
+  const manualEmit = isManualEmitRoute(c.req.path)
+  if (manualEmit && c.req.path.includes("/stream")) {
     event.isStreaming = true
   }
 
   try {
     await next()
   } finally {
-    // For non-streaming routes, finalize and emit the event now
-    // Streaming routes set durationMs/status and emit via emitStreamingEvent()
-    if (!isStreaming) {
+    if (!manualEmit) {
       event.durationMs = Math.round(performance.now() - start)
       event.status = c.res.status
       emitEvent(event)

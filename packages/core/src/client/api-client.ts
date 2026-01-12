@@ -26,6 +26,7 @@ export interface JobStatus {
   result?: {
     content: string
     metadata: Record<string, unknown>
+    jobId?: string // For persisting the result later
     formats?: {
       html: string
       markdown: string
@@ -69,12 +70,14 @@ export async function fetchFromUrl(url: string): Promise<UploadResponse> {
 
 export async function startConversion(
   fileId: string,
+  filename: string,
   options: ConversionOptions,
 ): Promise<{ job_id: string }> {
   const params = new URLSearchParams({
     output_format: options.outputFormat,
     use_llm: String(options.useLlm),
     force_ocr: String(options.forceOcr),
+    filename,
   })
   if (options.pageRange.trim()) {
     params.set("page_range", options.pageRange.trim())
@@ -104,6 +107,28 @@ export async function cancelJob(jobId: string): Promise<{ status: string }> {
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error || "Failed to cancel job")
+  }
+
+  return res.json()
+}
+
+/**
+ * Persist a conversion result to permanent storage.
+ * Call this after conversion completes if the user is authenticated.
+ */
+export async function persistDocument(
+  jobId: string,
+): Promise<{ documentId: string }> {
+  const res = await fetch("/api/documents/persist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ jobId }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || "Failed to persist document")
   }
 
   return res.json()

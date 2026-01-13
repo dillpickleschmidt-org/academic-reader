@@ -39,6 +39,10 @@ function App() {
     [recentDocuments, conversion],
   )
 
+  const handleDeleteDocument = useCallback(async (documentId: string) => {
+    await fetch(`/api/saved-documents/${documentId}`, { method: "DELETE" })
+  }, [])
+
   switch (conversion.page) {
     case "upload":
       return (
@@ -50,6 +54,7 @@ function App() {
           onFetchUrl={conversion.fetchFromUrl}
           recentDocuments={recentDocuments}
           onViewDocument={handleViewDocument}
+          onDeleteDocument={handleDeleteDocument}
         />
       )
 

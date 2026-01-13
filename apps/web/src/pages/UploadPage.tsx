@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react"
-import { FileUp, AlertCircle, FileText, Code, Loader2 } from "lucide-react"
+import { FileUp, AlertCircle, FileText, Code, Loader2, X } from "lucide-react"
 import { cn } from "@repo/core/lib/utils"
 import { Separator } from "@repo/core/ui/primitives/separator"
 import { Input } from "@repo/core/ui/primitives/input"
@@ -49,6 +49,7 @@ interface Props {
   onFetchUrl: () => void
   recentDocuments?: RecentDocument[]
   onViewDocument?: (documentId: string) => void
+  onDeleteDocument?: (documentId: string) => void
 }
 
 export function UploadPage({
@@ -59,6 +60,7 @@ export function UploadPage({
   onFetchUrl,
   recentDocuments,
   onViewDocument,
+  onDeleteDocument,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -298,6 +300,17 @@ export function UploadPage({
                     >
                       {doc.filename}
                     </span>
+                    {onDeleteDocument && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 ml-auto text-muted-foreground hover:text-destructive"
+                        onClick={() => onDeleteDocument(doc._id)}
+                        title="Remove"
+                      >
+                        <X className="w-4 h-4" strokeWidth={1.5} />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>

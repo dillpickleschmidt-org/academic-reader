@@ -92,8 +92,6 @@ function App() {
             outputFormat={conversion.outputFormat}
             content={conversion.content}
             imagesReady={conversion.imagesReady}
-            documentId={conversion.documentId}
-            markdown={conversion.markdown}
             onDownload={conversion.downloadResult}
             onReset={conversion.reset}
           />

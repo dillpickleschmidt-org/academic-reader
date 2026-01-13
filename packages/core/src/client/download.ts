@@ -35,6 +35,7 @@ export const downloadFromApi = (jobId: string, fileName: string): void => {
 
   const a = document.createElement("a")
   a.href = url
+  a.download = `${baseName}.html`
   a.click()
 }
 

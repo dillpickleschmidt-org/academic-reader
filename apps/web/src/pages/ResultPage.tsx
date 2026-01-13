@@ -8,8 +8,6 @@ interface Props {
   outputFormat: OutputFormat
   content: string
   imagesReady: boolean
-  documentId: string | null
-  markdown: string
   onDownload: () => void
   onReset: () => void
 }
@@ -18,8 +16,6 @@ export function ResultPage({
   outputFormat,
   content,
   imagesReady,
-  documentId,
-  markdown,
   onDownload,
   onReset,
 }: Props) {
@@ -29,8 +25,6 @@ export function ResultPage({
         <HtmlResultPage
           content={content}
           imagesReady={imagesReady}
-          documentId={documentId}
-          markdown={markdown}
           onDownload={onDownload}
           onReset={onReset}
         />

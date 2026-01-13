@@ -1,21 +1,21 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react"
-import { BotMessageSquare, Download, Plus } from "lucide-react"
+import { useEffect, useRef, type ReactNode } from "react"
+import { Plus } from "lucide-react"
 import { THEMES, type ReaderTheme } from "@/constants/themes"
 import { useReaderTheme } from "@/hooks/use-reader-theme"
-
-const AIChat = lazy(() =>
-  import("./AiChat").then((m) => ({ default: m.AIChat })),
-)
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+} from "@repo/core/ui/primitives/sidebar"
+import { ReaderSidebar } from "./sidebar/ReaderSidebar"
 
 interface Props {
   children: ReactNode
   onDownload: () => void
   onReset: () => void
   showThemeToggle?: boolean
-  showAIChat?: boolean
+  showSidebar?: boolean
   downloadDisabled?: boolean
-  documentId?: string | null
-  markdown?: string
 }
 
 export function ReaderLayout({
@@ -23,10 +23,8 @@ export function ReaderLayout({
   onDownload,
   onReset,
   showThemeToggle = false,
-  showAIChat = false,
+  showSidebar = false,
   downloadDisabled = false,
-  documentId,
-  markdown,
 }: Props) {
   const [theme, setTheme] = useReaderTheme()
   const radioRefs = useRef<Record<ReaderTheme, HTMLInputElement | null>>({
@@ -49,72 +47,54 @@ export function ReaderLayout({
   }
 
   return (
-    <>
-      {/* Hidden radio inputs - must be siblings before .reader-output for CSS selectors */}
-      {THEMES.map((t) => (
-        <input
-          key={t.id}
-          ref={(el) => {
-            radioRefs.current[t.id] = el
-          }}
-          type="radio"
-          name="theme"
-          id={`theme-${t.id}`}
-          value={t.id}
-          defaultChecked={t.id === theme}
-          onChange={handleRadioChange}
-          className="theme-radios"
+    <SidebarProvider defaultOpen={false}>
+      {showSidebar && (
+        <ReaderSidebar
+          onDownload={onDownload}
+          downloadDisabled={downloadDisabled}
         />
-      ))}
-
-      <div className="reader-output">
-        {showAIChat && (
-          <Suspense
-            fallback={
-              <button type="button" className="reader-ai-button" disabled>
-                <BotMessageSquare size={18} />
-              </button>
-            }
-          >
-            <AIChat
-              trigger={
-                <button type="button" className="reader-ai-button" title="AI Summary">
-                  <BotMessageSquare size={18} />
-                </button>
-              }
-              documentId={documentId}
-              markdown={markdown}
-            />
-          </Suspense>
-        )}
-        {showThemeToggle && (
-          <div className="reader-theme-toggle">
-            {THEMES.map((t) => {
-              const Icon = t.icon
-              return (
-                <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
-                  <Icon size={18} />
-                </label>
-              )
-            })}
+      )}
+      <SidebarInset>
+        <header className="flex h-12 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <div className="reader-header-actions">
+            {showSidebar && <SidebarTrigger className="-ml-1" />}
+            <button type="button" onClick={onReset} title="New">
+              <Plus size={18} />
+            </button>
           </div>
-        )}
-        <div className="reader-actions">
-          <button
-            type="button"
-            onClick={onDownload}
-            title={downloadDisabled ? "Waiting for images..." : "Download"}
-            disabled={downloadDisabled}
-            className={downloadDisabled ? "opacity-50" : ""}
-          >
-            <Download size={18} />
-          </button>
-          <button type="button" onClick={onReset} title="New">
-            <Plus size={18} />
-          </button>
-        </div>
-        <div className="reader-content">{children}</div>
-      </div>
-    </>
+        </header>
+        {/* Hidden radio inputs - must be siblings before .reader-output for CSS selectors */}
+        {THEMES.map((t) => (
+          <input
+            key={t.id}
+            ref={(el) => {
+              radioRefs.current[t.id] = el
+            }}
+            type="radio"
+            name="theme"
+            id={`theme-${t.id}`}
+            value={t.id}
+            defaultChecked={t.id === theme}
+            onChange={handleRadioChange}
+            className="theme-radios"
+          />
+        ))}
+        <div className="reader-output">
+            {showThemeToggle && (
+              <div className="reader-theme-toggle">
+                {THEMES.map((t) => {
+                  const Icon = t.icon
+                  return (
+                    <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
+                      <Icon size={18} />
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            <div className="reader-content">{children}</div>
+          </div>
+        </SidebarInset>
+    </SidebarProvider>
   )
 }

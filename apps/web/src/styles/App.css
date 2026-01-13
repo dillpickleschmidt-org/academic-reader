@@ -135,3 +135,43 @@
     overflow-y: scroll;
   }
 }
+
+/* Utility: Hide scrollbar while keeping scrollability */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Collapsible panel animation (base-ui) */
+[data-collapsible-panel] {
+  overflow: hidden;
+}
+[data-collapsible-panel][data-open] {
+  animation: collapsible-expand 200ms ease-out;
+}
+[data-collapsible-panel][data-closed] {
+  animation: collapsible-collapse 200ms ease-out;
+}
+@keyframes collapsible-expand {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--collapsible-panel-height);
+    opacity: 1;
+  }
+}
+@keyframes collapsible-collapse {
+  from {
+    height: var(--collapsible-panel-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}

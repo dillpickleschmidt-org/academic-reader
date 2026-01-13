@@ -16,4 +16,16 @@ function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props) {
   )
 }
 
-export { Collapsible, CollapsibleTrigger, CollapsibleContent }
+// Re-export primitives for advanced usage (render prop pattern)
+const CollapsibleRoot = CollapsiblePrimitive.Root
+const CollapsibleTriggerPrimitive = CollapsiblePrimitive.Trigger
+const CollapsiblePanel = CollapsiblePrimitive.Panel
+
+export {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+  CollapsibleRoot,
+  CollapsibleTriggerPrimitive,
+  CollapsiblePanel,
+}

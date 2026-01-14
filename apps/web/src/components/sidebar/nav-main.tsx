@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 
 import {
@@ -27,10 +28,12 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
-    items?: {
+    items?: ({
       title: string
       url: string
-    }[]
+    } | {
+      render: ReactNode
+    })[]
   }[]
   label?: string
 }) {
@@ -55,13 +58,19 @@ export function NavMain({
               </SidebarMenuButton>
               <CollapsiblePanel>
                 <SidebarMenuSub>
-                  {item.items?.map((subItem) => (
-                    <SidebarMenuSubItem key={subItem.title}>
-                      <SidebarMenuSubButton render={<a href={subItem.url} />}>
-                        <span>{subItem.title}</span>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))}
+                  {item.items?.map((subItem, index) =>
+                    "render" in subItem ? (
+                      <SidebarMenuSubItem key={index}>
+                        {subItem.render}
+                      </SidebarMenuSubItem>
+                    ) : (
+                      <SidebarMenuSubItem key={subItem.title}>
+                        <SidebarMenuSubButton render={<a href={subItem.url} />}>
+                          <span>{subItem.title}</span>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    )
+                  )}
                 </SidebarMenuSub>
               </CollapsiblePanel>
             </SidebarMenuItem>

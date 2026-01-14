@@ -4,6 +4,7 @@ import { useQuery } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
 import { useConversion } from "./hooks/use-conversion"
 import { useAppConfig } from "./hooks/use-app-config"
+import { DocumentProvider } from "./context/DocumentContext"
 import { UploadPage } from "./pages/UploadPage"
 
 const PageLoader = () => (
@@ -87,15 +88,20 @@ function App() {
 
     case "result":
       return (
-        <Suspense fallback={<PageLoader />}>
-          <ResultPage
-            outputFormat={conversion.outputFormat}
-            content={conversion.content}
-            imagesReady={conversion.imagesReady}
-            onDownload={conversion.downloadResult}
-            onReset={conversion.reset}
-          />
-        </Suspense>
+        <DocumentProvider
+          markdown={conversion.markdown}
+          documentId={conversion.documentId}
+        >
+          <Suspense fallback={<PageLoader />}>
+            <ResultPage
+              outputFormat={conversion.outputFormat}
+              content={conversion.content}
+              imagesReady={conversion.imagesReady}
+              onDownload={conversion.downloadResult}
+              onReset={conversion.reset}
+            />
+          </Suspense>
+        </DocumentProvider>
       )
 
     default: {

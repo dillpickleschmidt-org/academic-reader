@@ -166,33 +166,6 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   color: var(--reader-text);
 }
 
-/* Header actions (sidebar trigger/new) - flows with sidebar */
-.reader-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-left: 1rem;
-}
-
-.reader-header-actions button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  border-radius: 8px;
-  color: var(--reader-text-muted, hsl(var(--muted-foreground)));
-  transition: all 0.15s ease;
-}
-
-.reader-header-actions button:hover {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
-}
-
 /* Shared pre/code styles for markdown and json views */
 .reader-output pre {
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;

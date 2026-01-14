@@ -6,6 +6,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
   SidebarInset,
+  SidebarMenuButton,
 } from "@repo/core/ui/primitives/sidebar"
 import { ReaderSidebar } from "./sidebar/ReaderSidebar"
 
@@ -55,12 +56,16 @@ export function ReaderLayout({
         />
       )}
       <SidebarInset>
-        <header className="flex h-12 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="reader-header-actions">
+        <header className="flex shrink-0 items-center gap-2 transition-[width,height] ease-linear">
+          <div className="flex items-center ml-4 gap-1 my-2">
             {showSidebar && <SidebarTrigger className="-ml-1" />}
-            <button type="button" onClick={onReset} title="New">
-              <Plus size={18} />
-            </button>
+            <SidebarMenuButton
+              onClick={onReset}
+              tooltip="New"
+              className="size-8 p-2 [&_svg]:size-4.5"
+            >
+              <Plus />
+            </SidebarMenuButton>
           </div>
         </header>
         {/* Hidden radio inputs - must be siblings before .reader-output for CSS selectors */}
@@ -80,21 +85,21 @@ export function ReaderLayout({
           />
         ))}
         <div className="reader-output">
-            {showThemeToggle && (
-              <div className="reader-theme-toggle">
-                {THEMES.map((t) => {
-                  const Icon = t.icon
-                  return (
-                    <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
-                      <Icon size={18} />
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-            <div className="reader-content">{children}</div>
-          </div>
-        </SidebarInset>
+          {showThemeToggle && (
+            <div className="reader-theme-toggle">
+              {THEMES.map((t) => {
+                const Icon = t.icon
+                return (
+                  <label key={t.id} htmlFor={`theme-${t.id}`} title={t.title}>
+                    <Icon size={18} />
+                  </label>
+                )
+              })}
+            </div>
+          )}
+          <div className="reader-content">{children}</div>
+        </div>
+      </SidebarInset>
     </SidebarProvider>
   )
 }

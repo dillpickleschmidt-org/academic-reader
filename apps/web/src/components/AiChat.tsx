@@ -27,12 +27,11 @@ import {
 } from "@repo/core/ui/ai-elements/prompt-input"
 import { Loader } from "@repo/core/ui/ai-elements/loader"
 import { useAppConfig } from "@/hooks/use-app-config"
+import { useDocumentContext } from "@/context/DocumentContext"
 import { authClient } from "@repo/convex/auth-client"
 
 interface Props {
   trigger: ReactElement
-  markdown?: string
-  documentId?: string | null // Set at conversion completion for authenticated users
 }
 
 // Memoized message component to prevent re-renders during streaming
@@ -74,7 +73,7 @@ const ChatMessage = memo(
     prev.message.parts === next.message.parts,
 )
 
-export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props) {
+export function AIChat({ trigger }: Props) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
   // Track whether embeddings have been generated for this document
@@ -82,9 +81,12 @@ export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props)
   const [storageError, setStorageError] = useState<string | null>(null)
   const hasTriggeredRef = useRef(false)
   const { user, isLoading: configLoading } = useAppConfig()
+  const documentContext = useDocumentContext()
+  const markdown = documentContext?.markdown
+  const documentId = documentContext?.documentId
 
   // Refs for transport closure (initialized with defaults, updated after useChat)
-  const documentIdRef = useRef(propDocumentId)
+  const documentIdRef = useRef(documentId)
   const markdownRef = useRef(markdown)
   const messagesRef = useRef<unknown[]>([])
 
@@ -112,16 +114,16 @@ export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props)
   })
 
   // Keep refs in sync with current values
-  documentIdRef.current = propDocumentId
+  documentIdRef.current = documentId
   markdownRef.current = markdown
   messagesRef.current = messages
 
   // Generate embeddings for document chunks (enables RAG for follow-up questions)
   const generateEmbeddings = async () => {
-    if (!propDocumentId) return
+    if (!documentId) return
 
     try {
-      const response = await fetch(`/api/documents/${propDocumentId}/embeddings`, {
+      const response = await fetch(`/api/documents/${documentId}/embeddings`, {
         method: "POST",
         credentials: "same-origin",
       })
@@ -160,7 +162,7 @@ export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props)
       const rafId = requestAnimationFrame(() => {
         sendMessage({ text: "Please summarize this document." })
         // Generate embeddings for follow-up questions (if document was persisted)
-        if (propDocumentId) {
+        if (documentId) {
           generateEmbeddings().catch(() => {
             // Error already handled in generateEmbeddings via setStorageError
           })
@@ -169,7 +171,7 @@ export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props)
 
       return () => cancelAnimationFrame(rafId)
     }
-  }, [open, user, markdown, messages.length, sendMessage, propDocumentId])
+  }, [open, user, markdown, messages.length, sendMessage, documentId])
 
   // Reset state when dialog closes
   const handleOpenChange = (newOpen: boolean) => {
@@ -242,7 +244,7 @@ export function AIChat({ trigger, markdown, documentId: propDocumentId }: Props)
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={trigger} />
+      <DialogTrigger nativeButton={false} render={trigger} />
       <DialogContent className="flex h-[80vh] max-h-200 w-full max-w-2xl flex-col gap-0 p-0">
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>AI Chat</DialogTitle>

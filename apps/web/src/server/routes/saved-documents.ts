@@ -9,7 +9,14 @@ import type { Storage } from "../storage/types"
 import { loadPersistedDocument, getStoragePaths } from "../services/document-persistence"
 import { createAuthenticatedConvexClient } from "../services/convex"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
-import { enhanceHtmlForReader } from "../utils/html-processing"
+import {
+  processHtml,
+  removeImgDescriptions,
+  wrapCitations,
+  processParagraphs,
+  convertMathToHtml,
+} from "../utils/html-processing"
+import { addPageAttributes } from "../utils/tts-attribution"
 
 type Variables = {
   storage: Storage
@@ -53,7 +60,12 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
 
   // Use storageId for S3 path
   const storageId = docResult.data.storageId
-  const loadResult = await tryCatch(loadPersistedDocument(storage, userId, storageId))
+
+  // Fetch HTML/markdown and chunks in parallel
+  const [loadResult, chunksResult] = await Promise.all([
+    tryCatch(loadPersistedDocument(storage, userId, storageId)),
+    tryCatch(convex.query(api.api.documents.getChunks, { documentId: typedDocumentId })),
+  ])
 
   if (!loadResult.success) {
     event.error = {
@@ -65,14 +77,22 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
   }
 
   const { html, markdown } = loadResult.data
+  const chunks = chunksResult.success ? chunksResult.data : []
 
-  // Enhance HTML for reader display (same as live conversion)
-  const enhancedHtml = enhanceHtmlForReader(html)
+  // Process HTML with single parse: enhancements + page attribution
+  const enhancedHtml = processHtml(html, [
+    removeImgDescriptions,
+    wrapCitations,
+    processParagraphs,
+    convertMathToHtml,
+    ($) => addPageAttributes($, chunks),
+  ])
 
   return c.json({
     html: enhancedHtml,
     markdown,
     storageId,
+    chunks,
   })
 })
 

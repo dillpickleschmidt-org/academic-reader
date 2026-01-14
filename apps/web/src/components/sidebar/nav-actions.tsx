@@ -18,6 +18,8 @@ export function NavActions({
     icon: LucideIcon
     onClick?: () => void
     disabled?: boolean
+    isActive?: boolean
+    className?: string
   }[]
 }) {
   return (
@@ -30,6 +32,8 @@ export function NavActions({
               onClick={item.onClick}
               disabled={item.disabled}
               tooltip={item.name}
+              data-active={item.isActive}
+              className={item.className}
             >
               <item.icon />
               <span>{item.name}</span>

@@ -293,6 +293,18 @@ export function useConversion() {
       setFileId(data.storageId)
       setOutputFormat("html")
       setImagesReady(true)
+      // Transform Convex chunks to ChunkBlock format for TTS
+      if (data.chunks) {
+        const transformedChunks = data.chunks.map((c: { blockId: string; blockType: string; content: string; page: number }) => ({
+          id: c.blockId,
+          block_type: c.blockType,
+          html: c.content, // Convex stores stripped content, use as-is
+          page: c.page,
+          polygon: [],
+          bbox: [],
+        }))
+        setChunks(transformedChunks)
+      }
       setPage("result")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load document")

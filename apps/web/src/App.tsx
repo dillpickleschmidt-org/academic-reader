@@ -5,6 +5,7 @@ import { api } from "@repo/convex/convex/_generated/api"
 import { useConversion } from "./hooks/use-conversion"
 import { useAppConfig } from "./hooks/use-app-config"
 import { DocumentProvider } from "./context/DocumentContext"
+import { TTSProvider } from "./context/TTSContext"
 import { UploadPage } from "./pages/UploadPage"
 
 const PageLoader = () => (
@@ -102,16 +103,19 @@ function App() {
         <DocumentProvider
           markdown={conversion.markdown}
           documentId={conversion.documentId}
+          chunks={conversion.chunks}
         >
-          <Suspense fallback={<PageLoader />}>
-            <ResultPage
-              outputFormat={conversion.outputFormat}
-              content={conversion.content}
-              imagesReady={conversion.imagesReady}
-              onDownload={conversion.downloadResult}
-              onReset={conversion.reset}
-            />
-          </Suspense>
+          <TTSProvider documentId={conversion.documentId}>
+            <Suspense fallback={<PageLoader />}>
+              <ResultPage
+                outputFormat={conversion.outputFormat}
+                content={conversion.content}
+                imagesReady={conversion.imagesReady}
+                onDownload={conversion.downloadResult}
+                onReset={conversion.reset}
+              />
+            </Suspense>
+          </TTSProvider>
         </DocumentProvider>
       )
 

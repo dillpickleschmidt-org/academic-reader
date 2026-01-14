@@ -30,4 +30,13 @@ export default defineSchema({
       dimensions: 768, // Gemini text-embedding-004
       filterFields: ["documentId"], // Scope vector search to specific document
     }),
+
+  // TTS cache - stores LLM-reworded text for spoken prose (per chunk)
+  ttsCache: defineTable({
+    documentId: v.id("documents"),
+    blockId: v.string(), // Marker block ID for chunk-level caching
+    originalText: v.string(),
+    rewordedText: v.string(),
+    createdAt: v.number(),
+  }).index("by_document_block", ["documentId", "blockId"]),
 })

@@ -7,6 +7,7 @@ const TUNNEL_URL_FILE = "/tunnel/url"
 
 export interface S3Config {
   endpoint: string
+  publicUrl?: string
   accessKeyId: string
   secretAccessKey: string
   bucket: string
@@ -157,5 +158,53 @@ export class S3Storage implements Storage {
     })
 
     return response.ok
+  }
+
+  /**
+   * Upload multiple images to storage and return their public URLs.
+   * Images are stored at {docPath}/images/{filename}.
+   */
+  async uploadImages(
+    docPath: string,
+    images: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    const CONTENT_TYPES: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      webp: "image/webp",
+      gif: "image/gif",
+    }
+
+    const baseUrl = (this.config.publicUrl ?? this.config.endpoint).replace(
+      /\/+$/,
+      "",
+    )
+
+    const entries = await Promise.all(
+      Object.entries(images).map(async ([filename, base64Data]) => {
+        const key = `${docPath}/images/${filename}`
+        const buffer = Buffer.from(base64Data, "base64")
+
+        const ext = filename.split(".").pop()?.toLowerCase() ?? "png"
+        const contentType = CONTENT_TYPES[ext] ?? "image/png"
+
+        const url = this.getObjectUrl(key)
+        const response = await this.client.fetch(url.toString(), {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: new Uint8Array(buffer),
+        })
+
+        if (!response.ok) {
+          const error = await response.text()
+          throw new Error(`S3 image upload failed for ${filename}: ${error}`)
+        }
+
+        return [filename, `${baseUrl}/${this.config.bucket}/${key}`] as const
+      }),
+    )
+
+    return Object.fromEntries(entries)
   }
 }

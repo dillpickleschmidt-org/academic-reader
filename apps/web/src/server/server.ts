@@ -28,6 +28,7 @@ const app = new Hono<{ Variables: Variables }>()
 // Create unified storage (S3 in prod, Disk in dev)
 const storage = createStorage({
   S3_ENDPOINT: process.env.S3_ENDPOINT,
+  S3_PUBLIC_URL: process.env.S3_PUBLIC_URL,
   S3_ACCESS_KEY: process.env.S3_ACCESS_KEY,
   S3_SECRET_KEY: process.env.S3_SECRET_KEY,
   S3_BUCKET: process.env.S3_BUCKET,

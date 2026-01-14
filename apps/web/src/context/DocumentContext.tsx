@@ -2,17 +2,17 @@ import { createContext, useContext, type ReactNode } from "react"
 import type { ChunkBlock } from "@repo/core/types/api"
 
 interface DocumentContextValue {
-  markdown: string
+  markdown: string | undefined
   documentId: string | null
-  chunks: ChunkBlock[]
+  chunks: ChunkBlock[] | undefined
 }
 
 const DocumentContext = createContext<DocumentContextValue | null>(null)
 
 interface DocumentProviderProps {
-  markdown: string
+  markdown: string | undefined
   documentId: string | null
-  chunks: ChunkBlock[]
+  chunks: ChunkBlock[] | undefined
   children: ReactNode
 }
 

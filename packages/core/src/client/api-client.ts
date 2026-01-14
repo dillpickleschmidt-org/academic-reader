@@ -27,12 +27,14 @@ export interface JobStatus {
     content: string
     metadata: Record<string, unknown>
     jobId?: string // For persisting the result later
+    fileId?: string
     formats?: {
       html: string
       markdown: string
       json: unknown
       chunks?: ChunkOutput
     }
+    images?: Record<string, string> // filename -> public URL
   }
   error?: string
   progress?: ConversionProgress

@@ -56,6 +56,7 @@ export interface ConversionResult {
   content: string
   metadata: Record<string, unknown>
   formats?: AllFormats
+  images?: Record<string, string> // For progressive image loading
 }
 
 export interface ConversionJob {

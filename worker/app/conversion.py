@@ -108,7 +108,7 @@ def _build_and_render_all(
 
     # Log non-HTML formats for future use
     if all_formats["chunks"]:
-        print(f"[conversion] Got {len(all_formats['chunks'])} chunks")
+        print(f"[conversion] Got {len(all_formats['chunks']['blocks'])} chunks")
     if all_formats["json"]:
         print(f"[conversion] Got JSON with {len(all_formats['json'])} pages")
 
@@ -125,26 +125,29 @@ def run_conversion_sync(
     """Synchronous conversion without job tracking. Used by serverless handler."""
     all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
 
-    # Process HTML with embedded images
-    html_content, _ = _process_html(all_formats["html"], all_formats["images"], embed_images=True)
+    # Process HTML once (injects dimensions), then create embedded variant
+    html_raw, images = _process_html(all_formats["html"], all_formats["images"], embed_images=False)
+    html_embedded = embed_images_as_base64(html_raw, images) if images else html_raw
 
     # Return requested format as content, include all formats
     if output_format == "html":
-        content = html_content
+        content = html_embedded
     elif output_format == "json":
         content = all_formats["json"]
     elif output_format == "markdown":
         content = all_formats["markdown"]
     else:
-        content = html_content
+        content = html_embedded
 
     return {
         "content": content,
         "metadata": all_formats["metadata"],
         "formats": {
-            "html": html_content,
+            "html": html_embedded,
+            "html_raw": html_raw,  # For progressive loading (no embedded images)
             "markdown": all_formats["markdown"],
             "json": all_formats["json"],
             "chunks": all_formats["chunks"],
         },
+        "images": images,  # For progressive loading
     }

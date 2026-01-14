@@ -1,7 +1,16 @@
 import type { ConversionBackend } from "./interface"
-import type { ConversionInput, ConversionJob, JobStatus } from "../types"
+import type {
+  ChunkOutput,
+  ConversionInput,
+  ConversionJob,
+  JobStatus,
+} from "../types"
 
 const TIMEOUT_MS = 30_000
+
+interface LocalConfig {
+  baseUrl: string
+}
 
 /**
  * Local backend - passes through to FastAPI worker running locally.
@@ -11,8 +20,20 @@ export class LocalBackend implements ConversionBackend {
   readonly name = "local"
   private baseUrl: string
 
-  constructor(baseUrl: string = "http://localhost:8000") {
-    this.baseUrl = baseUrl.replace(/\/+$/, "")
+  constructor(config: LocalConfig) {
+    this.baseUrl = config.baseUrl.replace(/\/+$/, "")
+  }
+
+  private mapStatus(status: string): JobStatus {
+    const STATUS_MAP: Record<string, JobStatus> = {
+      pending: "pending",
+      processing: "processing",
+      html_ready: "html_ready",
+      completed: "completed",
+      failed: "failed",
+      cancelled: "failed",
+    }
+    return STATUS_MAP[status] ?? "failed"
   }
 
   async submitJob(input: ConversionInput): Promise<string> {
@@ -56,8 +77,19 @@ export class LocalBackend implements ConversionBackend {
 
     const data = (await response.json()) as {
       job_id: string
-      status: JobStatus
-      result?: { content: string; metadata: Record<string, unknown> }
+      status: string
+      result?: {
+        content: string
+        metadata: Record<string, unknown>
+        formats?: {
+          html: string
+          html_raw?: string
+          markdown: string
+          json: unknown
+          chunks?: ChunkOutput
+        }
+        images?: Record<string, string>
+      }
       html_content?: string
       error?: string
       progress?: {
@@ -68,11 +100,30 @@ export class LocalBackend implements ConversionBackend {
       }
     }
 
+    const status = this.mapStatus(data.status)
+    const isComplete = status === "completed"
+    const result = data.result
+
     return {
       jobId: data.job_id,
-      status: data.status,
-      result: data.result,
-      htmlContent: data.html_content,
+      status,
+      htmlContent: data.html_content || result?.formats?.html_raw,
+      result:
+        isComplete && result
+          ? {
+              content: result.formats?.html_raw || result.content,
+              metadata: result.metadata,
+              formats: result.formats
+                ? {
+                    html: result.formats.html_raw || result.formats.html,
+                    markdown: result.formats.markdown,
+                    json: result.formats.json,
+                    chunks: result.formats.chunks,
+                  }
+                : undefined,
+              images: result.images,
+            }
+          : undefined,
       error: data.error,
       progress: data.progress
         ? { ...data.progress, elapsed: data.progress.elapsed ?? 0 }
@@ -104,4 +155,15 @@ export class LocalBackend implements ConversionBackend {
       return false
     }
   }
+}
+
+/**
+ * Create Local backend from environment.
+ */
+export function createLocalBackend(env: {
+  LOCAL_WORKER_URL?: string
+}): LocalBackend {
+  return new LocalBackend({
+    baseUrl: env.LOCAL_WORKER_URL || "http://localhost:8000",
+  })
 }

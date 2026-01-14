@@ -13,6 +13,7 @@ import {
   wrapCitations,
   processParagraphs,
   convertMathToHtml,
+  rewriteImageSources,
 } from "../utils/html-processing"
 import { addPageAttributes } from "../utils/tts-attribution"
 import { stripHtmlForEmbedding } from "../services/embeddings"
@@ -193,8 +194,31 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
           case "completed": {
             const fileInfo = jobFileMap.get(jobId)
 
+            // Upload images to R2 and get public URLs
+            let imageUrls: Record<string, string> | undefined
+            if (
+              job.result?.images &&
+              Object.keys(job.result.images).length > 0 &&
+              storage.uploadImages &&
+              fileInfo?.documentPath
+            ) {
+              const uploadResult = await tryCatch(
+                storage.uploadImages(fileInfo.documentPath, job.result.images),
+              )
+              if (uploadResult.success) {
+                imageUrls = uploadResult.data
+                console.log(
+                  `[jobs] Uploaded ${Object.keys(imageUrls).length} images to R2`,
+                )
+              } else {
+                console.error(
+                  `[jobs] Failed to upload images: ${uploadResult.error}`,
+                )
+              }
+            }
+
             // Extract chunks first (needed for page attribution)
-            const rawChunks = job.result?.formats?.chunks?.blocks || []
+            const rawChunks = job.result?.formats?.chunks?.blocks ?? []
             const chunks: ChunkInput[] = rawChunks
               .map((chunk) => ({
                 blockId: chunk.id,
@@ -208,6 +232,25 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
                   : undefined,
               }))
               .filter((c) => c.content.trim().length > 0)
+
+            // Rewrite image sources to use R2 URLs
+            if (imageUrls) {
+              if (job.result?.content) {
+                job.result.content = rewriteImageSources(
+                  job.result.content,
+                  imageUrls,
+                )
+              }
+              if (job.htmlContent) {
+                job.htmlContent = rewriteImageSources(job.htmlContent, imageUrls)
+              }
+              if (job.result?.formats?.html) {
+                job.result.formats.html = rewriteImageSources(
+                  job.result.formats.html,
+                  imageUrls,
+                )
+              }
+            }
 
             // Enhance HTML with single parse: reader enhancements + page attribution
             if (job.result?.content) {
@@ -255,9 +298,17 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               })
             }
 
+            // For backends that don't support html_ready (like datalab), use result content
+            const earlyContent = job.htmlContent || job.result?.content
+            if (!htmlReadySent && earlyContent) {
+              sendEvent("html_ready", { content: earlyContent })
+              htmlReadySent = true
+            }
+
             // Send completed event with fileId for downloads
             sendEvent("completed", {
               ...job.result,
+              ...(imageUrls && { images: imageUrls }),
               jobId,
               fileId: fileInfo?.fileId,
             })

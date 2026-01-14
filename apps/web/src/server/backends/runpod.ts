@@ -1,5 +1,10 @@
 import type { ConversionBackend } from "./interface"
-import type { ConversionInput, ConversionJob, JobStatus } from "../types"
+import type {
+  ChunkOutput,
+  ConversionInput,
+  ConversionJob,
+  JobStatus,
+} from "../types"
 
 const TIMEOUT_MS = 30_000
 
@@ -11,7 +16,7 @@ interface RunpodConfig {
 /**
  * Runpod backend - self-hosted serverless GPU on Runpod.
  */
-export class RunpodBackend implements ConversionBackend {
+class RunpodBackend implements ConversionBackend {
   readonly name = "runpod"
   private config: RunpodConfig
   private baseUrl: string
@@ -74,14 +79,50 @@ export class RunpodBackend implements ConversionBackend {
     const data = (await response.json()) as {
       id: string
       status: string
-      output?: { content: string; metadata: Record<string, unknown> }
+      output?: {
+        content: string
+        metadata: Record<string, unknown>
+        formats?: {
+          html: string
+          html_raw?: string
+          markdown: string
+          json: unknown
+          chunks?: ChunkOutput
+        }
+        images?: Record<string, string>
+      }
       error?: string
+    }
+
+    const isComplete = data.status === "COMPLETED"
+    const output = data.output
+
+    // Build htmlContent for progressive loading (raw HTML without embedded images)
+    let htmlContent: string | undefined
+    if (isComplete && output?.formats?.html_raw) {
+      htmlContent = output.formats.html_raw
     }
 
     return {
       jobId: data.id,
       status: this.mapStatus(data.status),
-      result: data.output,
+      htmlContent,
+      result:
+        isComplete && output
+          ? {
+              content: output.formats?.html_raw || output.content,
+              metadata: output.metadata,
+              formats: output.formats
+                ? {
+                    html: output.formats.html_raw || output.formats.html,
+                    markdown: output.formats.markdown,
+                    json: output.formats.json,
+                    chunks: output.formats.chunks,
+                  }
+                : undefined,
+              images: output.images,
+            }
+          : undefined,
       error: data.error,
     }
   }

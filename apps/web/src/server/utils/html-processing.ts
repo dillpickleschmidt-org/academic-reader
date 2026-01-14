@@ -17,7 +17,7 @@ export function processHtml(html: string, transforms: HtmlTransform[]): string {
   for (const transform of transforms) {
     transform($)
   }
-  return $("body").html() || ""
+  return $("body").html() ?? ""
 }
 
 /** Remove redundant img-description elements */
@@ -137,5 +137,25 @@ export function convertMathToHtml($: CheerioAPI): void {
       console.warn(`[html] KaTeX failed for: ${latex.slice(0, 50)}...`, e)
     }
   })
+}
+
+/**
+ * Rewrite image src attributes to use storage URLs.
+ * Replaces src="filename.png" with src="https://storage.../filename.png".
+ */
+export function rewriteImageSources(
+  html: string,
+  imageUrls: Record<string, string>,
+): string {
+  const $ = cheerio.load(html)
+
+  $("img").each(function () {
+    const src = $(this).attr("src")
+    if (src && imageUrls[src]) {
+      $(this).attr("src", imageUrls[src])
+    }
+  })
+
+  return $("body").html() ?? ""
 }
 

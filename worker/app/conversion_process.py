@@ -81,10 +81,12 @@ def run_conversion_process(
                 "metadata": all_formats["metadata"],
                 "formats": {
                     "html": html_with_images,
+                    "html_raw": html_content,
                     "markdown": all_formats["markdown"],
                     "json": all_formats["json"],
                     "chunks": all_formats["chunks"],
                 },
+                "images": images,
             },
         )
     except FileNotFoundError:

@@ -1,10 +1,12 @@
 /** Download endpoint - generates complete HTML with embedded subsetted fonts. */
 import { Hono } from "hono"
 import * as cheerio from "cheerio"
+import type { CheerioAPI } from "cheerio"
 import { minify } from "html-minifier-terser"
 import type { BackendType } from "../types"
 import type { Storage } from "../storage/types"
 import { getDocumentPath } from "../storage/types"
+import { jobFileMap } from "../storage/job-file-map"
 import { getAuth } from "../middleware/auth"
 import { createBackend } from "../backends/factory"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
@@ -112,10 +114,57 @@ ${renderedContent}
 </html>`
 }
 
+const MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+}
+
+/**
+ * Embed images from R2 as base64 data URIs for self-contained HTML downloads.
+ * Looks for img tags with src URLs containing the docPath/images/ pattern.
+ */
+async function embedImagesFromStorage(
+  $: CheerioAPI,
+  storage: Storage,
+  docPath: string,
+): Promise<void> {
+  const images = $("img").toArray()
+  const imagesPath = `${docPath}/images/`
+
+  await Promise.all(
+    images.map(async (el) => {
+      const src = $(el).attr("src")
+      if (!src) return
+
+      // Check if this is an R2 URL pointing to our images folder
+      if (!src.includes(imagesPath)) return
+
+      // Extract filename from URL pathname (strips query strings)
+      const filename = new URL(src).pathname.split("/").pop()
+      if (!filename) return
+
+      try {
+        const buffer = await storage.readFile(`${docPath}/images/${filename}`)
+        const base64 = buffer.toString("base64")
+        const ext = filename.split(".").pop()?.toLowerCase() || "png"
+        const mimeType = MIME_TYPES[ext] || "image/png"
+        $(el).attr("src", `data:${mimeType};base64,${base64}`)
+      } catch {
+        // Image not found - leave src as-is (will show broken image)
+        console.warn(`[download] Failed to embed image: ${filename}`)
+      }
+    }),
+  )
+}
+
 download.get("/jobs/:jobId/download", async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
   const title = sanitizeTitle(c.req.query("title") || "")
+  const storage = c.get("storage")
 
   event.jobId = jobId
   event.backend = (process.env.BACKEND_MODE || "local") as BackendType
@@ -156,6 +205,12 @@ download.get("/jobs/:jobId/download", async (c) => {
   html = enhanceHtmlForReader(html)
   const $ = cheerio.load(html)
 
+  // Embed images from R2 as base64 for self-contained download
+  const fileInfo = jobFileMap.get(jobId)
+  if (fileInfo?.documentPath) {
+    await embedImagesFromStorage($, storage, fileInfo.documentPath)
+  }
+
   const katexFontUsage = extractKatexFontUsage($)
 
   const fontsResult = await tryCatch(
@@ -172,7 +227,9 @@ download.get("/jobs/:jobId/download", async (c) => {
 
   const [sourceSansCss, katexFontsCss] = fontsResult.data
   const fontCss = `${sourceSansCss}\n${katexFontsCss}`
-  const fullHtml = generateHtmlDocument(html, title, fontCss, katexCssRules)
+  // Get HTML from cheerio after image embedding
+  const finalHtml = $("body").html() || html
+  const fullHtml = generateHtmlDocument(finalHtml, title, fontCss, katexCssRules)
 
   const minifyResult = await tryCatch(
     minify(fullHtml, {
@@ -231,6 +288,9 @@ download.get("/files/:fileId/download", async (c) => {
   const html = enhanceHtmlForReader(htmlResult.data)
   const $ = cheerio.load(html)
 
+  // Embed images from R2 as base64 for self-contained download
+  await embedImagesFromStorage($, storage, docPath)
+
   const katexFontUsage = extractKatexFontUsage($)
 
   const fontsResult = await tryCatch(
@@ -247,7 +307,9 @@ download.get("/files/:fileId/download", async (c) => {
 
   const [sourceSansCss, katexFontsCss] = fontsResult.data
   const fontCss = `${sourceSansCss}\n${katexFontsCss}`
-  const fullHtml = generateHtmlDocument(html, title, fontCss, katexCssRules)
+  // Get HTML from cheerio after image embedding
+  const finalHtml = $("body").html() || html
+  const fullHtml = generateHtmlDocument(finalHtml, title, fontCss, katexCssRules)
 
   const minifyResult = await tryCatch(
     minify(fullHtml, {

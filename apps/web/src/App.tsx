@@ -7,6 +7,7 @@ import { useAppConfig } from "./hooks/use-app-config"
 import { DocumentProvider } from "./context/DocumentContext"
 import { TTSProvider } from "./context/TTSContext"
 import { UploadPage } from "./pages/UploadPage"
+import { resultPageImport } from "./utils/preload"
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -19,9 +20,8 @@ const ConfigureProcessingPage = lazy(() =>
     default: m.ConfigureProcessingPage,
   })),
 )
-const ResultPage = lazy(() =>
-  import("./pages/ResultPage").then((m) => ({ default: m.ResultPage })),
-)
+
+const ResultPage = lazy(resultPageImport)
 
 function App() {
   const conversion = useConversion()

@@ -13,6 +13,7 @@ import {
 } from "@repo/core/client/api-client"
 import { downloadFile, downloadContent } from "@repo/core/client/download"
 import { useAppConfig } from "./use-app-config"
+import { preloadResultPage } from "../utils/preload"
 
 export type Page = "upload" | "configure" | "processing" | "result"
 export type { OutputFormat, ChunkBlock }
@@ -54,11 +55,12 @@ export function useConversion() {
 
   // Document context for AI chat (RAG)
   const [documentId, setDocumentId] = useState<string | null>(null)
-  const [chunks, setChunks] = useState<ChunkBlock[]>([])
-  const [markdown, setMarkdown] = useState("")
+  const [chunks, setChunks] = useState<ChunkBlock[] | undefined>()
+  const [markdown, setMarkdown] = useState<string | undefined>()
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
+  const htmlReadyFiredRef = useRef(false)
 
   // Cancellation state
   const [isCancelling, setIsCancelling] = useState(false)
@@ -104,8 +106,8 @@ export function useConversion() {
     setImagesReady(false)
     setStages([])
     setDocumentId(null)
-    setChunks([])
-    setMarkdown("")
+    setChunks(undefined)
+    setMarkdown(undefined)
   }
 
   const uploadFile = async (file: File) => {
@@ -174,10 +176,14 @@ export function useConversion() {
       sseCleanupRef.current = null
     }
 
+    // Preload ResultPage chunk while processing
+    preloadResultPage()
+
     setPage("processing")
     setError("")
     setImagesReady(false)
     setStages([])
+    htmlReadyFiredRef.current = false
 
     try {
       const { job_id } = await apiStartConversion(fileId, fileName, {
@@ -192,33 +198,30 @@ export function useConversion() {
         job_id,
         (progress: ConversionProgress) => updateStages(progress),
         (htmlContent) => {
+          htmlReadyFiredRef.current = true
           setContent(htmlContent)
           setPage("result")
         },
-        async (result) => {
-          setContent(result.content)
+        (result) => {
+          // Only set content if html_ready didn't fire
+          if (!htmlReadyFiredRef.current) {
+            setContent(result.content)
+            setPage("result")
+          }
+
           setImagesReady(true)
-
-          // Persist document if user is authenticated
-          if (user && result.jobId) {
-            try {
-              const { documentId } = await apiPersistDocument(result.jobId)
-              setDocumentId(documentId)
-            } catch (err) {
-              // Persistence failed - continue without documentId
-              console.warn("[persistence] Failed to persist document:", err)
-            }
-          }
-
-          // Extract chunks and markdown for AI chat
-          if (result.formats?.chunks?.blocks) {
-            setChunks(result.formats.chunks.blocks)
-          }
-          if (result.formats?.markdown) {
-            setMarkdown(result.formats.markdown)
-          }
-          setPage("result")
+          setChunks(result.formats?.chunks?.blocks ?? [])
+          setMarkdown(result.formats?.markdown ?? "")
           sseCleanupRef.current = null
+
+          // Fire-and-forget persistence (doesn't block render)
+          if (user && result.jobId) {
+            apiPersistDocument(result.jobId)
+              .then(({ documentId }) => setDocumentId(documentId))
+              .catch((err) =>
+                console.warn("[persistence] Failed to persist document:", err),
+              )
+          }
         },
         (errorMsg) => {
           setError(errorMsg)
@@ -288,23 +291,22 @@ export function useConversion() {
 
       const data = await response.json()
       setContent(data.html)
-      setMarkdown(data.markdown || "")
+      setMarkdown(data.markdown ?? "")
       setDocumentId(docId)
       setFileId(data.storageId)
       setOutputFormat("html")
       setImagesReady(true)
       // Transform Convex chunks to ChunkBlock format for TTS
-      if (data.chunks) {
-        const transformedChunks = data.chunks.map((c: { blockId: string; blockType: string; content: string; page: number }) => ({
+      setChunks(
+        data.chunks?.map((c: { blockId: string; blockType: string; content: string; page: number }) => ({
           id: c.blockId,
           block_type: c.blockType,
-          html: c.content, // Convex stores stripped content, use as-is
+          html: c.content,
           page: c.page,
           polygon: [],
           bbox: [],
-        }))
-        setChunks(transformedChunks)
-      }
+        })) ?? [],
+      )
       setPage("result")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load document")

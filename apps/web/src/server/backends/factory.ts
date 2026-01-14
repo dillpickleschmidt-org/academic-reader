@@ -1,6 +1,6 @@
 import type { ConversionBackend } from "./interface"
 import type { BackendType } from "../types"
-import { LocalBackend } from "./local"
+import { createLocalBackend } from "./local"
 import { createRunpodBackend } from "./runpod"
 import { createDatalabBackend } from "./datalab"
 
@@ -12,7 +12,9 @@ export function createBackend(): ConversionBackend {
 
   switch (backendType) {
     case "local":
-      return new LocalBackend(process.env.LOCAL_WORKER_URL || "http://localhost:8000")
+      return createLocalBackend({
+        LOCAL_WORKER_URL: process.env.LOCAL_WORKER_URL,
+      })
 
     case "runpod":
       return createRunpodBackend({

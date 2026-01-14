@@ -28,7 +28,7 @@ interface DatalabResponse {
  * Datalab backend - hosted Marker API from Datalab.
  * API docs: https://www.datalab.to/docs/marker
  */
-export class DatalabBackend implements ConversionBackend {
+class DatalabBackend implements ConversionBackend {
   readonly name = "datalab"
   private config: DatalabConfig
   private readonly baseUrl = "https://www.datalab.to/api/v1/marker"
@@ -53,7 +53,7 @@ export class DatalabBackend implements ConversionBackend {
     formData.append("file", blob, input.filename || "document.pdf")
 
     // Request all output formats
-    formData.append("output_format", "html,markdown,json,chunks")
+    formData.append("output_format", "html,markdown,json")
 
     // Mode: balanced (default) or accurate (with LLM/Gemini 2.0 Flash)
     formData.append("mode", input.useLlm ? "accurate" : "balanced")
@@ -116,41 +116,26 @@ export class DatalabBackend implements ConversionBackend {
   }
 
   private parseResponse(data: DatalabResponse): ConversionJob {
-    let htmlContent = data.html || ""
-
-    // Embed base64 images into HTML as data URIs
-    if (data.html && data.images) {
-      // Datalab supports png, jpg, webp for input/output images
-      const extToMime: Record<string, string> = {
-        jpg: "image/jpeg",
-        jpeg: "image/jpeg",
-        png: "image/png",
-        webp: "image/webp",
-      }
-      for (const [filename, base64] of Object.entries(data.images)) {
-        const ext = filename.split(".").pop()?.toLowerCase() || ""
-        const mimeType = extToMime[ext] || "image/jpeg"
-        const dataUri = `data:${mimeType};base64,${base64}`
-        htmlContent = htmlContent
-          .replaceAll(`src="${filename}"`, `src="${dataUri}"`)
-          .replaceAll(`src='${filename}'`, `src="${dataUri}"`)
-      }
-    }
+    const rawHtml = data.html ?? ""
 
     return {
       jobId: data.request_id,
       status: this.mapStatus(data.status, data.success),
+      // Raw HTML for early display (progressive loading with shimmer placeholders)
+      htmlContent:
+        data.status === "complete" && data.success ? rawHtml : undefined,
       result:
         data.status === "complete" && data.success
           ? {
-              content: htmlContent,
+              content: rawHtml,
               metadata: {},
               formats: {
-                html: htmlContent,
-                markdown: data.markdown || "",
+                html: rawHtml,
+                markdown: data.markdown ?? "",
                 json: data.json,
                 chunks: data.chunks,
               },
+              images: data.images,
             }
           : undefined,
       error: data.error,

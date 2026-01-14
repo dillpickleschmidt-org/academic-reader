@@ -216,6 +216,12 @@ async def stream_job_status(job_id: str):
                 return
 
             if job["status"] == "completed":
+                if not html_ready_sent and "html_content" in job:
+                    yield {
+                        "event": "html_ready",
+                        "data": json.dumps({"content": job["html_content"]}),
+                    }
+                    html_ready_sent = True
                 yield {"event": "completed", "data": json.dumps(job["result"])}
                 manager.cleanup_finished(job_id)
                 return

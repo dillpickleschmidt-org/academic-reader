@@ -25,4 +25,10 @@ export interface Storage {
 
   /** Get a presigned URL for a file (used by local/runpod backends to pass URL to worker) */
   getFileUrl(key: string): Promise<string>
+
+  /** Upload images to {docPath}/images/ and return public URLs */
+  uploadImages?(
+    docPath: string,
+    images: Record<string, string>,
+  ): Promise<Record<string, string>>
 }

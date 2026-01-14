@@ -52,8 +52,9 @@ class DatalabBackend implements ConversionBackend {
     const blob = new Blob([fileBytes], { type: "application/pdf" })
     formData.append("file", blob, input.filename || "document.pdf")
 
-    // Request all output formats
-    formData.append("output_format", "html,markdown,json")
+    // Request all output formats with block IDs for TTS
+    formData.append("output_format", "html,markdown,json,chunks")
+    formData.append("add_block_ids", "true")
 
     // Mode: balanced (default) or accurate (with LLM/Gemini 2.0 Flash)
     formData.append("mode", input.useLlm ? "accurate" : "balanced")

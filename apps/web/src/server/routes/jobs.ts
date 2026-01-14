@@ -15,7 +15,6 @@ import {
   convertMathToHtml,
   rewriteImageSources,
 } from "../utils/html-processing"
-import { addPageAttributes } from "../utils/tts-attribution"
 import { stripHtmlForEmbedding } from "../services/embeddings"
 import { transformSSEStream } from "../utils/sse-transform"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
@@ -92,7 +91,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
       return c.json({ error: "Failed to connect to stream" }, 500)
     }
 
-    // Transform SSE events to enhance HTML content (no chunks available in stream)
+    // Transform SSE events to enhance HTML content (block IDs added by Marker)
     const transformedStream = transformSSEStream(
       responseResult.data.body,
       (sseEvent, data) => {
@@ -217,7 +216,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               }
             }
 
-            // Extract chunks first (needed for page attribution)
+            // Extract chunks for persistence/caching
             const rawChunks = job.result?.formats?.chunks?.blocks ?? []
             const chunks: ChunkInput[] = rawChunks
               .map((chunk) => ({
@@ -252,14 +251,13 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               }
             }
 
-            // Enhance HTML with single parse: reader enhancements + page attribution
+            // Enhance HTML with reader enhancements (block IDs added by Marker)
             if (job.result?.content) {
               job.result.content = processHtml(job.result.content, [
                 removeImgDescriptions,
                 wrapCitations,
                 processParagraphs,
                 convertMathToHtml,
-                ($) => addPageAttributes($, chunks),
               ])
             }
             if (job.htmlContent) {
@@ -268,7 +266,6 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
                 wrapCitations,
                 processParagraphs,
                 convertMathToHtml,
-                ($) => addPageAttributes($, chunks),
               ])
             }
 
@@ -331,7 +328,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
           }
           case "html_ready":
             if (!htmlReadySent) {
-              // No chunks available yet, just do basic enhancements
+              // Apply reader enhancements (block IDs already added by Marker)
               if (job.htmlContent) {
                 job.htmlContent = processHtml(job.htmlContent, [
                   removeImgDescriptions,

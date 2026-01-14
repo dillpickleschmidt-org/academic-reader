@@ -16,7 +16,6 @@ import {
   processParagraphs,
   convertMathToHtml,
 } from "../utils/html-processing"
-import { addPageAttributes } from "../utils/tts-attribution"
 
 type Variables = {
   storage: Storage
@@ -79,13 +78,12 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
   const { html, markdown } = loadResult.data
   const chunks = chunksResult.success ? chunksResult.data : []
 
-  // Process HTML with single parse: enhancements + page attribution
+  // Process HTML with single parse (block IDs already added by Marker)
   const enhancedHtml = processHtml(html, [
     removeImgDescriptions,
     wrapCitations,
     processParagraphs,
     convertMathToHtml,
-    ($) => addPageAttributes($, chunks),
   ])
 
   return c.json({

@@ -45,7 +45,7 @@ def _render_all_formats(document: Any) -> dict:
     from marker.renderers.markdown import MarkdownRenderer
     from marker.renderers.json import JSONRenderer
 
-    html_output = HTMLRenderer()(document)
+    html_output = HTMLRenderer({"add_block_ids": True})(document)
     markdown_output = MarkdownRenderer()(document)
     json_output = JSONRenderer()(document)
 

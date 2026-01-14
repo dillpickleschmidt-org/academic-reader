@@ -9,89 +9,138 @@ body {
 }
 
 /* Scrollbar base styles */
-html:has(.theme-radios)::-webkit-scrollbar {
+[data-reader-mode]::-webkit-scrollbar {
   width: 12px;
   height: 12px;
 }
 
-html:has(.theme-radios)::-webkit-scrollbar-track {
+[data-reader-mode]::-webkit-scrollbar-track {
   background: transparent;
 }
 
-html:has(.theme-radios)::-webkit-scrollbar-thumb {
+[data-reader-mode]::-webkit-scrollbar-thumb {
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
 /* Scrollbar colors - Light/Comfort themes */
-html:has(#theme-light:checked),
-html:has(#theme-comfort:checked) {
-  scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+[data-reader-mode="light"],
+[data-reader-mode="comfort"] {
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
 }
 
-html:has(#theme-light:checked)::-webkit-scrollbar-thumb,
-html:has(#theme-comfort:checked)::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3) !important;
+[data-reader-mode="light"]::-webkit-scrollbar-thumb,
+[data-reader-mode="comfort"]::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
 }
 
-html:has(#theme-light:checked)::-webkit-scrollbar-thumb:hover,
-html:has(#theme-comfort:checked)::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5) !important;
+[data-reader-mode="light"]::-webkit-scrollbar-thumb:hover,
+[data-reader-mode="comfort"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
 }
 
 /* Scrollbar colors - Dark theme */
-html:has(#theme-dark:checked) {
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent !important;
+[data-reader-mode="dark"] {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
 
-html:has(#theme-dark:checked)::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3) !important;
+[data-reader-mode="dark"]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
 }
 
-html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5) !important;
+[data-reader-mode="dark"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
-/* Hidden radio inputs for theme switching */
-.theme-radios {
-  position: fixed;
-  opacity: 0;
-  pointer-events: none;
+/* ========================================
+   Reader Mode Overrides
+   Override shadcn variables within reader scope
+   ======================================== */
+
+/* Reader Mode: Light - use color theme's light values (with fallbacks for standalone HTML) */
+[data-reader-mode="light"] {
+  color-scheme: light;
+  --background: var(--theme-light-background, oklch(1 0 0));
+  --foreground: var(--theme-light-foreground, oklch(0.145 0 0));
+  --card: var(--theme-light-card, oklch(1 0 0));
+  --card-foreground: var(--theme-light-card-foreground, oklch(0.145 0 0));
+  --popover: var(--theme-light-popover, oklch(1 0 0));
+  --popover-foreground: var(--theme-light-popover-foreground, oklch(0.145 0 0));
+  --primary: var(--theme-light-primary, oklch(0.6 0.13 163));
+  --primary-foreground: var(--theme-light-primary-foreground, oklch(0.98 0.02 166));
+  --secondary: var(--theme-light-secondary, oklch(0.967 0.001 286.375));
+  --secondary-foreground: var(--theme-light-secondary-foreground, oklch(0.21 0.006 285.885));
+  --muted: var(--theme-light-muted, oklch(0.97 0 0));
+  --muted-foreground: var(--theme-light-muted-foreground, oklch(0.556 0 0));
+  --accent: var(--theme-light-accent, oklch(0.97 0 0));
+  --accent-foreground: var(--theme-light-accent-foreground, oklch(0.205 0 0));
+  --destructive: var(--theme-light-destructive, oklch(0.58 0.22 27));
+  --border: var(--theme-light-border, oklch(0.922 0 0));
+  --input: var(--theme-light-input, oklch(0.922 0 0));
+  --ring: var(--theme-light-ring, oklch(0.708 0 0));
 }
 
-/* Theme Variables - Light (default) */
-.reader-output {
-  --reader-bg: #fff;
-  --reader-text: #333;
-  --reader-text-muted: #666;
-  --reader-border: #eee;
-  --reader-border-strong: #e0e0e0;
-  --reader-link: #0066cc;
-  --reader-code-bg: #f5f5f5;
+/* Reader Mode: Dark - use color theme's dark values (with fallbacks for standalone HTML) */
+[data-reader-mode="dark"] {
+  color-scheme: dark;
+  --background: var(--theme-dark-background, oklch(0.218 0 0));
+  --foreground: var(--theme-dark-foreground, oklch(0.985 0 0));
+  --card: var(--theme-dark-card, oklch(0.205 0 0));
+  --card-foreground: var(--theme-dark-card-foreground, oklch(0.985 0 0));
+  --popover: var(--theme-dark-popover, oklch(0.205 0 0));
+  --popover-foreground: var(--theme-dark-popover-foreground, oklch(0.985 0 0));
+  --primary: var(--theme-dark-primary, oklch(0.7 0.15 162));
+  --primary-foreground: var(--theme-dark-primary-foreground, oklch(0.26 0.05 173));
+  --secondary: var(--theme-dark-secondary, oklch(0.274 0.006 286.033));
+  --secondary-foreground: var(--theme-dark-secondary-foreground, oklch(0.985 0 0));
+  --muted: var(--theme-dark-muted, oklch(0.269 0 0));
+  --muted-foreground: var(--theme-dark-muted-foreground, oklch(0.708 0 0));
+  --accent: var(--theme-dark-accent, oklch(0.371 0 0));
+  --accent-foreground: var(--theme-dark-accent-foreground, oklch(0.985 0 0));
+  --destructive: var(--theme-dark-destructive, oklch(0.704 0.191 22.216));
+  --border: var(--theme-dark-border, oklch(1 0 0 / 10%));
+  --input: var(--theme-dark-input, oklch(1 0 0 / 15%));
+  --ring: var(--theme-dark-ring, oklch(0.556 0 0));
 }
 
-/* Theme Variables - Comfort */
-#theme-comfort:checked ~ .reader-output {
-  --reader-bg: #f5f1e8;
-  --reader-text: #3d3632;
-  --reader-text-muted: #6b5f54;
-  --reader-border: #e0d9cc;
-  --reader-border-strong: #d4cbbf;
-  --reader-link: #1a5f8a;
-  --reader-code-bg: #ebe6db;
+/* Reader Mode: Comfort - fixed sepia palette (ignores color theme) */
+[data-reader-mode="comfort"] {
+  color-scheme: light;
+  --background: #f5f1e8;
+  --foreground: #3d3632;
+  --card: #ebe6db;
+  --card-foreground: #3d3632;
+  --popover: #ebe6db;
+  --popover-foreground: #3d3632;
+  --primary: #1a5f8a;
+  --primary-foreground: #f5f1e8;
+  --secondary: #e0d9cc;
+  --secondary-foreground: #3d3632;
+  --muted: #e0d9cc;
+  --muted-foreground: #6b5f54;
+  --accent: #d4cbbf;
+  --accent-foreground: #3d3632;
+  --destructive: #c45d4c;
+  --border: #d4cbbf;
+  --input: #e0d9cc;
+  --ring: #1a5f8a;
 }
 
-/* Theme Variables - Dark */
-#theme-dark:checked ~ .reader-output {
-  --reader-bg: oklch(0.218 0 0);
-  --reader-text: #d4d4d4;
-  --reader-text-muted: #999;
-  --reader-border: #333;
-  --reader-border-strong: #444;
-  --reader-link: #6db3f2;
-  --reader-code-bg: #2d2d2d;
+/* Reader-specific aliases (derive from shadcn variables above) */
+[data-reader-mode] {
+  --reader-bg: var(--background);
+  --reader-text: var(--foreground);
+  --reader-text-muted: var(--muted-foreground);
+  --reader-border: var(--border);
+  --reader-border-strong: var(--accent);
+  --reader-link: var(--primary);
+  --reader-code-bg: var(--muted);
 }
+
+/* ========================================
+   Reader Output Layout
+   ======================================== */
 
 .reader-output {
   flex: 1;
@@ -127,7 +176,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   z-index: 1000;
 }
 
-.reader-theme-toggle label {
+.reader-theme-toggle button {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -141,29 +190,18 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   transition: all 0.15s ease;
 }
 
-.reader-theme-toggle label svg {
+.reader-theme-toggle button svg {
   width: 18px;
   height: 18px;
 }
 
-.reader-theme-toggle label:hover {
+.reader-theme-toggle button:hover {
   background: var(--reader-border);
   color: var(--reader-text);
 }
 
-/* Active state for theme toggle labels */
-#theme-light:checked
-  ~ .reader-output
-  .reader-theme-toggle
-  label[for="theme-light"],
-#theme-comfort:checked
-  ~ .reader-output
-  .reader-theme-toggle
-  label[for="theme-comfort"],
-#theme-dark:checked
-  ~ .reader-output
-  .reader-theme-toggle
-  label[for="theme-dark"] {
+/* Active state for theme toggle buttons */
+.reader-theme-toggle button[data-active="true"] {
   background: var(--reader-bg);
   color: var(--reader-text);
 }

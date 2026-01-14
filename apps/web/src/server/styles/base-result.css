@@ -84,14 +84,13 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
 
 /* Theme Variables - Dark */
 #theme-dark:checked ~ .reader-output {
-  --reader-bg: #383838;
   --reader-bg: oklch(0.218 0 0);
-  --reader-text: #d4d4d4;
-  --reader-text-muted: #999;
-  --reader-border: #333;
-  --reader-border-strong: #444;
+  --reader-text: oklch(0.985 0 0);
+  --reader-text-muted: oklch(0.708 0 0);
+  --reader-border: oklch(1 0 0 / 10%);
+  --reader-border-strong: oklch(0.371 0 0);
   --reader-link: #6db3f2;
-  --reader-code-bg: #2d2d2d;
+  --reader-code-bg: oklch(0.269 0 0);
 }
 
 .reader-output {
@@ -165,41 +164,6 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   label[for="theme-dark"] {
   background: var(--reader-bg);
   color: var(--reader-text);
-}
-
-/* Actions (download/new) - fixed top left */
-.reader-actions {
-  position: fixed;
-  top: 1rem;
-  left: 1rem;
-  display: flex;
-  gap: 0.5rem;
-  z-index: 1000;
-}
-
-.reader-actions button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: var(--reader-code-bg);
-  border: 1px solid var(--reader-border);
-  cursor: pointer;
-  border-radius: 8px;
-  color: var(--reader-text-muted);
-  transition: all 0.15s ease;
-}
-
-.reader-actions button:hover {
-  background: var(--reader-border);
-  border-color: var(--reader-border-strong);
-  color: var(--reader-text);
-}
-
-.reader-actions button svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* Shared pre/code styles for markdown and json views */

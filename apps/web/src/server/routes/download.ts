@@ -69,21 +69,9 @@ ${htmlResultCss}
   </style>
 </head>
 <body>
-  <!-- Theme radio inputs - must be siblings before .reader-output for CSS selectors -->
-  <input type="radio" name="theme" id="theme-light" class="theme-radios" checked>
-  <input type="radio" name="theme" id="theme-comfort" class="theme-radios">
-  <input type="radio" name="theme" id="theme-dark" class="theme-radios">
-  <script>
-    // Eagerly apply saved theme before render
-    (function() {
-      var theme = localStorage.getItem('reader-theme');
-      if (theme && theme !== 'light') {
-        document.getElementById('theme-light').checked = false;
-        document.getElementById('theme-' + theme).checked = true;
-      }
-    })();
-  </script>
-
+  <input type="radio" id="theme-light" name="theme" class="theme-radios" checked>
+  <input type="radio" id="theme-comfort" name="theme" class="theme-radios">
+  <input type="radio" id="theme-dark" name="theme" class="theme-radios">
   <div class="reader-output">
     <div class="reader-theme-toggle">
       <label for="theme-light" title="Light">${SUN_ICON}</label>
@@ -96,12 +84,20 @@ ${renderedContent}
   </div>
 
   <script>
-    // Persist theme changes to localStorage
-    document.querySelectorAll('input[name="theme"]').forEach(function(radio) {
-      radio.addEventListener('change', function() {
-        localStorage.setItem('reader-theme', this.id.replace('theme-', ''));
+    // Optional enhancement: persist theme to localStorage
+    (function() {
+      var radios = document.querySelectorAll('.theme-radios');
+      var saved = localStorage.getItem('reader-theme');
+      if (saved) {
+        var radio = document.getElementById('theme-' + saved);
+        if (radio) radio.checked = true;
+      }
+      radios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+          localStorage.setItem('reader-theme', this.id.replace('theme-', ''));
+        });
       });
-    });
+    })();
   </script>
   <script>${copyTexScript.replace(/<\/script/gi, "<\\/script")}</script>
 </body>

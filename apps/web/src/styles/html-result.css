@@ -5,7 +5,8 @@
 
 @import "@fontsource-variable/source-sans-3";
 
-/* Additional theme variables for HTML content */
+/* Theme variables for HTML content - supports both React app and standalone downloads */
+
 .reader-output {
   --reader-text-heading: oklch(0.218 0 0);
   --reader-text-heading-h2: var(--reader-text-heading);
@@ -13,16 +14,16 @@
   --reader-citation-text: #555;
 }
 
-#theme-comfort:checked ~ .reader-output {
+:is([data-reader-mode="comfort"], #theme-comfort:checked ~ .reader-output) {
   --reader-text-heading: #2a2520;
   --reader-text-heading-h2: var(--reader-text-heading);
   --reader-citation-bg: #ebe6db;
   --reader-citation-text: #5a4f44;
 }
 
-#theme-dark:checked ~ .reader-output {
+:is([data-reader-mode="dark"], #theme-dark:checked ~ .reader-output) {
   --reader-text-heading: #e8e8e8;
-  --reader-text-heading-h2: oklch(0.65 0.08 163);
+  --reader-text-heading-h2: oklch(from var(--reader-link) L calc(C * 0.65) H);
   --reader-citation-bg: #2d2d2d;
   --reader-citation-text: #aaa;
 }

@@ -5,6 +5,7 @@ import { BookOpen, Bot, Download, Plus, Volume2 } from "lucide-react"
 
 import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"
+import { ColorThemeSelector } from "@/components/sidebar/ColorThemeSelector"
 import {
   Sidebar,
   SidebarContent,
@@ -90,7 +91,7 @@ export function ReaderSidebar({
         <NavActions actions={actions} />
       </SidebarContent>
       <SidebarFooter>
-        {/* Empty for now - could add user info later */}
+        <ColorThemeSelector />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

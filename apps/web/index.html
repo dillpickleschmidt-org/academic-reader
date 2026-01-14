@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-color-theme="basic">
   <head>
     <script>
       ;(function () {
-        var theme = localStorage.getItem("academic-reader-theme")
-        if (
-          theme === "dark" ||
-          (theme !== "light" &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches)
-        ) {
+        // Apply color theme from localStorage (default: basic)
+        var colorTheme = localStorage.getItem("color-theme") || "basic"
+        document.documentElement.setAttribute("data-color-theme", colorTheme)
+
+        // Apply system dark mode (not user-configurable)
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
           document.documentElement.classList.add("dark")
         }
       })()

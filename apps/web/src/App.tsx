@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback } from "react"
+import { lazy, Suspense, useCallback, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
@@ -25,6 +25,17 @@ const ResultPage = lazy(() =>
 function App() {
   const conversion = useConversion()
   const { user } = useAppConfig()
+
+  // Listen for system dark mode changes
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    const handler = (e: MediaQueryListEvent) => {
+      document.documentElement.classList.toggle("dark", e.matches)
+    }
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [])
+
   const recentDocuments = useQuery(
     api.api.documents.listPersisted,
     user ? { limit: 2 } : "skip",

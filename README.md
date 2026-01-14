@@ -13,11 +13,11 @@ bun run dev                    # Start development servers
 
 ## Backend Modes
 
-| Mode      | GPU           | File Storage     | Setup                      |
-| --------- | ------------- | ---------------- | -------------------------- |
-| `local`   | Your machine  | Local filesystem | NVIDIA GPU + Docker        |
-| `runpod`  | Runpod cloud  | S3/R2/MinIO      | Runpod API key + S3 config |
-| `datalab` | Datalab cloud | Memory (temp)    | Datalab API key            |
+| Mode      | GPU           | File Storage | Setup                      |
+| --------- | ------------- | ------------ | -------------------------- |
+| `local`   | Your machine  | MinIO        | NVIDIA GPU + Docker        |
+| `runpod`  | Runpod cloud  | MinIO / R2   | Runpod API key + S3 config |
+| `datalab` | Datalab cloud | MinIO / R2   | Datalab API key            |
 
 Set `BACKEND_MODE` in `.env.dev` for development.
 
@@ -62,9 +62,12 @@ Frontend and API served from VPS via Dokploy. Cloudflare proxy provides DDoS pro
 
 ### Storage
 
-- **local mode** - /tmp/academic-reader-uploads/{uuid}.{ext} (dev mode only)
-- **datalab mode** - In-Memory: API accepts files directly for processing
-- **runpod mode** - S3/R2 cloud for prod, MinIO with temp tunnel for dev
+All modes use S3-compatible storage (MinIO for dev, R2 for prod):
+
+- **Signed-out users**: `temp_documents/{fileId}/` - auto-deleted after 7 days
+- **Signed-in users**: `documents/{userId}/{fileId}/` - permanent, managed via UI
+
+Each document folder contains: `original.pdf`, `content.html`, `content.md`
 
 ## Development
 
@@ -139,7 +142,14 @@ Push to main
    - `GOOGLE_CLIENT_SECRET`
    - `BETTER_AUTH_SECRET`
 
-8. **Configure SSRF protection** (required for `/fetch-url` endpoint):
+8. **Configure R2 lifecycle rule** (runpod mode only):
+
+   ```bash
+   # Auto-delete temp files after 7 days (signed-out user uploads)
+   npx wrangler r2 bucket lifecycle add <bucket-name> temp-cleanup temp_documents/ --expire-days 7
+   ```
+
+9. **Configure SSRF protection** (required for `/fetch-url` endpoint):
 
    ```bash
    # Block containers from accessing private/internal IPs (IPv4)

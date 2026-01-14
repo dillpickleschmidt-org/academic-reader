@@ -16,11 +16,12 @@ import * as Documents from "../model/documents"
 
 /**
  * Create a document with chunks (no embeddings).
- * Called at conversion completion for authenticated users.
+ * Called at persist time for authenticated users.
  */
 export const create = mutation({
   args: {
     filename: v.string(),
+    storageId: v.string(),
     pageCount: v.optional(v.number()),
     chunks: v.array(
       v.object({
@@ -35,6 +36,7 @@ export const create = mutation({
   handler: (ctx, args) =>
     Documents.createDocumentWithChunks(ctx, {
       filename: args.filename,
+      storageId: args.storageId,
       pageCount: args.pageCount,
       chunks: args.chunks,
     }),

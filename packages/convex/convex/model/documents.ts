@@ -19,6 +19,8 @@ export interface ChunkInput {
 
 export interface CreateDocumentInput {
   filename: string
+  /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
+  storageId: string
   pageCount?: number
   chunks: ChunkInput[] // Without embeddings
 }
@@ -27,7 +29,7 @@ export interface CreateDocumentInput {
 
 /**
  * Create a document with chunks (no embeddings).
- * Called at conversion completion for authenticated users.
+ * Called at persist time for authenticated users.
  * Embeddings are added later when AI chat opens.
  */
 export async function createDocumentWithChunks(
@@ -39,6 +41,7 @@ export async function createDocumentWithChunks(
   const documentId = await ctx.db.insert("documents", {
     userId: user._id,
     filename: input.filename,
+    storageId: input.storageId,
     pageCount: input.pageCount,
     createdAt: Date.now(),
   })
@@ -53,12 +56,11 @@ export async function createDocumentWithChunks(
         content: chunk.content,
         page: chunk.page,
         section: chunk.section,
-        // No embedding - will be added when AI chat opens
       }),
     ),
   )
 
-  return { documentId, chunkCount: input.chunks.length }
+  return { documentId, storageId: input.storageId, chunkCount: input.chunks.length }
 }
 
 /**

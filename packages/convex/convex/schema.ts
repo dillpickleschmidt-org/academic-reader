@@ -6,9 +6,13 @@ export default defineSchema({
   documents: defineTable({
     userId: v.string(),
     filename: v.string(),
+    /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
+    storageId: v.string(),
     pageCount: v.optional(v.number()),
     createdAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_storage", ["userId", "storageId"]),
 
   // Chunks table - document segments with vector embeddings for RAG search
   chunks: defineTable({

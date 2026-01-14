@@ -30,7 +30,30 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
   const storage = c.get("storage")
   event.documentId = documentId
 
-  const loadResult = await tryCatch(loadPersistedDocument(storage, userId, documentId))
+  // Get document from Convex to retrieve storageId
+  const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
+  if (!convex) {
+    event.error = { category: "auth", message: "Failed to authenticate with Convex", code: "CONVEX_AUTH_ERROR" }
+    return c.json({ error: "Authentication failed" }, 401)
+  }
+
+  const typedDocumentId = documentId as Id<"documents">
+  const docResult = await tryCatch(
+    convex.query(api.api.documents.get, { documentId: typedDocumentId })
+  )
+
+  if (!docResult.success || !docResult.data) {
+    event.error = {
+      category: "storage",
+      message: !docResult.success ? getErrorMessage(docResult.error) : "Document not found",
+      code: "DOCUMENT_NOT_FOUND",
+    }
+    return c.json({ error: "Document not found" }, 404)
+  }
+
+  // Use storageId for S3 path
+  const storageId = docResult.data.storageId
+  const loadResult = await tryCatch(loadPersistedDocument(storage, userId, storageId))
 
   if (!loadResult.success) {
     event.error = {
@@ -69,8 +92,24 @@ savedDocuments.delete("/saved-documents/:documentId", requireAuth, async (c) => 
     return c.json({ error: "Authentication failed" }, 401)
   }
 
-  // Delete from Convex (handles auth + chunks)
+  // Get document to retrieve storageId for S3 deletion
   const typedDocumentId = documentId as Id<"documents">
+  const docResult = await tryCatch(
+    convex.query(api.api.documents.get, { documentId: typedDocumentId })
+  )
+
+  if (!docResult.success || !docResult.data) {
+    event.error = {
+      category: "storage",
+      message: !docResult.success ? getErrorMessage(docResult.error) : "Document not found",
+      code: "DOCUMENT_NOT_FOUND",
+    }
+    return c.json({ error: "Document not found" }, 404)
+  }
+
+  const storageId = docResult.data.storageId
+
+  // Delete from Convex (handles auth + chunks)
   const removeResult = await tryCatch(
     convex.mutation(api.api.documents.remove, { documentId: typedDocumentId }),
   )
@@ -85,7 +124,7 @@ savedDocuments.delete("/saved-documents/:documentId", requireAuth, async (c) => 
   }
 
   // Delete storage files (best-effort, don't fail if files missing)
-  const paths = getStoragePaths(userId, documentId)
+  const paths = getStoragePaths(userId, storageId)
   await Promise.all([
     storage.deleteFile(paths.original).catch(() => {}),
     storage.deleteFile(paths.html).catch(() => {}),

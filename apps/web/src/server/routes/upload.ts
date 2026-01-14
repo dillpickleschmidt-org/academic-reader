@@ -1,21 +1,11 @@
 import { Hono } from "hono"
 import type { BackendType } from "../types"
-import type { ContentfulStatusCode } from "hono/utils/http-status"
 import type { Storage } from "../storage/types"
+import { getDocumentPath } from "../storage/types"
 import { S3Storage } from "../storage/s3"
+import { getAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
-
-// Worker upload response type and validator
-type WorkerUploadResponse = { file_id: string; filename: string; size: number }
-
-function isWorkerUploadResponse(v: unknown): v is WorkerUploadResponse {
-  return (
-    typeof v === "object" && v !== null &&
-    "file_id" in v && typeof v.file_id === "string" &&
-    "filename" in v && typeof v.filename === "string" &&
-    "size" in v && typeof v.size === "number"
-  )
-}
+import { sanitizeFilename } from "../utils/sanitize"
 
 type Variables = {
   storage: Storage
@@ -23,97 +13,58 @@ type Variables = {
 
 export const upload = new Hono<{ Variables: Variables }>()
 
-// Upload file directly
+// Upload file directly - saves to S3/MinIO for all modes
 upload.post("/upload", async (c) => {
   const event = c.get("event")
   const backend = process.env.BACKEND_MODE || "local"
   event.backend = backend as BackendType
 
-  // Local mode: passthrough to FastAPI worker
-  if (backend === "local") {
-    const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
+  const storage = c.get("storage")
 
-    const formDataResult = await tryCatch(c.req.formData())
-    if (!formDataResult.success) {
-      event.error = { category: "validation", message: getErrorMessage(formDataResult.error), code: "FORM_PARSE_ERROR" }
-      return c.json({ error: "Invalid form data" }, { status: 400 })
-    }
-
-    const responseResult = await tryCatch(
-      fetch(`${localUrl}/upload`, {
-        method: "POST",
-        body: formDataResult.data,
-        signal: AbortSignal.timeout(30_000),
-      })
-    )
-    if (!responseResult.success) {
-      event.error = { category: "network", message: getErrorMessage(responseResult.error), code: "LOCAL_WORKER_ERROR" }
-      return c.json({ error: "Failed to connect to worker" }, { status: 502 })
-    }
-    const response = responseResult.data
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      event.error = { category: "backend", message: errorText, code: "LOCAL_WORKER_REJECTED" }
-      return c.json({ error: errorText }, response.status as ContentfulStatusCode)
-    }
-
-    const result: unknown = await response.json()
-    if (!isWorkerUploadResponse(result)) {
-      event.error = { category: "backend", message: "Invalid response from worker", code: "INVALID_WORKER_RESPONSE" }
-      return c.json({ error: "Invalid response from worker" }, { status: 502 })
-    }
-    event.fileId = result.file_id
-    event.filename = result.filename
-    event.fileSize = result.size
-    return c.json(result)
+  const formDataResult = await tryCatch(c.req.formData())
+  if (!formDataResult.success) {
+    event.error = { category: "validation", message: getErrorMessage(formDataResult.error), code: "FORM_PARSE_ERROR" }
+    return c.json({ error: "Invalid form data" }, { status: 400 })
   }
 
-  // Datalab/Runpod modes: upload to unified storage
-  if (backend === "datalab" || backend === "runpod") {
-    const storage = c.get("storage")
-
-    const formDataResult = await tryCatch(c.req.formData())
-    if (!formDataResult.success) {
-      event.error = { category: "validation", message: getErrorMessage(formDataResult.error), code: "FORM_PARSE_ERROR" }
-      return c.json({ error: "Invalid form data" }, { status: 400 })
-    }
-
-    const file = formDataResult.data.get("file") as File | null
-    if (!file || typeof file === "string") {
-      event.error = { category: "validation", message: "No file provided", code: "MISSING_FILE" }
-      return c.json({ error: "No file provided" }, { status: 400 })
-    }
-
-    event.filename = file.name
-    event.contentType = file.type
-
-    const arrayBufferResult = await tryCatch(file.arrayBuffer())
-    if (!arrayBufferResult.success) {
-      event.error = { category: "validation", message: getErrorMessage(arrayBufferResult.error), code: "FILE_READ_ERROR" }
-      return c.json({ error: "Failed to read file" }, { status: 500 })
-    }
-
-    event.fileSize = arrayBufferResult.data.byteLength
-
-    const uploadResult = await tryCatch(
-      storage.uploadFile(arrayBufferResult.data, file.name, file.type || "application/pdf")
-    )
-    if (!uploadResult.success) {
-      event.error = { category: "storage", message: getErrorMessage(uploadResult.error), code: "UPLOAD_ERROR" }
-      return c.json({ error: "Upload failed" }, { status: 500 })
-    }
-
-    event.fileId = uploadResult.data.fileId
-    return c.json({
-      file_id: uploadResult.data.fileId,
-      filename: uploadResult.data.filename,
-      size: uploadResult.data.size,
-    })
+  const file = formDataResult.data.get("file") as File | null
+  if (!file || typeof file === "string") {
+    event.error = { category: "validation", message: "No file provided", code: "MISSING_FILE" }
+    return c.json({ error: "No file provided" }, { status: 400 })
   }
 
-  event.error = { category: "validation", message: `Unknown backend: ${backend}`, code: "UNKNOWN_BACKEND" }
-  return c.json({ error: `Unknown backend: ${backend}` }, { status: 400 })
+  const filename = sanitizeFilename(file.name)
+  event.filename = filename
+  event.contentType = file.type
+
+  const arrayBufferResult = await tryCatch(file.arrayBuffer())
+  if (!arrayBufferResult.success) {
+    event.error = { category: "validation", message: getErrorMessage(arrayBufferResult.error), code: "FILE_READ_ERROR" }
+    return c.json({ error: "Failed to read file" }, { status: 500 })
+  }
+
+  event.fileSize = arrayBufferResult.data.byteLength
+
+  // Get optional auth for storage path
+  const auth = await getAuth(c)
+  const fileId = crypto.randomUUID()
+  const docPath = getDocumentPath(fileId, auth?.userId)
+
+  // Save original file to document path
+  const saveResult = await tryCatch(
+    storage.saveFile(`${docPath}/original.pdf`, Buffer.from(arrayBufferResult.data))
+  )
+  if (!saveResult.success) {
+    event.error = { category: "storage", message: getErrorMessage(saveResult.error), code: "UPLOAD_ERROR" }
+    return c.json({ error: "Upload failed" }, { status: 500 })
+  }
+
+  event.fileId = fileId
+  return c.json({
+    file_id: fileId,
+    filename,
+    size: arrayBufferResult.data.byteLength,
+  })
 })
 
 // Get presigned upload URL (S3 only - production)
@@ -136,16 +87,27 @@ upload.post("/upload-url", async (c) => {
     return c.json({ error: "Invalid request body" }, { status: 400 })
   }
 
-  event.filename = bodyResult.data.filename
+  const filename = sanitizeFilename(bodyResult.data.filename)
+  event.filename = filename
 
-  const urlResult = await tryCatch(storage.getPresignedUploadUrl(bodyResult.data.filename))
+  // Get optional auth for storage path
+  const auth = await getAuth(c)
+  const fileId = crypto.randomUUID()
+  const docPath = getDocumentPath(fileId, auth?.userId)
+  const key = `${docPath}/original.pdf`
+
+  const urlResult = await tryCatch(storage.getPresignedUploadUrl(key))
   if (!urlResult.success) {
     event.error = { category: "storage", message: getErrorMessage(urlResult.error), code: "PRESIGN_URL_ERROR" }
     return c.json({ error: "Failed to generate upload URL" }, { status: 500 })
   }
 
-  event.fileId = urlResult.data.fileId
-  return c.json(urlResult.data)
+  event.fileId = fileId
+  return c.json({
+    uploadUrl: urlResult.data.uploadUrl,
+    fileId,
+    expiresAt: urlResult.data.expiresAt,
+  })
 })
 
 /**
@@ -207,7 +169,7 @@ function validateExternalUrl(urlString: string): string | null {
   return null
 }
 
-// Fetch file from URL
+// Fetch file from URL - saves to S3/MinIO for all modes
 upload.post("/fetch-url", async (c) => {
   const event = c.get("event")
   const url = c.req.query("url")
@@ -228,37 +190,7 @@ upload.post("/fetch-url", async (c) => {
   const backend = process.env.BACKEND_MODE || "local"
   event.backend = backend as BackendType
 
-  // Local mode: passthrough to FastAPI worker
-  if (backend === "local") {
-    const localUrl = process.env.LOCAL_WORKER_URL || "http://localhost:8000"
-
-    const responseResult = await tryCatch(
-      fetch(`${localUrl}/fetch-url?url=${encodeURIComponent(url)}`, {
-        method: "POST",
-        signal: AbortSignal.timeout(30_000),
-      })
-    )
-    if (!responseResult.success) {
-      event.error = { category: "network", message: getErrorMessage(responseResult.error), code: "LOCAL_WORKER_ERROR" }
-      return c.json({ error: "Failed to connect to worker" }, { status: 502 })
-    }
-
-    if (!responseResult.data.ok) {
-      const errorText = await responseResult.data.text()
-      event.error = { category: "backend", message: errorText, code: "LOCAL_WORKER_REJECTED" }
-      return c.json({ error: errorText }, responseResult.data.status as ContentfulStatusCode)
-    }
-
-    const result: unknown = await responseResult.data.json()
-    if (!isWorkerUploadResponse(result)) {
-      event.error = { category: "backend", message: "Invalid response from worker", code: "INVALID_WORKER_RESPONSE" }
-      return c.json({ error: "Invalid response from worker" }, { status: 502 })
-    }
-    event.fileId = result.file_id
-    event.filename = result.filename
-    event.fileSize = result.size
-    return c.json(result)
-  }
+  const storage = c.get("storage")
 
   // Fetch the file
   const fileResponseResult = await tryCatch(
@@ -274,15 +206,9 @@ upload.post("/fetch-url", async (c) => {
     return c.json({ error: `Failed to fetch URL: ${fileResponseResult.data.statusText}` }, { status: 400 })
   }
 
-  const contentType = fileResponseResult.data.headers.get("content-type") || "application/pdf"
-
   // Extract and sanitize filename from URL
   const rawFilename = url.split("/").pop()?.split("?")[0] || ""
-  const filename = rawFilename
-    .replace(/\.\./g, "") // Remove path traversal
-    .replace(/[^\w.\-]/g, "_") // Only allow safe characters
-    .slice(0, 255) // Limit length
-    || "document.pdf"
+  const filename = sanitizeFilename(rawFilename)
 
   const arrayBufferResult = await tryCatch(fileResponseResult.data.arrayBuffer())
   if (!arrayBufferResult.success) {
@@ -291,29 +217,27 @@ upload.post("/fetch-url", async (c) => {
   }
 
   event.filename = filename
-  event.contentType = contentType
+  event.contentType = fileResponseResult.data.headers.get("content-type") || "application/pdf"
   event.fileSize = arrayBufferResult.data.byteLength
 
-  // Datalab/Runpod modes: upload to unified storage
-  if (backend === "datalab" || backend === "runpod") {
-    const storage = c.get("storage")
+  // Get optional auth for storage path
+  const auth = await getAuth(c)
+  const fileId = crypto.randomUUID()
+  const docPath = getDocumentPath(fileId, auth?.userId)
 
-    const uploadResult = await tryCatch(
-      storage.uploadFile(arrayBufferResult.data, filename, contentType)
-    )
-    if (!uploadResult.success) {
-      event.error = { category: "storage", message: getErrorMessage(uploadResult.error), code: "UPLOAD_ERROR" }
-      return c.json({ error: "Failed to store file" }, { status: 500 })
-    }
-
-    event.fileId = uploadResult.data.fileId
-    return c.json({
-      file_id: uploadResult.data.fileId,
-      filename: uploadResult.data.filename,
-      size: uploadResult.data.size,
-    })
+  // Save original file to document path
+  const saveResult = await tryCatch(
+    storage.saveFile(`${docPath}/original.pdf`, Buffer.from(arrayBufferResult.data))
+  )
+  if (!saveResult.success) {
+    event.error = { category: "storage", message: getErrorMessage(saveResult.error), code: "UPLOAD_ERROR" }
+    return c.json({ error: "Failed to store file" }, { status: 500 })
   }
 
-  event.error = { category: "validation", message: `Unknown backend: ${backend}`, code: "UNKNOWN_BACKEND" }
-  return c.json({ error: `Unknown backend: ${backend}` }, { status: 400 })
+  event.fileId = fileId
+  return c.json({
+    file_id: fileId,
+    filename,
+    size: arrayBufferResult.data.byteLength,
+  })
 })

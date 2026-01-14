@@ -3,6 +3,7 @@
  */
 import * as cheerio from "cheerio"
 import katex from "katex"
+import { escapeHtml } from "./sanitize"
 
 /**
  * Apply reader enhancements to HTML: citations, math, figure captions, etc.
@@ -130,14 +131,3 @@ function convertMathToHtml($: cheerio.CheerioAPI): void {
   })
 }
 
-/**
- * Escape HTML special characters.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}

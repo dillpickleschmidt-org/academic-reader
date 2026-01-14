@@ -1,9 +1,10 @@
 import { Hono } from "hono"
-import { extname } from "path"
 import type { BackendType, OutputFormat, ConversionInput } from "../types"
 import type { Storage } from "../storage/types"
+import { getDocumentPath } from "../storage/types"
 import { jobFileMap } from "../storage/job-file-map"
 import { createBackend } from "../backends/factory"
+import { getAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 
 type Variables = {
@@ -22,12 +23,10 @@ convert.post("/convert/:fileId", async (c) => {
     return c.json({ error: "Missing filename parameter" }, { status: 400 })
   }
 
-  // Compute upload key for storage operations
-  const ext = extname(filename).slice(1).toLowerCase()
-  if (!ext) {
-    return c.json({ error: "Filename must have an extension" }, { status: 400 })
-  }
-  const uploadKey = `uploads/${fileId}.${ext}`
+  // Get optional auth to reconstruct document path
+  const auth = await getAuth(c)
+  const docPath = getDocumentPath(fileId, auth?.userId)
+  const originalFilePath = `${docPath}/original.pdf`
 
   event.fileId = fileId
   event.backend = backendType as BackendType
@@ -63,7 +62,7 @@ convert.post("/convert/:fileId", async (c) => {
 
   if (backendType === "datalab") {
     // Datalab is an external API that can't access MinIO, so send bytes directly
-    const bytesResult = await tryCatch(storage.getFileBytes(uploadKey))
+    const bytesResult = await tryCatch(storage.readFile(originalFilePath))
     if (!bytesResult.success) {
       event.error = {
         category: "storage",
@@ -74,7 +73,7 @@ convert.post("/convert/:fileId", async (c) => {
     }
     input = { ...baseInput, fileData: bytesResult.data, filename }
   } else if (backendType === "local" || backendType === "runpod") {
-    const fileUrlResult = await tryCatch(storage.getFileUrl(uploadKey))
+    const fileUrlResult = await tryCatch(storage.getFileUrl(originalFilePath))
     if (!fileUrlResult.success) {
       event.error = {
         category: "storage",
@@ -105,8 +104,8 @@ convert.post("/convert/:fileId", async (c) => {
 
   event.jobId = jobResult.data
 
-  // Track job-file association for cleanup and persistence
-  jobFileMap.set(jobResult.data, uploadKey, filename, backendType as BackendType)
+  // Track job-file association for results saving and cleanup
+  jobFileMap.set(jobResult.data, docPath, fileId, filename, backendType as BackendType)
 
   return c.json({ job_id: jobResult.data })
 })

@@ -75,6 +75,5 @@ export interface UploadResult {
 
 export interface PresignedUrlResult {
   uploadUrl: string
-  fileId: string
   expiresAt: string
 }

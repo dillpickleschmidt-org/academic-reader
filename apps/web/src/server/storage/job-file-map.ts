@@ -1,7 +1,10 @@
 import type { BackendType } from "@repo/core/types/api"
 
 interface JobFileEntry {
-  uploadKey: string
+  /** Document storage path (e.g., "documents/{userId}/{fileId}" or "temp_documents/{fileId}") */
+  documentPath: string
+  /** The fileId portion of the path */
+  fileId: string
   filename: string
   backendType: BackendType
   createdAt: number
@@ -18,10 +21,11 @@ class JobFileMap {
 
   /**
    * Register a job -> file association.
-   * @param uploadKey Full storage key (e.g., "uploads/{fileId}.pdf")
+   * @param documentPath Full document path (e.g., "documents/{userId}/{fileId}" or "temp_documents/{fileId}")
+   * @param fileId The fileId for this document
    */
-  set(jobId: string, uploadKey: string, filename: string, backendType: BackendType): void {
-    this.map.set(jobId, { uploadKey, filename, backendType, createdAt: Date.now() })
+  set(jobId: string, documentPath: string, fileId: string, filename: string, backendType: BackendType): void {
+    this.map.set(jobId, { documentPath, fileId, filename, backendType, createdAt: Date.now() })
   }
 
   /**

@@ -3,9 +3,17 @@ import { Hono } from "hono"
 import * as cheerio from "cheerio"
 import { minify } from "html-minifier-terser"
 import type { BackendType } from "../types"
+import type { Storage } from "../storage/types"
+import { getDocumentPath } from "../storage/types"
+import { getAuth } from "../middleware/auth"
 import { createBackend } from "../backends/factory"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { enhanceHtmlForReader } from "../utils/html-processing"
+import {
+  escapeHtml,
+  sanitizeTitle,
+  contentDisposition,
+} from "../utils/sanitize"
 import {
   extractKatexFontUsage,
   embedSourceSans,
@@ -32,7 +40,11 @@ const MOON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18
 // Load KaTeX CSS rules (without @font-face)
 const katexCssRules = getKatexCssRules()
 
-export const download = new Hono()
+type Variables = {
+  storage: Storage
+}
+
+export const download = new Hono<{ Variables: Variables }>()
 
 /**
  * Generate complete HTML document with embedded fonts.
@@ -96,23 +108,10 @@ ${renderedContent}
 </html>`
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-download.get("/api/jobs/:jobId/download", async (c) => {
+download.get("/jobs/:jobId/download", async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
-  const rawTitle = c.req.query("title") || ""
-  const title = rawTitle
-    .replace(/[\x00-\x1F\x7F]/g, "") // Remove control characters
-    .slice(0, 200) // Limit length
-    || "Document"
+  const title = sanitizeTitle(c.req.query("title") || "")
 
   event.jobId = jobId
   event.backend = (process.env.BACKEND_MODE || "local") as BackendType
@@ -165,15 +164,71 @@ download.get("/api/jobs/:jobId/download", async (c) => {
     return c.json({ error: "Failed to generate download" }, { status: 500 })
   }
 
-  // ASCII-safe filename for legacy clients, RFC 5987 encoded for modern clients
-  const asciiFilename = title
-    .replace(/[^\x20-\x7E]/g, "_") // Replace non-ASCII with underscore
-    .replace(/["\\]/g, "\\$&") // Escape quotes and backslashes
+  return new Response(minifyResult.data, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Disposition": contentDisposition(`${title}.html`),
+    },
+  })
+})
+
+/**
+ * Download by fileId - reads HTML from S3 storage.
+ * Works for both signed-in and signed-out users.
+ */
+download.get("/files/:fileId/download", async (c) => {
+  const event = c.get("event")
+  const fileId = c.req.param("fileId")
+  const title = sanitizeTitle(c.req.query("title") || "")
+
+  event.fileId = fileId
+
+  // Get optional auth to reconstruct document path
+  const auth = await getAuth(c)
+  const docPath = getDocumentPath(fileId, auth?.userId)
+  const storage = c.get("storage")
+
+  // Read HTML from S3
+  const htmlResult = await tryCatch(storage.readFileAsString(`${docPath}/content.html`))
+  if (!htmlResult.success) {
+    event.error = { category: "storage", message: getErrorMessage(htmlResult.error), code: "FILE_READ_ERROR" }
+    return c.json({ error: "Document not found" }, { status: 404 })
+  }
+
+  const html = enhanceHtmlForReader(htmlResult.data)
+  const $ = cheerio.load(html)
+
+  const katexFontUsage = extractKatexFontUsage($)
+
+  const fontsResult = await tryCatch(
+    Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)])
+  )
+  if (!fontsResult.success) {
+    event.error = { category: "internal", message: getErrorMessage(fontsResult.error), code: "FONT_EMBED_ERROR" }
+    return c.json({ error: "Failed to embed fonts" }, { status: 500 })
+  }
+
+  const [sourceSansCss, katexFontsCss] = fontsResult.data
+  const fontCss = `${sourceSansCss}\n${katexFontsCss}`
+  const fullHtml = generateHtmlDocument(html, title, fontCss, katexCssRules)
+
+  const minifyResult = await tryCatch(
+    minify(fullHtml, {
+      collapseWhitespace: true,
+      removeComments: true,
+      minifyCSS: true,
+      minifyJS: true,
+    })
+  )
+  if (!minifyResult.success) {
+    event.error = { category: "internal", message: getErrorMessage(minifyResult.error), code: "MINIFY_ERROR" }
+    return c.json({ error: "Failed to generate download" }, { status: 500 })
+  }
 
   return new Response(minifyResult.data, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${asciiFilename}.html"; filename*=UTF-8''${encodeURIComponent(title)}.html`,
+      "Content-Disposition": contentDisposition(`${title}.html`),
     },
   })
 })

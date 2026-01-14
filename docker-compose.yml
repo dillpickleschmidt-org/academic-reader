@@ -107,6 +107,7 @@ services:
       mc alias set myminio http://minio:9000 minioadmin minioadmin;
       mc mb myminio/academic-reader --ignore-existing;
       mc anonymous set download myminio/academic-reader;
+      mc ilm rule add myminio/academic-reader --prefix 'temp_documents/' --expire-days 7 2>/dev/null || true;
       exit 0;
       "
 

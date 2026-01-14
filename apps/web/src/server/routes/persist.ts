@@ -1,10 +1,9 @@
 /**
- * Route for persisting conversion results to storage.
- * Called by authenticated users after conversion completes.
+ * Route for persisting conversion results.
+ * Creates a Convex document record linking to files stored during upload.
  */
 import { Hono } from "hono"
 import { z } from "zod"
-import type { Storage } from "../storage/types"
 import { resultCache } from "../storage/result-cache"
 import { requireAuth } from "../middleware/auth"
 import { persistDocument } from "../services/document-persistence"
@@ -17,7 +16,6 @@ const requestSchema = z.object({
 })
 
 type Variables = {
-  storage: Storage
   userId: string
 }
 
@@ -72,10 +70,6 @@ persist.post("/documents/persist", requireAuth, async (c) => {
     return c.json({ error: "Result not found or expired. Please convert again." }, 404)
   }
 
-  // Get authenticated user and storage
-  const userId = c.get("userId")
-  const storage = c.get("storage")
-
   // Create authenticated Convex client
   const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
   if (!convex) {
@@ -84,16 +78,13 @@ persist.post("/documents/persist", requireAuth, async (c) => {
     return c.json({ error: "Authentication failed" }, 401)
   }
 
-  // Persist document
+  // Create Convex record with chunks (files are at documents/{userId}/{fileId}/)
   const persistResult = await tryCatch(
-    persistDocument(storage, convex, {
-      userId,
+    persistDocument(convex, {
+      fileId: cachedResult.fileId,
       filename: cachedResult.filename,
       pageCount: cachedResult.metadata.pages,
       chunks: cachedResult.chunks,
-      html: cachedResult.html,
-      markdown: cachedResult.markdown,
-      originalPdf: cachedResult.originalPdf,
     }),
   )
 

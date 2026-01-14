@@ -11,7 +11,7 @@ import {
   type OutputFormat,
   type ChunkBlock,
 } from "@repo/core/client/api-client"
-import { downloadFromApi, downloadContent } from "@repo/core/client/download"
+import { downloadFile, downloadContent } from "@repo/core/client/download"
 import { useAppConfig } from "./use-app-config"
 
 export type Page = "upload" | "configure" | "processing" | "result"
@@ -232,11 +232,15 @@ export function useConversion() {
     }
   }
 
-  const handleDownload = () => {
-    if (outputFormat === "html" && jobId) {
-      downloadFromApi(jobId, fileName)
-    } else {
-      downloadContent(content, fileName, outputFormat)
+  const handleDownload = async () => {
+    try {
+      if (outputFormat === "html" && fileId) {
+        await downloadFile(fileId, fileName)
+      } else {
+        downloadContent(content, fileName, outputFormat)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Download failed")
     }
   }
 
@@ -286,6 +290,7 @@ export function useConversion() {
       setContent(data.html)
       setMarkdown(data.markdown || "")
       setDocumentId(docId)
+      setFileId(docId) // Set fileId for download endpoint
       setOutputFormat("html")
       setImagesReady(true)
       setPage("result")

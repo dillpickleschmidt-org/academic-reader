@@ -1,47 +1,27 @@
-import type { Storage } from "../storage/types"
 import { jobFileMap } from "../storage/job-file-map"
 
 export interface CleanupResult {
   cleaned: boolean
-  uploadKey?: string
-  uploadDeleted?: boolean
-  deleteError?: string
+  documentPath?: string
 }
 
 /**
  * Clean up resources associated with a job.
- * Deletes upload file and removes job-file mapping.
- * Used for cancel/failure cases (success cleanup happens in jobs.ts).
+ * Removes job-file mapping. Files are not deleted:
+ * - temp_documents/ are auto-cleaned by S3 lifecycle after 7 days
+ * - documents/ are permanent and managed by user
  */
-export async function cleanupJob(
-  jobId: string,
-  storage: Storage,
-): Promise<CleanupResult> {
+export function cleanupJob(jobId: string): CleanupResult {
   const entry = jobFileMap.get(jobId)
 
   if (!entry) {
     return { cleaned: false }
   }
 
-  const { uploadKey, backendType } = entry
-  let uploadDeleted: boolean | undefined
-  let deleteError: string | undefined
+  const { documentPath } = entry
 
-  // Local mode files are managed by the worker, not our storage
-  if (backendType !== "local") {
-    try {
-      uploadDeleted = await storage.deleteUpload(uploadKey)
-      if (!uploadDeleted) {
-        deleteError = "deleteUpload returned false"
-      }
-    } catch (err) {
-      uploadDeleted = false
-      deleteError = err instanceof Error ? err.message : String(err)
-    }
-  }
-
-  // Always remove from tracking
+  // Remove from tracking (files are not deleted)
   jobFileMap.delete(jobId)
 
-  return { cleaned: true, uploadKey, uploadDeleted, deleteError }
+  return { cleaned: true, documentPath }
 }

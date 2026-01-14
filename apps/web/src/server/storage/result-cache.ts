@@ -12,7 +12,10 @@ export interface CachedResult {
   chunks: ChunkInput[]
   metadata: { pages?: number }
   filename: string
-  originalPdf: Buffer | null
+  /** The fileId (UUID for unauthenticated, Convex documentId for authenticated) */
+  fileId: string
+  /** Document storage path (e.g., "documents/{userId}/{fileId}" or "temp_documents/{fileId}") */
+  documentPath: string
   cachedAt: number
 }
 

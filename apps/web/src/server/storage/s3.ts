@@ -1,7 +1,6 @@
 import { AwsClient } from "aws4fetch"
 import { readFileSync, existsSync } from "fs"
-import { extname } from "path"
-import type { UploadResult, PresignedUrlResult } from "../types"
+import type { PresignedUrlResult } from "../types"
 import type { Storage } from "./types"
 
 const TUNNEL_URL_FILE = "/tunnel/url"
@@ -34,44 +33,10 @@ export class S3Storage implements Storage {
     return new URL(`${this.config.endpoint}/${this.config.bucket}/${key}`)
   }
 
-  private generateKey(filename: string): { fileId: string; key: string } {
-    const fileId = crypto.randomUUID()
-    const ext = extname(filename).slice(1).toLowerCase() || "pdf"
-    return { fileId, key: `uploads/${fileId}.${ext}` }
-  }
-
-  async uploadFile(
-    file: ArrayBuffer,
-    filename: string,
-    contentType: string,
-  ): Promise<UploadResult> {
-    const { fileId, key } = this.generateKey(filename)
-
-    const url = this.getObjectUrl(key)
-
-    const response = await this.client.fetch(url.toString(), {
-      method: "PUT",
-      body: file,
-      headers: {
-        "Content-Type": contentType,
-        "x-amz-meta-original-filename": encodeURIComponent(filename),
-      },
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`S3 upload failed: ${error}`)
-    }
-
-    return {
-      fileId,
-      filename,
-      size: file.byteLength,
-    }
-  }
-
-  async getPresignedUploadUrl(filename: string): Promise<PresignedUrlResult> {
-    const { fileId, key } = this.generateKey(filename)
+  /**
+   * Get a presigned URL for uploading to a specific key.
+   */
+  async getPresignedUploadUrl(key: string): Promise<PresignedUrlResult> {
     const url = this.getObjectUrl(key)
     const expiresInSeconds = 3600 // 1 hour
 
@@ -85,7 +50,6 @@ export class S3Storage implements Storage {
 
     return {
       uploadUrl: signedRequest.url,
-      fileId,
       expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
     }
   }
@@ -96,7 +60,9 @@ export class S3Storage implements Storage {
         const url = readFileSync(TUNNEL_URL_FILE, "utf-8").trim()
         if (url) return url
       }
-    } catch {}
+    } catch {
+      // Ignore errors reading tunnel file
+    }
     return undefined
   }
 
@@ -136,15 +102,11 @@ export class S3Storage implements Storage {
     }
   }
 
-  // ===== Persistent Storage Methods =====
-  // These methods work with specific paths for saved documents
-
   /**
-   * Save a file to a specific path in S3.
-   * Used for persistent document storage.
+   * Save a file to S3.
    */
-  async saveFile(relativePath: string, data: Buffer | string): Promise<void> {
-    const url = this.getObjectUrl(relativePath)
+  async saveFile(key: string, data: Buffer | string): Promise<void> {
+    const url = this.getObjectUrl(key)
     const buffer = typeof data === "string" ? Buffer.from(data, "utf-8") : data
 
     const response = await this.client.fetch(url.toString(), {
@@ -159,10 +121,10 @@ export class S3Storage implements Storage {
   }
 
   /**
-   * Read a file from a specific path in S3.
+   * Read a file from S3.
    */
-  async readFile(relativePath: string): Promise<Buffer> {
-    const url = this.getObjectUrl(relativePath)
+  async readFile(key: string): Promise<Buffer> {
+    const url = this.getObjectUrl(key)
 
     const response = await this.client.fetch(url.toString(), {
       method: "GET",
@@ -179,37 +141,21 @@ export class S3Storage implements Storage {
   /**
    * Read a file as string from S3.
    */
-  async readFileAsString(relativePath: string): Promise<string> {
-    const buffer = await this.readFile(relativePath)
+  async readFileAsString(key: string): Promise<string> {
+    const buffer = await this.readFile(key)
     return buffer.toString("utf-8")
   }
 
   /**
-   * Check if a file exists at a specific path.
+   * Check if a file exists.
    */
-  async exists(relativePath: string): Promise<boolean> {
-    const url = this.getObjectUrl(relativePath)
+  async exists(key: string): Promise<boolean> {
+    const url = this.getObjectUrl(key)
 
     const response = await this.client.fetch(url.toString(), {
       method: "HEAD",
     })
 
     return response.ok
-  }
-
-  // ===== Upload Operations (unified interface) =====
-
-  /**
-   * Get raw bytes of uploaded file.
-   */
-  async getFileBytes(uploadKey: string): Promise<Buffer> {
-    return this.readFile(uploadKey)
-  }
-
-  /**
-   * Delete an uploaded file.
-   */
-  async deleteUpload(uploadKey: string): Promise<boolean> {
-    return this.deleteFile(uploadKey)
   }
 }

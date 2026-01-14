@@ -21,6 +21,7 @@ import type { BackendType, OutputFormat } from "@repo/core/types/api"
 export type ErrorCategory =
   | "storage"
   | "backend"
+  | "convex"
   | "auth"
   | "validation"
   | "network"
@@ -70,9 +71,7 @@ export interface WideEvent {
   cleanup?: {
     reason: "cancelled" | "failed" | "timeout" | "client_disconnect"
     cleaned: boolean
-    uploadKey?: string
-    uploadDeleted?: boolean
-    deleteError?: string
+    documentPath?: string
   }
 
   // Extensible

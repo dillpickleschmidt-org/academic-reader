@@ -1,29 +1,41 @@
 /**
  * HTML post-processing for reader enhancements.
+ * Uses single-parse pipeline for efficiency.
  */
 import * as cheerio from "cheerio"
+import type { CheerioAPI } from "cheerio"
 import katex from "katex"
 import { escapeHtml } from "./sanitize"
 
+export type HtmlTransform = ($: CheerioAPI) => void
+
+/**
+ * Process HTML with a single parse, applying multiple transforms.
+ */
+export function processHtml(html: string, transforms: HtmlTransform[]): string {
+  const $ = cheerio.load(html)
+  for (const transform of transforms) {
+    transform($)
+  }
+  return $("body").html() || ""
+}
+
+/** Remove redundant img-description elements */
+export function removeImgDescriptions($: CheerioAPI): void {
+  $(".img-description").remove()
+}
+
 /**
  * Apply reader enhancements to HTML: citations, math, figure captions, etc.
+ * Convenience wrapper for backward compatibility.
  */
 export function enhanceHtmlForReader(html: string): string {
-  const $ = cheerio.load(html)
-
-  // 1. Remove redundant img-description elements (alt is already on img)
-  $(".img-description").remove()
-
-  // 2. Citation detection & wrapping
-  wrapCitations($)
-
-  // 3. Single-pass paragraph processing (author meta, figures, continuations)
-  processParagraphs($)
-
-  // 4. Convert <math> LaTeX to HTML via KaTeX (universal browser support)
-  convertMathToHtml($)
-
-  return $("body").html() || ""
+  return processHtml(html, [
+    removeImgDescriptions,
+    wrapCitations,
+    processParagraphs,
+    convertMathToHtml,
+  ])
 }
 
 /**
@@ -33,10 +45,8 @@ export function enhanceHtmlForReader(html: string): string {
  */
 const CITATION_PATTERN = /\[(?:[A-Z][^\]]{0,100}\d{4}|[\d,;\s\-–]{1,50})\]/g
 
-/**
- * Wrap academic citations in spans for styling.
- */
-function wrapCitations($: cheerio.CheerioAPI): void {
+/** Wrap academic citations in spans for styling */
+export function wrapCitations($: CheerioAPI): void {
   // Process all text nodes
   $("body")
     .find("*")
@@ -76,10 +86,8 @@ function wrapCitations($: cheerio.CheerioAPI): void {
     })
 }
 
-/**
- * Single-pass paragraph processing: author meta, figure captions, continuations.
- */
-function processParagraphs($: cheerio.CheerioAPI): void {
+/** Single-pass paragraph processing: author meta, figure captions, continuations */
+export function processParagraphs($: CheerioAPI): void {
   const h1 = $("h1").first()
   const authorSectionEnd = h1.length > 0 ? h1.nextAll("h1, h2").first() : null
 
@@ -113,7 +121,7 @@ function processParagraphs($: cheerio.CheerioAPI): void {
  * Convert <math> tags containing LaTeX to HTML via KaTeX.
  * KaTeX outputs HTML+CSS that works on all browsers (no MathML dependency).
  */
-function convertMathToHtml($: cheerio.CheerioAPI): void {
+export function convertMathToHtml($: CheerioAPI): void {
   $("math").each(function () {
     const latex = $(this).text().trim()
     if (!latex) return

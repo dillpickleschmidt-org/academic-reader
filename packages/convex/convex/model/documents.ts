@@ -99,7 +99,7 @@ export async function addEmbeddings(
 }
 
 /**
- * Delete a document and all its chunks.
+ * Delete a document and all its chunks and TTS cache.
  */
 export async function deleteDocument(
   ctx: MutationCtx,
@@ -121,12 +121,21 @@ export async function deleteDocument(
     .withIndex("by_document", (q) => q.eq("documentId", documentId))
     .collect()
 
-  await Promise.all(chunks.map((chunk) => ctx.db.delete(chunk._id)))
+  // Delete all TTS cache entries
+  const ttsEntries = await ctx.db
+    .query("ttsCache")
+    .withIndex("by_document_block", (q) => q.eq("documentId", documentId))
+    .collect()
+
+  await Promise.all([
+    ...chunks.map((chunk) => ctx.db.delete(chunk._id)),
+    ...ttsEntries.map((entry) => ctx.db.delete(entry._id)),
+  ])
 
   // Delete document
   await ctx.db.delete(documentId)
 
-  return { deleted: true, chunkCount: chunks.length }
+  return { deleted: true, chunkCount: chunks.length, ttsCacheCount: ttsEntries.length }
 }
 
 // ===== Query Helpers =====

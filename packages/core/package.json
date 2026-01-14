@@ -15,6 +15,14 @@
     "./client/api-client": "./src/client/api-client.ts",
     "./client/download": "./src/client/download.ts"
   },
+  "devDependencies": {
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3"
+  },
+  "peerDependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
     "@radix-ui/react-use-controllable-state": "^1.2.2",

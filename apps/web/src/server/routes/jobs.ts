@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { BackendType, ConversionJob, WideEvent } from "../types"
+import type { BackendType, WideEvent } from "../types"
 import type { Storage } from "../storage/types"
 import { jobFileMap } from "../storage/job-file-map"
 import { resultCache } from "../storage/result-cache"
@@ -7,7 +7,14 @@ import { cleanupJob } from "../cleanup"
 import { createBackend } from "../backends/factory"
 import { LocalBackend } from "../backends/local"
 import { POLLING } from "../constants"
-import { enhanceHtmlForReader } from "../utils/html-processing"
+import {
+  processHtml,
+  removeImgDescriptions,
+  wrapCitations,
+  processParagraphs,
+  convertMathToHtml,
+} from "../utils/html-processing"
+import { addPageAttributes } from "../utils/tts-attribution"
 import { stripHtmlForEmbedding } from "../services/embeddings"
 import { transformSSEStream } from "../utils/sse-transform"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
@@ -37,15 +44,6 @@ const SSE_HEADERS = {
   "X-Accel-Buffering": "no",
   Connection: "keep-alive",
 } as const
-
-function enhanceJobHtml(job: ConversionJob): void {
-  if (job.result?.content) {
-    job.result.content = enhanceHtmlForReader(job.result.content)
-  }
-  if (job.htmlContent) {
-    job.htmlContent = enhanceHtmlForReader(job.htmlContent)
-  }
-}
 
 jobs.get("/jobs/:jobId/stream", async (c) => {
   const event = c.get("event")
@@ -93,7 +91,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
       return c.json({ error: "Failed to connect to stream" }, 500)
     }
 
-    // Transform SSE events to enhance HTML content
+    // Transform SSE events to enhance HTML content (no chunks available in stream)
     const transformedStream = transformSSEStream(
       responseResult.data.body,
       (sseEvent, data) => {
@@ -101,7 +99,12 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
           try {
             const parsed = JSON.parse(data)
             if (parsed.content) {
-              parsed.content = enhanceHtmlForReader(parsed.content)
+              parsed.content = processHtml(parsed.content, [
+                removeImgDescriptions,
+                wrapCitations,
+                processParagraphs,
+                convertMathToHtml,
+              ])
             }
             return JSON.stringify(parsed)
           } catch {
@@ -188,9 +191,43 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
 
         switch (job.status) {
           case "completed": {
-            enhanceJobHtml(job)
-
             const fileInfo = jobFileMap.get(jobId)
+
+            // Extract chunks first (needed for page attribution)
+            const rawChunks = job.result?.formats?.chunks?.blocks || []
+            const chunks: ChunkInput[] = rawChunks
+              .map((chunk) => ({
+                blockId: chunk.id,
+                blockType: chunk.block_type,
+                content: stripHtmlForEmbedding(chunk.html),
+                page: chunk.page,
+                section: chunk.section_hierarchy
+                  ? Object.values(chunk.section_hierarchy)
+                      .filter(Boolean)
+                      .join(" > ")
+                  : undefined,
+              }))
+              .filter((c) => c.content.trim().length > 0)
+
+            // Enhance HTML with single parse: reader enhancements + page attribution
+            if (job.result?.content) {
+              job.result.content = processHtml(job.result.content, [
+                removeImgDescriptions,
+                wrapCitations,
+                processParagraphs,
+                convertMathToHtml,
+                ($) => addPageAttributes($, chunks),
+              ])
+            }
+            if (job.htmlContent) {
+              job.htmlContent = processHtml(job.htmlContent, [
+                removeImgDescriptions,
+                wrapCitations,
+                processParagraphs,
+                convertMathToHtml,
+                ($) => addPageAttributes($, chunks),
+              ])
+            }
 
             // Save results to S3 at document path
             if (job.result?.formats && fileInfo?.documentPath) {
@@ -204,22 +241,6 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               if (!saveResult.success) {
                 console.error(`[jobs] Failed to save results: ${saveResult.error}`)
               }
-
-              // Cache chunks for persist endpoint (5 min TTL)
-              const rawChunks = job.result.formats.chunks?.blocks || []
-              const chunks: ChunkInput[] = rawChunks
-                .map((chunk) => ({
-                  blockId: chunk.id,
-                  blockType: chunk.block_type,
-                  content: stripHtmlForEmbedding(chunk.html),
-                  page: chunk.page,
-                  section: chunk.section_hierarchy
-                    ? Object.values(chunk.section_hierarchy)
-                        .filter(Boolean)
-                        .join(" > ")
-                    : undefined,
-                }))
-                .filter((c) => c.content.trim().length > 0)
 
               resultCache.set(jobId, {
                 html: job.result.formats.html,
@@ -259,7 +280,15 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
           }
           case "html_ready":
             if (!htmlReadySent) {
-              enhanceJobHtml(job)
+              // No chunks available yet, just do basic enhancements
+              if (job.htmlContent) {
+                job.htmlContent = processHtml(job.htmlContent, [
+                  removeImgDescriptions,
+                  wrapCitations,
+                  processParagraphs,
+                  convertMathToHtml,
+                ])
+              }
               sendEvent("html_ready", { content: job.htmlContent })
               htmlReadySent = true
             }

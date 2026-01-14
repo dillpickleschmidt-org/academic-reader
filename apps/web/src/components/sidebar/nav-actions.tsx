@@ -17,6 +17,8 @@ type ActionItem =
       icon: LucideIcon
       onClick?: () => void
       disabled?: boolean
+      isActive?: boolean
+      className?: string
       render?: never
     }
   | {
@@ -25,6 +27,8 @@ type ActionItem =
       icon?: never
       onClick?: never
       disabled?: never
+      isActive?: never
+      className?: never
     }
 
 export function NavActions({ actions }: { actions: ActionItem[] }) {
@@ -33,16 +37,18 @@ export function NavActions({ actions }: { actions: ActionItem[] }) {
       <SidebarGroupLabel>Actions</SidebarGroupLabel>
       <SidebarMenu>
         {actions.map((item, index) => {
-          if ("render" in item) {
+          if ("render" in item && item.render) {
             return <SidebarMenuItem key={index}>{item.render}</SidebarMenuItem>
           }
-          const Icon = item.icon
+          const Icon = item.icon!
           return (
             <SidebarMenuItem key={item.name}>
               <SidebarMenuButton
                 onClick={item.onClick}
                 disabled={item.disabled}
                 tooltip={item.name}
+                data-active={item.isActive}
+                className={item.className}
               >
                 <Icon />
                 <span>{item.name}</span>

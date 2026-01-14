@@ -16,6 +16,7 @@ import {
   SidebarRail,
 } from "@repo/core/ui/primitives/sidebar"
 import { useChatPanel } from "@/context/ChatPanelContext"
+import { useTTS } from "@/context/TTSContext"
 
 // Mock data - will be replaced with real data later
 const tocData = {
@@ -68,11 +69,16 @@ export function ReaderSidebar({
   downloadDisabled,
   ...props
 }: ReaderSidebarProps) {
+  const { isEnabled, enable, disable } = useTTS()
+
   const actions = [
     {
       name: "Text to Speech",
       icon: Volume2,
-      disabled: true, // Placeholder - not implemented yet
+      onClick: isEnabled ? disable : enable,
+      disabled: false,
+      isActive: isEnabled,
+      className: "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
     },
     {
       render: <TypographyStyleToggle />,

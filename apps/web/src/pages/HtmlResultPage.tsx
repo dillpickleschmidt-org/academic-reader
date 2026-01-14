@@ -4,7 +4,7 @@ import "katex/dist/contrib/copy-tex"
 import { ReaderLayout } from "../components/ReaderLayout"
 import { useDocumentContext } from "@/context/DocumentContext"
 import { useTTS } from "@/context/TTSContext"
-import { useTTSChunkDetection } from "@/hooks/use-tts-page-detection"
+import { useTTSChunkDetection } from "@/hooks/use-tts-chunk-detection"
 
 interface Props {
   content: string

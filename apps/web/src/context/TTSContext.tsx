@@ -33,7 +33,6 @@ export function TTSProvider({ documentId, children }: TTSProviderProps) {
   const [error, setError] = useState<string | null>(null)
 
   const enable = useCallback(() => {
-    console.log("[TTS] Mode enabled")
     setIsEnabled(true)
     setError(null)
   }, [])
@@ -47,9 +46,6 @@ export function TTSProvider({ documentId, children }: TTSProviderProps) {
 
   const loadChunkTTS = useCallback(
     async (blockId: string, chunkContent: string) => {
-      console.log(`[TTS] Loading chunk ${blockId}, content length: ${chunkContent.length}`)
-      console.log(`[TTS] Content preview: ${chunkContent.slice(0, 200)}...`)
-
       if (!documentId) {
         console.error("[TTS] No documentId - document not saved")
         setError("Document not saved - TTS requires a saved document")
@@ -77,8 +73,6 @@ export function TTSProvider({ documentId, children }: TTSProviderProps) {
         }
 
         const data = await response.json()
-        console.log(`[TTS] Success! Cached: ${data.cached}`)
-        console.log(`[TTS] Reworded text:`, data.rewordedText)
         setRewordedText(data.rewordedText)
         toast.success(data.cached ? "Loaded from cache" : "Text rewritten for speech", { id: toastId })
       } catch (err) {

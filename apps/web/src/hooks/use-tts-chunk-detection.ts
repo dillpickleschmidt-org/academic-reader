@@ -56,7 +56,6 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
 
       // Skip non-readable block types
       if (SKIP_BLOCK_TYPES.has(chunk.block_type)) {
-        console.log(`[TTS] Skipping ${chunk.block_type} block`)
         return
       }
 

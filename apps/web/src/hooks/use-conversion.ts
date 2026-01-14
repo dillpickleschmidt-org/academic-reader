@@ -290,7 +290,7 @@ export function useConversion() {
       setContent(data.html)
       setMarkdown(data.markdown || "")
       setDocumentId(docId)
-      setFileId(docId) // Set fileId for download endpoint
+      setFileId(data.storageId)
       setOutputFormat("html")
       setImagesReady(true)
       setPage("result")

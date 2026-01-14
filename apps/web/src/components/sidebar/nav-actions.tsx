@@ -21,7 +21,7 @@ export function NavActions({
   }[]
 }) {
   return (
-    <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+    <SidebarGroup>
       <SidebarGroupLabel>Actions</SidebarGroupLabel>
       <SidebarMenu>
         {actions.map((item) => (

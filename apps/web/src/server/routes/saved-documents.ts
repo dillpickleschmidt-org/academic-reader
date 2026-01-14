@@ -72,6 +72,7 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
   return c.json({
     html: enhancedHtml,
     markdown,
+    storageId,
   })
 })
 

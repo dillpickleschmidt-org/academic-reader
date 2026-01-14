@@ -55,15 +55,15 @@ export function ReaderSidebar({
 }: ReaderSidebarProps) {
   const actions = [
     {
+      name: "Text to Speech",
+      icon: Volume2,
+      disabled: true, // Placeholder - not implemented yet
+    },
+    {
       name: "Download",
       icon: Download,
       onClick: onDownload,
       disabled: downloadDisabled,
-    },
-    {
-      name: "Text to Speech",
-      icon: Volume2,
-      disabled: true, // Placeholder - not implemented yet
     },
   ]
 

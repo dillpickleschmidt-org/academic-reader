@@ -23,7 +23,7 @@ import {
 
 // Import CSS files as text
 import baseResultCss from "../styles/base-result.css" with { type: "text" }
-import htmlResultCssRaw from "../styles/html-result.css" with { type: "text" }
+import htmlResultCssRaw from "../../styles/html-result.css" with { type: "text" }
 // Import copy-tex script for LaTeX copy support
 import copyTexScript from "katex/dist/contrib/copy-tex.min.js" with { type: "text" }
 
@@ -118,20 +118,35 @@ download.get("/jobs/:jobId/download", async (c) => {
 
   const backendResult = await tryCatch(async () => createBackend())
   if (!backendResult.success) {
-    event.error = { category: "backend", message: getErrorMessage(backendResult.error), code: "BACKEND_INIT_ERROR" }
+    event.error = {
+      category: "backend",
+      message: getErrorMessage(backendResult.error),
+      code: "BACKEND_INIT_ERROR",
+    }
     return c.json({ error: "Failed to initialize backend" }, { status: 500 })
   }
 
   const jobResult = await tryCatch(backendResult.data.getJobStatus(jobId))
   if (!jobResult.success) {
-    event.error = { category: "backend", message: getErrorMessage(jobResult.error), code: "JOB_STATUS_ERROR" }
+    event.error = {
+      category: "backend",
+      message: getErrorMessage(jobResult.error),
+      code: "JOB_STATUS_ERROR",
+    }
     return c.json({ error: "Failed to get job status" }, { status: 500 })
   }
 
   let html = jobResult.data.result?.content || jobResult.data.htmlContent
   if (!html) {
-    event.error = { category: "validation", message: "No HTML content available", code: "NO_CONTENT" }
-    return c.json({ error: "No HTML content available for this job" }, { status: 404 })
+    event.error = {
+      category: "validation",
+      message: "No HTML content available",
+      code: "NO_CONTENT",
+    }
+    return c.json(
+      { error: "No HTML content available for this job" },
+      { status: 404 },
+    )
   }
 
   html = enhanceHtmlForReader(html)
@@ -140,10 +155,14 @@ download.get("/jobs/:jobId/download", async (c) => {
   const katexFontUsage = extractKatexFontUsage($)
 
   const fontsResult = await tryCatch(
-    Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)])
+    Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)]),
   )
   if (!fontsResult.success) {
-    event.error = { category: "internal", message: getErrorMessage(fontsResult.error), code: "FONT_EMBED_ERROR" }
+    event.error = {
+      category: "internal",
+      message: getErrorMessage(fontsResult.error),
+      code: "FONT_EMBED_ERROR",
+    }
     return c.json({ error: "Failed to embed fonts" }, { status: 500 })
   }
 
@@ -157,10 +176,14 @@ download.get("/jobs/:jobId/download", async (c) => {
       removeComments: true,
       minifyCSS: true,
       minifyJS: true,
-    })
+    }),
   )
   if (!minifyResult.success) {
-    event.error = { category: "internal", message: getErrorMessage(minifyResult.error), code: "MINIFY_ERROR" }
+    event.error = {
+      category: "internal",
+      message: getErrorMessage(minifyResult.error),
+      code: "MINIFY_ERROR",
+    }
     return c.json({ error: "Failed to generate download" }, { status: 500 })
   }
 
@@ -189,9 +212,15 @@ download.get("/files/:fileId/download", async (c) => {
   const storage = c.get("storage")
 
   // Read HTML from S3
-  const htmlResult = await tryCatch(storage.readFileAsString(`${docPath}/content.html`))
+  const htmlResult = await tryCatch(
+    storage.readFileAsString(`${docPath}/content.html`),
+  )
   if (!htmlResult.success) {
-    event.error = { category: "storage", message: getErrorMessage(htmlResult.error), code: "FILE_READ_ERROR" }
+    event.error = {
+      category: "storage",
+      message: getErrorMessage(htmlResult.error),
+      code: "FILE_READ_ERROR",
+    }
     return c.json({ error: "Document not found" }, { status: 404 })
   }
 
@@ -201,10 +230,14 @@ download.get("/files/:fileId/download", async (c) => {
   const katexFontUsage = extractKatexFontUsage($)
 
   const fontsResult = await tryCatch(
-    Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)])
+    Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)]),
   )
   if (!fontsResult.success) {
-    event.error = { category: "internal", message: getErrorMessage(fontsResult.error), code: "FONT_EMBED_ERROR" }
+    event.error = {
+      category: "internal",
+      message: getErrorMessage(fontsResult.error),
+      code: "FONT_EMBED_ERROR",
+    }
     return c.json({ error: "Failed to embed fonts" }, { status: 500 })
   }
 
@@ -218,10 +251,14 @@ download.get("/files/:fileId/download", async (c) => {
       removeComments: true,
       minifyCSS: true,
       minifyJS: true,
-    })
+    }),
   )
   if (!minifyResult.success) {
-    event.error = { category: "internal", message: getErrorMessage(minifyResult.error), code: "MINIFY_ERROR" }
+    event.error = {
+      category: "internal",
+      message: getErrorMessage(minifyResult.error),
+      code: "MINIFY_ERROR",
+    }
     return c.json({ error: "Failed to generate download" }, { status: 500 })
   }
 

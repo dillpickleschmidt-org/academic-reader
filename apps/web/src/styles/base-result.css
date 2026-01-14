@@ -94,7 +94,9 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
 }
 
 .reader-output {
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   color: var(--reader-text);
   background: var(--reader-bg);
   transition:

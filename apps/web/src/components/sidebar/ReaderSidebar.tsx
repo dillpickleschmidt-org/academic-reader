@@ -13,7 +13,7 @@ import {
   SidebarMenuSubButton,
   SidebarRail,
 } from "@repo/core/ui/primitives/sidebar"
-import { AIChat } from "@/components/AiChat"
+import { useChatPanel } from "@/context/ChatPanelContext"
 
 // Mock data - will be replaced with real data later
 const tocData = {
@@ -29,6 +29,19 @@ const tocData = {
   ],
 }
 
+function ChatThreadsNewButton() {
+  const { open } = useChatPanel()
+  return (
+    <SidebarMenuSubButton
+      onClick={open}
+      className="group/new ml-2 -mr-3 h-auto my-0.5 py-1 gap-1 justify-center cursor-pointer bg-muted/30 hover:bg-muted/70 border-2 border-dashed border-border text-foreground/70 hover:text-foreground"
+    >
+      <Plus className="size-3 -ml-1.5 text-foreground/70! group-hover/new:text-foreground!" />
+      <span>New</span>
+    </SidebarMenuSubButton>
+  )
+}
+
 const threadsData = {
   title: "Chat Threads",
   url: "#",
@@ -36,16 +49,7 @@ const threadsData = {
   isActive: false,
   items: [
     {
-      render: (
-        <AIChat
-          trigger={
-            <SidebarMenuSubButton className="group/new ml-2 -mr-3 h-auto my-0.5 py-1 gap-1 justify-center cursor-pointer bg-muted/30 hover:bg-muted/70 border-2 border-dashed border-border text-foreground/70 hover:text-foreground">
-              <Plus className="size-3 -ml-1.5 text-foreground/70! group-hover/new:text-foreground!" />
-              <span>New</span>
-            </SidebarMenuSubButton>
-          }
-        />
-      ),
+      render: <ChatThreadsNewButton />,
     },
     { title: "Summary", url: "#" },
     { title: "Key findings", url: "#" },

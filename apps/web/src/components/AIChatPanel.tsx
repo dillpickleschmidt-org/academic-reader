@@ -1,14 +1,7 @@
-import { useState, useRef, useEffect, memo, useMemo, useCallback, type ReactElement } from "react"
+import { useState, useRef, useEffect, memo, useMemo, useCallback } from "react"
 import { DefaultChatTransport, type UIMessage } from "ai"
 import { useChat } from "@ai-sdk/react"
-import { LogIn } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@repo/core/ui/primitives/dialog"
+import { LogIn, X } from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
 import { VirtualizedConversation } from "@repo/core/ui/ai-elements/virtualized-conversation"
 import {
@@ -31,7 +24,7 @@ import { useDocumentContext } from "@/context/DocumentContext"
 import { authClient } from "@repo/convex/auth-client"
 
 interface Props {
-  trigger: ReactElement
+  onClose: () => void
 }
 
 // Memoized message component to prevent re-renders during streaming
@@ -73,8 +66,27 @@ const ChatMessage = memo(
     prev.message.parts === next.message.parts,
 )
 
-export function AIChat({ trigger }: Props) {
-  const [open, setOpen] = useState(false)
+// Auth prompt for non-signed-in users
+function AuthPrompt({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+      <div className="rounded-full bg-muted p-4">
+        <LogIn className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <div>
+        <h3 className="text-lg font-semibold">Sign in to use AI Chat</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Get AI-powered summaries and ask questions about your documents.
+        </p>
+      </div>
+      <Button onClick={onSignIn} className="mt-2">
+        Sign in with Google
+      </Button>
+    </div>
+  )
+}
+
+export function AIChatPanel({ onClose }: Props) {
   const [input, setInput] = useState("")
   // Track whether embeddings have been generated for this document
   const [embeddingsReady, setEmbeddingsReady] = useState(false)
@@ -85,7 +97,7 @@ export function AIChat({ trigger }: Props) {
   const markdown = documentContext?.markdown
   const documentId = documentContext?.documentId
 
-  // Refs for transport closure (initialized with defaults, updated after useChat)
+  // Refs for transport closure
   const documentIdRef = useRef(documentId)
   const markdownRef = useRef(markdown)
   const messagesRef = useRef<unknown[]>([])
@@ -106,7 +118,7 @@ export function AIChat({ trigger }: Props) {
           },
         }
       },
-    })
+    }),
   )
 
   const { messages, sendMessage, status, setMessages } = useChat({
@@ -129,8 +141,14 @@ export function AIChat({ trigger }: Props) {
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        console.error("Failed to generate embeddings:", error)
+        let errorMessage = "Unknown error"
+        try {
+          const error = await response.json()
+          errorMessage = error.message || JSON.stringify(error)
+        } catch {
+          // Response wasn't JSON (HTML error page, etc.)
+        }
+        console.error("Failed to generate embeddings:", errorMessage)
         setStorageError("Failed to enable follow-up questions")
         return
       }
@@ -147,42 +165,43 @@ export function AIChat({ trigger }: Props) {
     }
   }
 
-  // Auto-trigger summary when dialog opens (if signed in + has markdown)
+  // Auto-trigger summary when panel opens (if signed in + has markdown)
+  const hasMarkdown = !!markdown
   useEffect(() => {
+    // Wait for config to finish loading before triggering
+    if (configLoading) return
+
     if (
-      open &&
       user &&
-      markdown &&
+      hasMarkdown &&
       !hasTriggeredRef.current &&
       messages.length === 0
     ) {
       hasTriggeredRef.current = true
+      sendMessage({ text: "Please summarize this document." })
 
-      // Defer to next frame - lets dialog fully render and paint first
-      const rafId = requestAnimationFrame(() => {
-        sendMessage({ text: "Please summarize this document." })
-        // Generate embeddings for follow-up questions (if document was persisted)
-        if (documentId) {
-          generateEmbeddings().catch(() => {
-            // Error already handled in generateEmbeddings via setStorageError
-          })
-        }
-      })
-
-      return () => cancelAnimationFrame(rafId)
+      // Generate embeddings for follow-up questions (if document was persisted)
+      if (documentId) {
+        generateEmbeddings()
+      }
     }
-  }, [open, user, markdown, messages.length, sendMessage, documentId])
+  }, [
+    configLoading,
+    user,
+    hasMarkdown,
+    messages.length,
+    sendMessage,
+    documentId,
+  ])
 
-  // Reset state when dialog closes
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen)
-    if (!newOpen) {
-      hasTriggeredRef.current = false
-      setMessages([])
-      setInput("")
-      setStorageError(null)
-      setEmbeddingsReady(false)
-    }
+  // Reset state when panel closes
+  const handleClose = () => {
+    hasTriggeredRef.current = false
+    setMessages([])
+    setInput("")
+    setStorageError(null)
+    setEmbeddingsReady(false)
+    onClose()
   }
 
   const handleSubmit = (message: PromptInputMessage) => {
@@ -190,7 +209,6 @@ export function AIChat({ trigger }: Props) {
 
     sendMessage({ text: message.text })
     setInput("")
-    // hasSentSummaryRef is updated in body() when needed
   }
 
   // Memoize footer to prevent recreation on every render
@@ -224,74 +242,61 @@ export function AIChat({ trigger }: Props) {
     }
   }
 
-  // Auth prompt for non-signed-in users
-  const AuthPrompt = () => (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-      <div className="rounded-full bg-muted p-4">
-        <LogIn className="h-8 w-8 text-muted-foreground" />
-      </div>
-      <div>
-        <h3 className="text-lg font-semibold">Sign in to use AI Chat</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Get AI-powered summaries and ask questions about your documents.
-        </p>
-      </div>
-      <Button onClick={handleSignIn} className="mt-2">
-        Sign in with Google
-      </Button>
-    </div>
-  )
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger nativeButton={false} render={trigger} />
-      <DialogContent className="flex h-[80vh] max-h-200 w-full max-w-2xl flex-col gap-0 p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>AI Chat</DialogTitle>
-        </DialogHeader>
+    <div className="flex h-full flex-col font-sans text-base">
+      <header className="flex items-center justify-between border-b pl-4 pr-32 py-5.5">
+        <h2 className="text-sm font-semibold">AI Chat</h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={handleClose}
+        >
+          <X className="size-4" />
+        </Button>
+      </header>
 
-        {configLoading ? (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader />
-          </div>
-        ) : !user ? (
-          <AuthPrompt />
-        ) : (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <VirtualizedConversation
-              messages={messages}
-              className="flex-1"
-              renderMessage={renderMessage}
-              footer={conversationFooter}
-            />
+      {configLoading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader />
+        </div>
+      ) : !user ? (
+        <AuthPrompt onSignIn={handleSignIn} />
+      ) : (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <VirtualizedConversation
+            messages={messages}
+            className="flex-1"
+            renderMessage={renderMessage}
+            footer={conversationFooter}
+          />
 
-            <div className="border-t p-4">
-              <PromptInput onSubmit={handleSubmit}>
-                <PromptInputBody>
-                  <PromptInputTextarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={
-                      embeddingsReady
-                        ? "Ask a follow-up question..."
-                        : "Ask a question..."
-                    }
-                  />
-                </PromptInputBody>
-                <PromptInputFooter>
-                  <PromptInputTools>
-                    {/* Model selector, web search, etc. */}
-                  </PromptInputTools>
-                  <PromptInputSubmit
-                    disabled={!input && status !== "streaming"}
-                    status={status}
-                  />
-                </PromptInputFooter>
-              </PromptInput>
-            </div>
+          <div className="border-t p-4">
+            <PromptInput onSubmit={handleSubmit}>
+              <PromptInputBody>
+                <PromptInputTextarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={
+                    embeddingsReady
+                      ? "Ask a follow-up question..."
+                      : "Ask a question..."
+                  }
+                />
+              </PromptInputBody>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  {/* Model selector, web search, etc. */}
+                </PromptInputTools>
+                <PromptInputSubmit
+                  disabled={!input && status !== "streaming"}
+                  status={status}
+                />
+              </PromptInputFooter>
+            </PromptInput>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </div>
   )
 }

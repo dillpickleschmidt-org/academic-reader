@@ -15,6 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuSubButton,
   SidebarRail,
+  useSidebar,
 } from "@repo/core/ui/primitives/sidebar"
 import { useChatPanel } from "@/context/ChatPanelContext"
 import { useTTSSelector, useTTSActions } from "@/context/TTSContext"
@@ -74,11 +75,19 @@ export function ReaderSidebar({
   tocItems,
   ...props
 }: ReaderSidebarProps) {
+  const { state, setOpen } = useSidebar()
+
   const tocData = {
     title: "Table of Contents",
     url: "#",
     icon: BookOpen,
     isActive: true,
+    onClick: () => {
+      if (state === "collapsed") {
+        setOpen(true)
+        return false // Prevent collapsible toggle
+      }
+    },
     items:
       tocItems?.map((item) => ({
         title: item.title,

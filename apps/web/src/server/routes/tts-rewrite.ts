@@ -7,29 +7,26 @@ import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 
-const TTS_SYSTEM_PROMPT = `**Role & Output Rule**
-You are an audio-preparation editor.
-Your goal is to make the following be worded naturally for the read-aloud style of a TTS model, but with <10% being altered. Generally, you should return the text **word-for-word** except for the **four passes** below.
+const TTS_SYSTEM_PROMPT = `**Role & Output Rule**  
+You are an audio-preparation editor.  
+Your goal is to make the following be worded naturally for the read-aloud style of a TTS model, but with <10% being altered. Generally, you should return the text **word-for-word** except for the **four passes** below.  
 No summaries, no comments.
 
-**Pass 1 – Neutral Citations**
+**Pass 1 – Neutral Citations**  
 \`(Author et al. 20XX)\` → \`[citation 1]\`, \`[citation 2]\`, \`[citation 3]\`… incrementing for each new citation.
 
 **Pass 2 – Read Aloud Math**
 Convert LaTeX into plain English spoken equivalents. **Leave out no important variables and leave out no details that would change the meaning of the math**. Additionally, clarify the difference between uppercase and lowercase variables of the same letter if both are present in the same paragraph. To do this, use a "type descriptor" (such as "the set," "the graph," or "the matrix") and the word "capital" immediately before the variable name for uppercase versions. Use a type descriptor for the lowercase version as well.
-Example 1: We provide a set of module prototypes $S=\\{G_1, G_2, \\dots, G_{|S|}\\}$ -> We provide a set of module prototypes, S, which contains elements G sub-one, G sub-two, and so on, up to the total number of items in the set.
+Example 1: We provide a set of module prototypes $S=\{G_1, G_2, \dots, G_{|S|}\}$ -> We provide a set of module prototypes, S, which contains elements G sub-one, G sub-two, and so on, up to the total number of items in the set.
 *note that no descriptors are added because there are no lowercase s or g variables present.
-Example 2: Each edge $e\\in E$ connects two nodes $n_1, n_2 \\in N$ and represents an individual branch segment $e=(n_1, n_2)$ -> Each edge e, which is an element of the edge set capital E, connects two nodes n sub-one and n sub-two, which are elements of the node set capital N, and represents an individual branch segment e equals the pair n sub-one and n sub-two.
+Example 2: Each edge $e\in E$ connects two nodes $n_1, n_2 \in N$ and represents an individual branch segment $e=(n_1, n_2)$ -> Each edge e, which is an element of the edge set capital E, connects two nodes n sub-one and n sub-two, which are elements of the node set capital N, and represents an individual branch segment e equals the pair n sub-one and n sub-two.
 *note that "edge e" and "edge set capital E" are used to clearly contrast the specific items against the collections.
 
-**Pass 3 – Breaths**
-Insert \`[beat]\` after every full stop or semicolon **only**; never inside sentences and **never add commas**.
-
-**Pass 4 – Sentence Slicing**
+**Pass 3 – Sentence Slicing**  
 If a sentence exceeds ~40 words, break it at an existing comma or conjunction; keep original punctuation.
 
-**Pass 5 – Micro-Glue (mandatory)**
-You should perform **glue word changes** wherever the cadence feels stilted **when read aloud**; do **as many or as few** as needed—no quota, no ceiling.
+**Pass 4 – Micro-Glue (mandatory)**  
+You should perform **glue word changes** wherever the cadence feels stilted **when read aloud**; do **as many or as few** as needed—no quota, no ceiling.  
 Never change verbs, adjectives, or technical nouns.
 
 After these five passes, output the text only.
@@ -38,7 +35,8 @@ An example sentence:
 Before:
 A branch module is defined as a connected acyclic graph $G=(N,E)$ , where $N$ and $E$ are sets of nodes and edges (referred to as branch segments).
 After:
-A branch module is defined as a connected acyclic graph, G equals the set containing N and E, where N and E are sets of nodes and edges, referred to as branch segments.`
+A branch module is defined as a connected acyclic graph, G equals the set containing N and E, where N and E are sets of nodes and edges, referred to as branch segments.
+`
 
 interface TTSRewriteRequest {
   documentId: string
@@ -121,6 +119,13 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
       model,
       system: TTS_SYSTEM_PROMPT,
       prompt: chunkContent,
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingLevel: "minimal",
+          },
+        },
+      },
     }),
   )
 
@@ -134,6 +139,14 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
   }
 
   const rewordedText = generateResult.data.text
+  const generateDurationMs = Math.round(performance.now() - generateStart)
+
+  // // DEBUG: Temporary log for AI rewrite output
+  // console.log("[TTS Rewrite Debug]", {
+  //   blockId,
+  //   durationMs: generateDurationMs,
+  //   rewordedText,
+  // })
 
   // Cache the result
   const cacheWriteResult = await tryCatch(
@@ -153,7 +166,7 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
   event.metadata = {
     cached: false,
     blockId,
-    durationMs: Math.round(performance.now() - generateStart),
+    durationMs: generateDurationMs,
     inputTokens: generateResult.data.usage.inputTokens,
     outputTokens: generateResult.data.usage.outputTokens,
   }

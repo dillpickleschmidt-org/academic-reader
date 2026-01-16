@@ -21,10 +21,10 @@ import { useChatPanel } from "@/context/ChatPanelContext"
 import { useTTSSelector, useTTSActions } from "@/context/TTSContext"
 
 function ChatThreadsNewButton() {
-  const { open } = useChatPanel()
+  const { startNewThread } = useChatPanel()
   return (
     <SidebarMenuSubButton
-      onClick={open}
+      onClick={startNewThread}
       className="group/new ml-2 -mr-3 h-auto my-0.5 py-1 gap-1 justify-center cursor-pointer bg-muted/30 hover:bg-muted/70 border-2 border-dashed border-border text-foreground/70 hover:text-foreground"
     >
       <Plus className="size-3 -ml-1.5 text-foreground/70! group-hover/new:text-foreground!" />
@@ -49,19 +49,6 @@ function TTSToggleButton() {
   )
 }
 
-const threadsData = {
-  title: "Chat Threads",
-  url: "#",
-  icon: Bot,
-  isActive: false,
-  items: [
-    {
-      render: <ChatThreadsNewButton />,
-    },
-    { title: "Summary", url: "#" },
-    { title: "Key findings", url: "#" },
-  ],
-}
 
 interface ReaderSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDownload?: () => void
@@ -76,6 +63,22 @@ export function ReaderSidebar({
   ...props
 }: ReaderSidebarProps) {
   const { state, setOpen } = useSidebar()
+  const chatPanel = useChatPanel()
+
+  const threadsData = {
+    title: "Chat Threads",
+    url: "#",
+    icon: Bot,
+    isActive: false,
+    onClick: () => {
+      if (state === "collapsed") {
+        setOpen(true)
+        chatPanel.open()
+        return "open" as const
+      }
+    },
+    items: [{ render: <ChatThreadsNewButton /> }],
+  }
 
   const tocData = {
     title: "Table of Contents",
@@ -85,7 +88,7 @@ export function ReaderSidebar({
     onClick: () => {
       if (state === "collapsed") {
         setOpen(true)
-        return false // Prevent collapsible toggle
+        return "open" as const
       }
     },
     items:

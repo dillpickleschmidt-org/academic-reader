@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, memo, useMemo, useCallback } from "react"
 import { DefaultChatTransport, type UIMessage } from "ai"
 import { useChat } from "@ai-sdk/react"
-import { LogIn, X } from "lucide-react"
+import { Bot, LogIn, X } from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
 import { VirtualizedConversation } from "@repo/core/ui/ai-elements/virtualized-conversation"
 import {
@@ -21,6 +21,7 @@ import {
 import { Loader } from "@repo/core/ui/ai-elements/loader"
 import { useAppConfig } from "@/hooks/use-app-config"
 import { useDocumentContext } from "@/context/DocumentContext"
+import { useChatPanel } from "@/context/ChatPanelContext"
 import { authClient } from "@repo/convex/auth-client"
 
 interface Props {
@@ -86,6 +87,16 @@ function AuthPrompt({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
+// Placeholder when no thread is selected
+function ThreadSelectionPlaceholder() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
+      <Bot className="h-8 w-8" />
+      <p>Select a thread or click "New" to get started</p>
+    </div>
+  )
+}
+
 export function AIChatPanel({ onClose }: Props) {
   const [input, setInput] = useState("")
   // Track whether embeddings have been generated for this document
@@ -93,6 +104,7 @@ export function AIChatPanel({ onClose }: Props) {
   const [storageError, setStorageError] = useState<string | null>(null)
   const hasTriggeredRef = useRef(false)
   const { user, isLoading: configLoading } = useAppConfig()
+  const { activeThreadId } = useChatPanel()
   const documentContext = useDocumentContext()
   const markdown = documentContext?.markdown
   const documentId = documentContext?.documentId
@@ -165,11 +177,16 @@ export function AIChatPanel({ onClose }: Props) {
     }
   }
 
-  // Auto-trigger summary when panel opens (if signed in + has markdown)
+  // Reset trigger flag when thread changes
+  useEffect(() => {
+    hasTriggeredRef.current = false
+  }, [activeThreadId])
+
+  // Auto-trigger summary when new thread starts (if signed in + has markdown)
   const hasMarkdown = !!markdown
   useEffect(() => {
-    // Wait for config to finish loading before triggering
     if (configLoading) return
+    if (!activeThreadId) return // No thread = no auto-trigger
 
     if (
       user &&
@@ -192,6 +209,7 @@ export function AIChatPanel({ onClose }: Props) {
     messages.length,
     sendMessage,
     documentId,
+    activeThreadId,
   ])
 
   // Reset state when panel closes
@@ -262,6 +280,8 @@ export function AIChatPanel({ onClose }: Props) {
         </div>
       ) : !user ? (
         <AuthPrompt onSignIn={handleSignIn} />
+      ) : !activeThreadId ? (
+        <ThreadSelectionPlaceholder />
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
           <VirtualizedConversation

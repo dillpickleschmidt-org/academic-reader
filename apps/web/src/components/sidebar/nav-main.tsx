@@ -23,7 +23,7 @@ type NavItem = {
   url: string
   icon?: LucideIcon
   isActive?: boolean
-  onClick?: () => boolean | void // Return false to prevent toggle
+  onClick?: () => boolean | "open" | void // false = no change, "open" = force open
   items?: (
     | {
         title: string
@@ -49,13 +49,18 @@ function NavItem({ item }: { item: NavItem }) {
         <SidebarMenuButton
           tooltip={item.title}
           onClick={() => {
-            const shouldToggle = item.onClick?.() !== false
-            if (shouldToggle) setOpen((o) => !o)
+            const result = item.onClick?.()
+            if (result === false) return
+            if (result === "open") {
+              setOpen(true)
+              return
+            }
+            setOpen((o) => !o)
           }}
         >
           {item.icon && <item.icon />}
           <span>{item.title}</span>
-          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[open]/collapsible:rotate-90" />
+          <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
         </SidebarMenuButton>
         <CollapsiblePanel>
           <SidebarMenuSub>

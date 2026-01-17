@@ -36,6 +36,59 @@ function handleCleanup(
   event.cleanup = { reason, ...result }
 }
 
+interface JobResultFormats {
+  html?: string
+  markdown?: string
+  chunks?: { blocks?: Array<{ id: string; block_type: string; html: string; page: number; section_hierarchy?: Record<string, string> }> }
+}
+
+interface JobResultInput {
+  content?: string
+  metadata?: { pages?: number }
+  formats?: JobResultFormats
+}
+
+interface FileInfo {
+  filename: string
+  fileId: string
+  documentPath: string
+}
+
+/**
+ * Process chunks and cache job result for persistence.
+ * Used by both streaming and polling paths.
+ */
+function cacheJobResult(
+  jobId: string,
+  result: JobResultInput,
+  fileInfo: FileInfo,
+): ChunkInput[] {
+  const rawChunks = result.formats?.chunks?.blocks ?? []
+  const chunks: ChunkInput[] = rawChunks
+    .map((chunk) => ({
+      blockId: chunk.id,
+      blockType: chunk.block_type,
+      content: stripHtmlForEmbedding(chunk.html),
+      page: chunk.page,
+      section: chunk.section_hierarchy
+        ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
+        : undefined,
+    }))
+    .filter((c) => c.content.trim().length > 0)
+
+  resultCache.set(jobId, {
+    html: result.formats?.html ?? result.content ?? "",
+    markdown: result.formats?.markdown ?? "",
+    chunks,
+    metadata: { pages: result.metadata?.pages },
+    filename: fileInfo.filename,
+    fileId: fileInfo.fileId,
+    documentPath: fileInfo.documentPath,
+  })
+
+  return chunks
+}
+
 export const jobs = new Hono<{ Variables: Variables }>()
 
 const SSE_HEADERS = {
@@ -69,6 +122,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
   // For local backend, proxy SSE stream with HTML enhancement
   if (backend.supportsStreaming() && backend instanceof LocalBackend) {
     const streamUrl = backend.getStreamUrl!(jobId)
+    const fileInfo = jobFileMap.get(jobId)
 
     const responseResult = await tryCatch(fetch(streamUrl))
     if (!responseResult.success) {
@@ -91,7 +145,7 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
       return c.json({ error: "Failed to connect to stream" }, 500)
     }
 
-    // Transform SSE events to enhance HTML content (block IDs added by Marker)
+    // Transform SSE events to enhance HTML content and cache results
     const transformedStream = transformSSEStream(
       responseResult.data.body,
       (sseEvent, data) => {
@@ -106,6 +160,15 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
                 convertMathToHtml,
               ])
             }
+
+            // Cache result and add job metadata for persistence
+            if (sseEvent === "completed" && fileInfo) {
+              cacheJobResult(jobId, parsed, fileInfo)
+              parsed.jobId = jobId
+              parsed.fileId = fileInfo.fileId
+              jobFileMap.delete(jobId)
+            }
+
             return JSON.stringify(parsed)
           } catch {
             return data
@@ -216,22 +279,6 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               }
             }
 
-            // Extract chunks for persistence/caching
-            const rawChunks = job.result?.formats?.chunks?.blocks ?? []
-            const chunks: ChunkInput[] = rawChunks
-              .map((chunk) => ({
-                blockId: chunk.id,
-                blockType: chunk.block_type,
-                content: stripHtmlForEmbedding(chunk.html),
-                page: chunk.page,
-                section: chunk.section_hierarchy
-                  ? Object.values(chunk.section_hierarchy)
-                      .filter(Boolean)
-                      .join(" > ")
-                  : undefined,
-              }))
-              .filter((c) => c.content.trim().length > 0)
-
             // Rewrite image sources to use R2 URLs
             if (imageUrls) {
               if (job.result?.content) {
@@ -269,30 +316,18 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               ])
             }
 
-            // Save results to S3 at document path
+            // Save results to S3 and cache for persistence
             if (job.result?.formats && fileInfo?.documentPath) {
-              const docPath = fileInfo.documentPath
-
               // Save HTML and markdown to S3
               const saveResult = await tryCatch(Promise.all([
-                storage.saveFile(`${docPath}/content.html`, job.result.formats.html),
-                storage.saveFile(`${docPath}/content.md`, job.result.formats.markdown),
+                storage.saveFile(`${fileInfo.documentPath}/content.html`, job.result.formats.html),
+                storage.saveFile(`${fileInfo.documentPath}/content.md`, job.result.formats.markdown),
               ]))
               if (!saveResult.success) {
                 console.error(`[jobs] Failed to save results: ${saveResult.error}`)
               }
 
-              resultCache.set(jobId, {
-                html: job.result.formats.html,
-                markdown: job.result.formats.markdown,
-                chunks,
-                metadata: {
-                  pages: (job.result.metadata as { pages?: number })?.pages,
-                },
-                filename: fileInfo.filename,
-                fileId: fileInfo.fileId,
-                documentPath: docPath,
-              })
+              cacheJobResult(jobId, job.result, fileInfo)
             }
 
             // For backends that don't support html_ready (like datalab), use result content

@@ -46,7 +46,7 @@ def run_conversion_process(
 
         # Import here to ensure tqdm patch is installed first
         from .conversion import _build_and_render_all, _process_html
-        from .html_processing import embed_images_as_base64
+        from .html_processing import embed_images_as_base64, images_to_base64
 
         all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
 
@@ -86,7 +86,7 @@ def run_conversion_process(
                     "json": all_formats["json"],
                     "chunks": all_formats["chunks"],
                 },
-                "images": images,
+                "images": images_to_base64(images) if images else None,
             },
         )
     except FileNotFoundError:

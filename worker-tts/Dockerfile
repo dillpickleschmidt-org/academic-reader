@@ -1,0 +1,36 @@
+# Runpod PyTorch base image - PyTorch 2.8, Python 3.11
+# Chatterbox pins torch==2.6.0 but works with 2.8 (stable APIs only)
+FROM runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04
+
+WORKDIR /app
+
+# Install system dependencies for audio processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install chatterbox without torch dependency pin
+RUN pip install --no-cache-dir chatterbox-tts --no-deps
+
+# Install chatterbox deps (minus torch/torchaudio) + web framework
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ ./app/
+COPY voices/ ./voices/
+
+# Pre-download and cache Chatterbox models during build
+RUN python -c "\
+from chatterbox.tts import ChatterboxTTS; \
+import torch; \
+device = 'cuda' if torch.cuda.is_available() else 'cpu'; \
+print(f'Loading model on {device}...'); \
+ChatterboxTTS.from_pretrained(device); \
+print('Model cached successfully')"
+
+EXPOSE 8001
+
+# No CMD - specified at runtime via docker-compose:
+# uvicorn app.main:app --host 0.0.0.0 --port 8001

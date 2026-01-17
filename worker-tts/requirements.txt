@@ -1,0 +1,16 @@
+# Chatterbox deps (excluding torch/torchaudio - already in base image)
+conformer
+s3tokenizer
+librosa
+resemble-perth
+huggingface_hub
+safetensors
+transformers
+diffusers
+einops
+omegaconf
+
+# Web framework
+fastapi>=0.115.0
+uvicorn>=0.32.0
+pydantic>=2.0.0

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .html_processing import embed_images_as_base64, inject_image_dimensions
+from .html_processing import embed_images_as_base64, images_to_base64, inject_image_dimensions
 from .models import get_or_create_models
 
 
@@ -149,5 +149,5 @@ def run_conversion_sync(
             "json": all_formats["json"],
             "chunks": all_formats["chunks"],
         },
-        "images": images,  # For progressive loading
+        "images": images_to_base64(images) if images else None,
     }

@@ -15,6 +15,7 @@ import { documentEmbeddings } from "./routes/document-embeddings"
 import { savedDocuments } from "./routes/saved-documents"
 import { chat } from "./routes/chat"
 import { ttsRewrite } from "./routes/tts-rewrite"
+import { tts } from "./routes/tts"
 import type { Storage } from "./storage/types"
 import { createStorage } from "./storage/factory"
 import { wideEvent } from "./middleware/wide-event-middleware"
@@ -97,7 +98,10 @@ api.route("/", documentEmbeddings)
 api.route("/", savedDocuments)
 api.route("/", chat)
 api.route("/", ttsRewrite)
-api.get("/health", (c) => c.json({ status: "ok", mode: process.env.BACKEND_MODE }))
+api.route("/", tts)
+api.get("/health", (c) =>
+  c.json({ status: "ok", mode: process.env.BACKEND_MODE }),
+)
 app.route("/api", api)
 
 // ─────────────────────────────────────────────────────────────

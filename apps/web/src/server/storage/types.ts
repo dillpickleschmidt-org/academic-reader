@@ -23,7 +23,7 @@ export interface Storage {
   /** Delete a file */
   deleteFile(key: string): Promise<boolean>
 
-  /** Get a presigned URL for a file (used by local/runpod backends to pass URL to worker) */
+  /** Get a URL for accessing a file (presigned URL, or tunnel URL in runpod mode) */
   getFileUrl(key: string): Promise<string>
 
   /** Upload images to {docPath}/images/ and return public URLs */

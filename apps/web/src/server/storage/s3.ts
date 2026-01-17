@@ -57,6 +57,9 @@ export class S3Storage implements Storage {
   }
 
   private getTunnelUrl(): string | undefined {
+    // Only use tunnel URL in runpod mode
+    if (process.env.BACKEND_MODE !== "runpod") return undefined
+
     try {
       if (existsSync(TUNNEL_URL_FILE)) {
         const url = readFileSync(TUNNEL_URL_FILE, "utf-8").trim()

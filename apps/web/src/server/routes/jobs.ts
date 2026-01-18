@@ -39,7 +39,15 @@ function handleCleanup(
 interface JobResultFormats {
   html?: string
   markdown?: string
-  chunks?: { blocks?: Array<{ id: string; block_type: string; html: string; page: number; section_hierarchy?: Record<string, string> }> }
+  chunks?: {
+    blocks?: Array<{
+      id: string
+      block_type: string
+      html: string
+      page: number
+      section_hierarchy?: Record<string, string>
+    }>
+  }
 }
 
 interface JobResultInput {
@@ -124,6 +132,9 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
     const streamUrl = backend.getStreamUrl!(jobId)
     const fileInfo = jobFileMap.get(jobId)
 
+    // Capture formats for S3 save after stream completes
+    let formatsToSave: { html: string; markdown: string } | null = null
+
     const responseResult = await tryCatch(fetch(streamUrl))
     if (!responseResult.success) {
       event.error = {
@@ -167,6 +178,14 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               parsed.jobId = jobId
               parsed.fileId = fileInfo.fileId
               jobFileMap.delete(jobId)
+
+              // Store for S3 save in finally() since transform callback is sync
+              if (parsed.formats?.html && parsed.formats?.markdown) {
+                formatsToSave = {
+                  html: parsed.formats.html,
+                  markdown: parsed.formats.markdown,
+                }
+              }
             }
 
             return JSON.stringify(parsed)
@@ -182,7 +201,26 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
     const streamStart = performance.now()
     const [streamForResponse, streamForTracking] = transformedStream.tee()
 
-    streamForTracking.pipeTo(new WritableStream()).finally(() => {
+    streamForTracking.pipeTo(new WritableStream()).finally(async () => {
+      // Save HTML/markdown to S3 after stream completes
+      if (formatsToSave && fileInfo?.documentPath) {
+        const saveResult = await tryCatch(
+          Promise.all([
+            storage.saveFile(
+              `${fileInfo.documentPath}/content.html`,
+              formatsToSave.html,
+            ),
+            storage.saveFile(
+              `${fileInfo.documentPath}/content.md`,
+              formatsToSave.markdown,
+            ),
+          ]),
+        )
+        if (!saveResult.success) {
+          console.error(`[jobs] Failed to save results: ${saveResult.error}`)
+        }
+      }
+
       emitStreamingEvent(event, {
         durationMs: Math.round(performance.now() - streamStart),
         status: 200,
@@ -261,7 +299,6 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
             if (
               job.result?.images &&
               Object.keys(job.result.images).length > 0 &&
-              storage.uploadImages &&
               fileInfo?.documentPath
             ) {
               const uploadResult = await tryCatch(
@@ -279,52 +316,48 @@ jobs.get("/jobs/:jobId/stream", async (c) => {
               }
             }
 
-            // Rewrite image sources to use R2 URLs
-            if (imageUrls) {
-              if (job.result?.content) {
-                job.result.content = rewriteImageSources(
-                  job.result.content,
-                  imageUrls,
-                )
-              }
-              if (job.htmlContent) {
-                job.htmlContent = rewriteImageSources(job.htmlContent, imageUrls)
-              }
-              if (job.result?.formats?.html) {
-                job.result.formats.html = rewriteImageSources(
-                  job.result.formats.html,
-                  imageUrls,
-                )
-              }
+            // Process display content (htmlContent and result.content share the same source)
+            const rawContent = job.result?.content || job.htmlContent
+            if (rawContent) {
+              let processedContent = imageUrls
+                ? rewriteImageSources(rawContent, imageUrls)
+                : rawContent
+              processedContent = processHtml(processedContent, [
+                removeImgDescriptions,
+                wrapCitations,
+                processParagraphs,
+                convertMathToHtml,
+              ])
+              if (job.result?.content) job.result.content = processedContent
+              if (job.htmlContent) job.htmlContent = processedContent
             }
 
-            // Enhance HTML with reader enhancements (block IDs added by Marker)
-            if (job.result?.content) {
-              job.result.content = processHtml(job.result.content, [
-                removeImgDescriptions,
-                wrapCitations,
-                processParagraphs,
-                convertMathToHtml,
-              ])
-            }
-            if (job.htmlContent) {
-              job.htmlContent = processHtml(job.htmlContent, [
-                removeImgDescriptions,
-                wrapCitations,
-                processParagraphs,
-                convertMathToHtml,
-              ])
+            // formats.html is stored raw in S3 (reader enhancements applied on load)
+            if (imageUrls && job.result?.formats?.html) {
+              job.result.formats.html = rewriteImageSources(
+                job.result.formats.html,
+                imageUrls,
+              )
             }
 
             // Save results to S3 and cache for persistence
             if (job.result?.formats && fileInfo?.documentPath) {
-              // Save HTML and markdown to S3
-              const saveResult = await tryCatch(Promise.all([
-                storage.saveFile(`${fileInfo.documentPath}/content.html`, job.result.formats.html),
-                storage.saveFile(`${fileInfo.documentPath}/content.md`, job.result.formats.markdown),
-              ]))
+              const saveResult = await tryCatch(
+                Promise.all([
+                  storage.saveFile(
+                    `${fileInfo.documentPath}/content.html`,
+                    job.result.formats.html,
+                  ),
+                  storage.saveFile(
+                    `${fileInfo.documentPath}/content.md`,
+                    job.result.formats.markdown,
+                  ),
+                ]),
+              )
               if (!saveResult.success) {
-                console.error(`[jobs] Failed to save results: ${saveResult.error}`)
+                console.error(
+                  `[jobs] Failed to save results: ${saveResult.error}`,
+                )
               }
 
               cacheJobResult(jobId, job.result, fileInfo)

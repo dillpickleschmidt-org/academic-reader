@@ -60,7 +60,11 @@ export async function createDocumentWithChunks(
     ),
   )
 
-  return { documentId, storageId: input.storageId, chunkCount: input.chunks.length }
+  return {
+    documentId,
+    storageId: input.storageId,
+    chunkCount: input.chunks.length,
+  }
 }
 
 /**
@@ -92,14 +96,16 @@ export async function addEmbeddings(
 
   // Update each chunk with its embedding
   await Promise.all(
-    chunks.map((chunk, i) => ctx.db.patch(chunk._id, { embedding: embeddings[i] })),
+    chunks.map((chunk, i) =>
+      ctx.db.patch(chunk._id, { embedding: embeddings[i] }),
+    ),
   )
 
   return { updated: chunks.length }
 }
 
 /**
- * Delete a document and all its chunks and TTS cache.
+ * Delete a document and all its chunks and TTS data.
  */
 export async function deleteDocument(
   ctx: MutationCtx,
@@ -121,21 +127,35 @@ export async function deleteDocument(
     .withIndex("by_document", (q) => q.eq("documentId", documentId))
     .collect()
 
-  // Delete all TTS cache entries
-  const ttsEntries = await ctx.db
-    .query("ttsCache")
-    .withIndex("by_document_block", (q) => q.eq("documentId", documentId))
+  // Delete all TTS segments
+  const ttsSegments = await ctx.db
+    .query("ttsSegments")
+    .withIndex("by_document_block_variation", (q) =>
+      q.eq("documentId", documentId),
+    )
+    .collect()
+
+  // Delete all TTS audio records
+  const ttsAudio = await ctx.db
+    .query("ttsAudio")
+    .withIndex("by_segment_voice", (q) => q.eq("documentId", documentId))
     .collect()
 
   await Promise.all([
     ...chunks.map((chunk) => ctx.db.delete(chunk._id)),
-    ...ttsEntries.map((entry) => ctx.db.delete(entry._id)),
+    ...ttsSegments.map((seg) => ctx.db.delete(seg._id)),
+    ...ttsAudio.map((audio) => ctx.db.delete(audio._id)),
   ])
 
   // Delete document
   await ctx.db.delete(documentId)
 
-  return { deleted: true, chunkCount: chunks.length, ttsCacheCount: ttsEntries.length }
+  return {
+    deleted: true,
+    chunkCount: chunks.length,
+    ttsSegmentCount: ttsSegments.length,
+    ttsAudioCount: ttsAudio.length,
+  }
 }
 
 // ===== Query Helpers =====
@@ -258,7 +278,9 @@ export async function searchChunks(
   const { documentId, queryEmbedding, limit = 5 } = args
 
   // Verify user owns this document (throws if unauthorized or not found)
-  await ctx.runQuery(internal.api.documents.verifyDocumentAccess, { documentId })
+  await ctx.runQuery(internal.api.documents.verifyDocumentAccess, {
+    documentId,
+  })
 
   // Vector search
   const results = await ctx.vectorSearch("chunks", "by_embedding", {
@@ -271,16 +293,22 @@ export async function searchChunks(
   // So we fetch more and filter client-side
   const chunksWithScores = await Promise.all(
     results.map(async (r) => {
-      const chunk = await ctx.runQuery(internal.api.documents.getChunkInternal, {
-        chunkId: r._id,
-      })
+      const chunk = await ctx.runQuery(
+        internal.api.documents.getChunkInternal,
+        {
+          chunkId: r._id,
+        },
+      )
       if (!chunk) return null
       return { chunk, score: r._score }
     }),
   )
 
   return chunksWithScores
-    .filter((c): c is NonNullable<typeof c> => c !== null && c.chunk.documentId === documentId)
+    .filter(
+      (c): c is NonNullable<typeof c> =>
+        c !== null && c.chunk.documentId === documentId,
+    )
     .slice(0, limit)
     .map((c) => ({
       content: c.chunk.content,

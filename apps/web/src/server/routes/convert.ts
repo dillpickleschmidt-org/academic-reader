@@ -73,7 +73,8 @@ convert.post("/convert/:fileId", async (c) => {
     }
     input = { ...baseInput, fileData: bytesResult.data, filename }
   } else if (backendType === "local" || backendType === "runpod") {
-    const fileUrlResult = await tryCatch(storage.getFileUrl(originalFilePath))
+    // Use internal URL for worker access (Docker network)
+    const fileUrlResult = await tryCatch(storage.getFileUrl(originalFilePath, true))
     if (!fileUrlResult.success) {
       event.error = {
         category: "storage",

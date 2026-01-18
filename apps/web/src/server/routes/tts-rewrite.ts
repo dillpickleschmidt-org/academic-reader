@@ -6,6 +6,7 @@ import { createChatModel } from "../providers/models"
 import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
+import { chunkTextForTTS } from "../utils/tts-chunker"
 
 const TTS_SYSTEM_PROMPT = `**Role & Output Rule**  
 You are an audio-preparation editor.  
@@ -42,6 +43,13 @@ interface TTSRewriteRequest {
   documentId: string
   blockId: string
   chunkContent: string
+  variation?: string
+}
+
+/** Segment data returned from Convex query */
+interface SegmentData {
+  index: number
+  text: string
 }
 
 export const ttsRewrite = new Hono()
@@ -72,7 +80,12 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
     return c.json({ error: "Invalid request body" }, 400)
   }
 
-  const { documentId, blockId, chunkContent } = bodyResult.data
+  const {
+    documentId,
+    blockId,
+    chunkContent,
+    variation = "default",
+  } = bodyResult.data
 
   if (!documentId || !blockId || !chunkContent) {
     event.error = {
@@ -83,18 +96,26 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
     return c.json({ error: "Missing required fields" }, 400)
   }
 
-  // Check cache first
-  const cacheResult = await tryCatch(
-    convex.query(api.api.tts.get, {
+  // Check if segments already exist
+  const existingSegments = await tryCatch(
+    convex.query(api.api.ttsSegments.getSegments, {
       documentId: documentId as Id<"documents">,
       blockId,
+      variation,
     }),
   )
 
-  if (cacheResult.success && cacheResult.data) {
-    event.metadata = { cached: true, blockId }
+  if (existingSegments.success && existingSegments.data.length > 0) {
+    event.metadata = {
+      cached: true,
+      blockId,
+      segmentCount: existingSegments.data.length,
+    }
     return c.json({
-      rewordedText: cacheResult.data.rewordedText,
+      segments: existingSegments.data.map((s: SegmentData) => ({
+        index: s.index,
+        text: s.text,
+      })),
       cached: true,
     })
   }
@@ -141,38 +162,35 @@ ttsRewrite.post("/tts/rewrite", async (c) => {
   const rewordedText = generateResult.data.text
   const generateDurationMs = Math.round(performance.now() - generateStart)
 
-  // // DEBUG: Temporary log for AI rewrite output
-  // console.log("[TTS Rewrite Debug]", {
-  //   blockId,
-  //   durationMs: generateDurationMs,
-  //   rewordedText,
-  // })
+  // Chunk the reworded text into segments (≤300 chars each)
+  const chunks = chunkTextForTTS(rewordedText, 300)
 
-  // Cache the result
-  const cacheWriteResult = await tryCatch(
-    convex.mutation(api.api.tts.cache, {
+  // Store segments in Convex
+  const createResult = await tryCatch(
+    convex.mutation(api.api.ttsSegments.createSegments, {
       documentId: documentId as Id<"documents">,
       blockId,
-      originalText: chunkContent,
-      rewordedText,
+      variation,
+      texts: chunks.map((c) => c.text),
     }),
   )
 
-  if (!cacheWriteResult.success) {
+  if (!createResult.success) {
     // Log but don't fail - caching is not critical
-    console.error("Failed to cache TTS result:", cacheWriteResult.error)
+    console.error("Failed to store TTS segments:", createResult.error)
   }
 
   event.metadata = {
     cached: false,
     blockId,
+    segmentCount: chunks.length,
     durationMs: generateDurationMs,
     inputTokens: generateResult.data.usage.inputTokens,
     outputTokens: generateResult.data.usage.outputTokens,
   }
 
   return c.json({
-    rewordedText,
+    segments: chunks,
     cached: false,
   })
 })

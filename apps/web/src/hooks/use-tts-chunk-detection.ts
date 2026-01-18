@@ -24,7 +24,7 @@ const SKIP_BLOCK_TYPES = new Set([
  */
 export function useTTSChunkDetection(chunks: ChunkBlock[]) {
   const isEnabled = useTTSSelector((s) => s.isEnabled)
-  const { loadChunkTTS } = useTTSActions()
+  const { loadBlockTTS } = useTTSActions()
 
   // Build lookup map: blockId -> chunk
   const chunkMap = useMemo(() => {
@@ -63,10 +63,10 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
       // Strip HTML from chunk content
       const chunkContent = chunk.html.replace(/<[^>]*>/g, "")
       if (chunkContent.trim()) {
-        loadChunkTTS(blockId, chunkContent)
+        loadBlockTTS(blockId, chunkContent)
       }
     },
-    [isEnabled, chunkMap, loadChunkTTS],
+    [isEnabled, chunkMap, loadBlockTTS],
   )
 
   return { handleContentClick }

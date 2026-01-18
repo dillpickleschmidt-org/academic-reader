@@ -9,19 +9,32 @@ import {
 } from "react"
 import { toast } from "sonner"
 
+type SegmentStatus = "pending" | "loading" | "ready" | "error"
+
+type TTSSegment = {
+  index: number
+  text: string
+  audioUrl: string | null
+  durationMs: number | null
+  status: SegmentStatus
+}
+
 type TTSState = {
   isEnabled: boolean
   isLoading: boolean
   currentBlockId: string | null
-  rewordedText: string | null
   error: string | null
-  // Audio playback state
-  audioUrl: string | null
+  // Segment-based state
+  segments: TTSSegment[]
+  currentSegmentIndex: number
+  // Playback state
   isPlaying: boolean
   isSynthesizing: boolean
   currentVoice: string
-  duration: number
+  // Computed from segments
+  totalDuration: number
   currentTime: number
+  segmentCurrentTime: number
 }
 
 type TTSStore = {
@@ -49,13 +62,13 @@ function createStore(initial: TTSState): TTSStore {
 type TTSActions = {
   enable: () => void
   disable: () => void
-  loadChunkTTS: (blockId: string, chunkContent: string) => Promise<void>
-  synthesize: () => Promise<void>
+  loadBlockTTS: (blockId: string, chunkContent: string) => Promise<void>
   play: () => void
   pause: () => void
   togglePlayPause: () => void
   skip: (seconds: number) => void
   setVoice: (voiceId: string) => void
+  goToSegment: (index: number) => void
 }
 
 const TTSContext = createContext<{
@@ -63,19 +76,6 @@ const TTSContext = createContext<{
   actions: TTSActions
   audioRef: React.RefObject<HTMLAudioElement | null>
 } | null>(null)
-
-/**
- * Convert base64 audio to a blob URL.
- */
-function createAudioUrl(base64Audio: string): string {
-  const binary = atob(base64Audio)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  const blob = new Blob([bytes], { type: "audio/wav" })
-  return URL.createObjectURL(blob)
-}
 
 export function TTSProvider({
   documentId,
@@ -86,33 +86,152 @@ export function TTSProvider({
 }) {
   const storeRef = useRef<TTSStore>(null!)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Track if we're waiting for next segment to be ready
+  const waitingForNextRef = useRef(false)
+  // Track ongoing fetches to avoid duplicates
+  const fetchingSegmentsRef = useRef(new Set<number>())
 
   if (!storeRef.current) {
     storeRef.current = createStore({
       isEnabled: false,
       isLoading: false,
       currentBlockId: null,
-      rewordedText: null,
       error: null,
-      audioUrl: null,
+      segments: [],
+      currentSegmentIndex: 0,
       isPlaying: false,
       isSynthesizing: false,
       currentVoice: "male_1",
-      duration: 0,
+      totalDuration: 0,
       currentTime: 0,
+      segmentCurrentTime: 0,
     })
   }
   const store = storeRef.current
 
-  // Cleanup audio URL on unmount
-  useEffect(() => {
-    return () => {
-      const { audioUrl } = store.getState()
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl)
+  // Fetch audio for a specific segment
+  const fetchSegmentAudio = useCallback(
+    async (segmentIndex: number): Promise<boolean> => {
+      const state = store.getState()
+      if (!documentId || !state.currentBlockId) return false
+
+      const segment = state.segments[segmentIndex]
+      if (
+        !segment ||
+        segment.status === "ready" ||
+        segment.status === "loading"
+      )
+        return segment?.status === "ready"
+
+      // Check if already fetching
+      if (fetchingSegmentsRef.current.has(segmentIndex)) return false
+      fetchingSegmentsRef.current.add(segmentIndex)
+
+      // Update segment status to loading
+      const updatedSegments = [...state.segments]
+      updatedSegments[segmentIndex] = { ...segment, status: "loading" }
+      store.setState({ segments: updatedSegments, isSynthesizing: true })
+
+      try {
+        const response = await fetch("/api/tts/segment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            documentId,
+            blockId: state.currentBlockId,
+            segmentIndex,
+            voiceId: state.currentVoice,
+          }),
+        })
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.error || "Failed to synthesize segment")
+        }
+
+        const data = await response.json()
+
+        // Update segment with audio URL
+        const freshState = store.getState()
+        const newSegments = [...freshState.segments]
+        newSegments[segmentIndex] = {
+          ...newSegments[segmentIndex],
+          audioUrl: data.audioUrl,
+          durationMs: data.durationMs,
+          status: "ready",
+        }
+
+        // Recalculate total duration
+        const totalDuration =
+          newSegments.reduce((sum, s) => sum + (s.durationMs || 0), 0) / 1000
+
+        // Check if any segment is still loading
+        const stillSynthesizing = newSegments.some(
+          (s) => s.status === "loading",
+        )
+
+        store.setState({
+          segments: newSegments,
+          totalDuration,
+          isSynthesizing: stillSynthesizing,
+        })
+
+        fetchingSegmentsRef.current.delete(segmentIndex)
+        return true
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Segment synthesis failed"
+
+        const freshState = store.getState()
+        const newSegments = [...freshState.segments]
+        newSegments[segmentIndex] = {
+          ...newSegments[segmentIndex],
+          status: "error",
+        }
+
+        const stillSynthesizing = newSegments.some(
+          (s) => s.status === "loading",
+        )
+        store.setState({
+          segments: newSegments,
+          error: errorMsg,
+          isSynthesizing: stillSynthesizing,
+        })
+
+        fetchingSegmentsRef.current.delete(segmentIndex)
+        return false
       }
-    }
-  }, [store])
+    },
+    [store, documentId],
+  )
+
+  // Play a specific segment
+  const playSegment = useCallback(
+    async (segmentIndex: number) => {
+      const state = store.getState()
+      const segment = state.segments[segmentIndex]
+      if (!segment) return
+
+      if (segment.status === "ready" && segment.audioUrl && audioRef.current) {
+        store.setState({ currentSegmentIndex: segmentIndex })
+        audioRef.current.src = segment.audioUrl
+        audioRef.current.play()
+        store.setState({ isPlaying: true })
+
+        // Pre-fetch next segment
+        if (segmentIndex + 1 < state.segments.length) {
+          fetchSegmentAudio(segmentIndex + 1)
+        }
+      } else if (segment.status === "pending") {
+        // Need to load this segment first
+        waitingForNextRef.current = true
+        store.setState({ currentSegmentIndex: segmentIndex })
+        await fetchSegmentAudio(segmentIndex)
+      }
+    },
+    [store, fetchSegmentAudio],
+  )
 
   const enable = useCallback(() => {
     store.setState({ isEnabled: true, error: null })
@@ -124,84 +243,23 @@ export function TTSProvider({
       audioRef.current.pause()
       audioRef.current.src = ""
     }
-    const { audioUrl } = store.getState()
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl)
-    }
+    waitingForNextRef.current = false
+    fetchingSegmentsRef.current.clear()
     store.setState({
       isEnabled: false,
-      rewordedText: null,
+      segments: [],
       currentBlockId: null,
       error: null,
-      audioUrl: null,
       isPlaying: false,
       isSynthesizing: false,
-      duration: 0,
+      currentSegmentIndex: 0,
+      totalDuration: 0,
       currentTime: 0,
+      segmentCurrentTime: 0,
     })
   }, [store])
 
-  const synthesize = useCallback(async () => {
-    const state = store.getState()
-    if (!documentId || !state.currentBlockId || !state.rewordedText) {
-      return
-    }
-
-    // Cleanup previous audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ""
-    }
-    if (state.audioUrl) {
-      URL.revokeObjectURL(state.audioUrl)
-    }
-
-    store.setState({ isSynthesizing: true, audioUrl: null, isPlaying: false })
-    const toastId = toast.loading("Generating speech...")
-
-    try {
-      const response = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({
-          documentId,
-          blockId: state.currentBlockId,
-          voiceId: state.currentVoice,
-        }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to synthesize speech")
-      }
-
-      const data = await response.json()
-      const audioUrl = createAudioUrl(data.audio)
-
-      store.setState({
-        audioUrl,
-        isSynthesizing: false,
-        duration: data.durationMs / 1000,
-      })
-
-      // Auto-play the audio
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl
-        audioRef.current.play()
-        store.setState({ isPlaying: true })
-      }
-
-      toast.success("Speech generated", { id: toastId })
-    } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : "Speech synthesis failed"
-      store.setState({ error: errorMsg, isSynthesizing: false })
-      toast.error(errorMsg, { id: toastId })
-    }
-  }, [store, documentId])
-
-  const loadChunkTTS = useCallback(
+  const loadBlockTTS = useCallback(
     async (blockId: string, chunkContent: string) => {
       if (!documentId) {
         store.setState({
@@ -218,14 +276,15 @@ export function TTSProvider({
           audioRef.current.pause()
           audioRef.current.src = ""
         }
-        if (currentState.audioUrl) {
-          URL.revokeObjectURL(currentState.audioUrl)
-        }
+        waitingForNextRef.current = false
+        fetchingSegmentsRef.current.clear()
         store.setState({
-          audioUrl: null,
+          segments: [],
           isPlaying: false,
+          currentSegmentIndex: 0,
           currentTime: 0,
-          duration: 0,
+          totalDuration: 0,
+          segmentCurrentTime: 0,
         })
       }
 
@@ -233,6 +292,7 @@ export function TTSProvider({
       const toastId = toast.loading("Preparing text for speech...")
 
       try {
+        // Step 1: Get segments (may be cached)
         const response = await fetch("/api/tts/rewrite", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -242,85 +302,70 @@ export function TTSProvider({
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}))
-          throw new Error(data.error || "Failed to reword text")
+          throw new Error(data.error || "Failed to prepare text")
         }
 
         const data = await response.json()
-        store.setState({ rewordedText: data.rewordedText, isLoading: false })
+
+        // Initialize segments with pending status
+        const segments: TTSSegment[] = data.segments.map(
+          (s: Pick<TTSSegment, "index" | "text">) => ({
+            index: s.index,
+            text: s.text,
+            audioUrl: null,
+            durationMs: null,
+            status: "pending" as SegmentStatus,
+          }),
+        )
+
+        store.setState({ segments, isLoading: false })
         toast.dismiss(toastId)
 
-        // Auto-synthesize after rewrite
-        // Use setTimeout to allow state to update before synthesize reads it
-        setTimeout(async () => {
-          // Get fresh state and synthesize
-          const freshStore = store.getState()
-          if (
-            freshStore.rewordedText &&
-            freshStore.currentBlockId === blockId
-          ) {
-            store.setState({ isSynthesizing: true })
-            const synthToastId = toast.loading("Generating speech...")
+        if (segments.length === 0) {
+          toast.error("No text to synthesize")
+          return
+        }
 
-            try {
-              const synthResponse = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                  documentId,
-                  blockId,
-                  voiceId: freshStore.currentVoice,
-                }),
-              })
+        // Step 2: Immediately request first segment audio
+        toast.loading("Generating speech...", { id: "tts-synth" })
+        const success = await fetchSegmentAudio(0)
 
-              if (!synthResponse.ok) {
-                const synthData = await synthResponse.json().catch(() => ({}))
-                throw new Error(
-                  synthData.error || "Failed to synthesize speech",
-                )
-              }
+        if (success) {
+          const freshState = store.getState()
+          const firstSegment = freshState.segments[0]
 
-              const synthData = await synthResponse.json()
-              const audioUrl = createAudioUrl(synthData.audio)
+          if (firstSegment?.audioUrl && audioRef.current) {
+            audioRef.current.src = firstSegment.audioUrl
+            audioRef.current.play()
+            store.setState({ isPlaying: true, currentSegmentIndex: 0 })
+            toast.success("Speech ready", { id: "tts-synth" })
 
-              store.setState({
-                audioUrl,
-                isSynthesizing: false,
-                duration: synthData.durationMs / 1000,
-              })
-
-              // Auto-play the audio
-              if (audioRef.current) {
-                audioRef.current.src = audioUrl
-                audioRef.current.play()
-                store.setState({ isPlaying: true })
-              }
-
-              toast.success("Speech ready", { id: synthToastId })
-            } catch (err) {
-              const errorMsg =
-                err instanceof Error ? err.message : "Speech synthesis failed"
-              store.setState({ error: errorMsg, isSynthesizing: false })
-              toast.error(errorMsg, { id: synthToastId })
+            // Pre-fetch second segment
+            if (segments.length > 1) {
+              fetchSegmentAudio(1)
             }
           }
-        }, 0)
+        } else {
+          toast.error("Failed to generate speech", { id: "tts-synth" })
+        }
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "TTS processing failed"
         store.setState({
           error: errorMsg,
-          rewordedText: null,
+          segments: [],
           isLoading: false,
         })
         toast.error(errorMsg, { id: toastId })
       }
     },
-    [store, documentId],
+    [store, documentId, fetchSegmentAudio],
   )
 
   const play = useCallback(() => {
-    if (audioRef.current && store.getState().audioUrl) {
+    const state = store.getState()
+    const segment = state.segments[state.currentSegmentIndex]
+    if (audioRef.current && segment?.audioUrl) {
       audioRef.current.play()
       store.setState({ isPlaying: true })
     }
@@ -341,42 +386,105 @@ export function TTSProvider({
     }
   }, [store, play, pause])
 
-  const skip = useCallback((seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(
-        0,
-        Math.min(
-          audioRef.current.duration || 0,
-          audioRef.current.currentTime + seconds,
-        ),
-      )
-    }
-  }, [])
+  const skip = useCallback(
+    (seconds: number) => {
+      const state = store.getState()
+      if (!audioRef.current || state.segments.length === 0) return
+
+      // Calculate target time across all segments
+      let targetTime = state.currentTime + seconds
+      targetTime = Math.max(0, Math.min(state.totalDuration, targetTime))
+
+      // Find which segment this time falls into
+      let accumulatedTime = 0
+      for (let i = 0; i < state.segments.length; i++) {
+        const segmentDuration = (state.segments[i].durationMs || 0) / 1000
+        if (targetTime <= accumulatedTime + segmentDuration) {
+          // Target is in this segment
+          const segmentTime = targetTime - accumulatedTime
+          if (i === state.currentSegmentIndex) {
+            // Same segment - just seek
+            audioRef.current.currentTime = segmentTime
+          } else {
+            // Different segment - need to switch
+            const segment = state.segments[i]
+            if (segment.status === "ready" && segment.audioUrl) {
+              store.setState({ currentSegmentIndex: i })
+              audioRef.current.src = segment.audioUrl
+              audioRef.current.currentTime = segmentTime
+              if (state.isPlaying) {
+                audioRef.current.play()
+              }
+            }
+          }
+          return
+        }
+        accumulatedTime += segmentDuration
+      }
+    },
+    [store],
+  )
+
+  const goToSegment = useCallback(
+    (index: number) => {
+      const state = store.getState()
+      if (index < 0 || index >= state.segments.length) return
+      playSegment(index)
+    },
+    [store, playSegment],
+  )
 
   const setVoice = useCallback(
     (voiceId: string) => {
       const state = store.getState()
       if (state.currentVoice === voiceId) return
 
-      store.setState({ currentVoice: voiceId })
+      const wasPlaying = state.isPlaying
 
-      // If we have reworded text, re-synthesize with new voice
-      if (state.rewordedText && state.currentBlockId) {
-        // Stop current playback
-        if (audioRef.current) {
-          audioRef.current.pause()
-          audioRef.current.src = ""
-        }
-        if (state.audioUrl) {
-          URL.revokeObjectURL(state.audioUrl)
-        }
-        store.setState({ audioUrl: null, isPlaying: false })
+      // Stop current playback
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.src = ""
+      }
 
-        // Synthesize with new voice
-        synthesize()
+      // Clear all audio and reset to pending
+      const resetSegments = state.segments.map((s) => ({
+        ...s,
+        audioUrl: null,
+        durationMs: null,
+        status: "pending" as SegmentStatus,
+      }))
+
+      fetchingSegmentsRef.current.clear()
+
+      store.setState({
+        currentVoice: voiceId,
+        segments: resetSegments,
+        isPlaying: false,
+        totalDuration: 0,
+        currentTime: 0,
+        segmentCurrentTime: 0,
+      })
+
+      // Re-synthesize current segment with new voice
+      if (resetSegments.length > 0) {
+        fetchSegmentAudio(state.currentSegmentIndex).then((success) => {
+          if (success) {
+            const freshState = store.getState()
+            const segment = freshState.segments[state.currentSegmentIndex]
+            if (segment?.audioUrl && audioRef.current) {
+              audioRef.current.src = segment.audioUrl
+              // Only resume if it was playing before voice change
+              if (wasPlaying) {
+                audioRef.current.play()
+                store.setState({ isPlaying: true })
+              }
+            }
+          }
+        })
       }
     },
-    [store, synthesize],
+    [store, fetchSegmentAudio],
   )
 
   // Set up audio event listeners
@@ -385,11 +493,45 @@ export function TTSProvider({
     if (!audio) return
 
     const handleEnded = () => {
-      store.setState({ isPlaying: false, currentTime: 0 })
+      const state = store.getState()
+      const nextIndex = state.currentSegmentIndex + 1
+
+      if (nextIndex < state.segments.length) {
+        // Play next segment
+        const nextSegment = state.segments[nextIndex]
+        if (nextSegment.status === "ready" && nextSegment.audioUrl) {
+          store.setState({ currentSegmentIndex: nextIndex })
+          audio.src = nextSegment.audioUrl
+          audio.play()
+
+          // Pre-fetch the segment after next
+          if (nextIndex + 1 < state.segments.length) {
+            fetchSegmentAudio(nextIndex + 1)
+          }
+        } else {
+          // Next segment not ready - wait for it
+          waitingForNextRef.current = true
+          store.setState({ currentSegmentIndex: nextIndex, isPlaying: false })
+          fetchSegmentAudio(nextIndex)
+        }
+      } else {
+        // All segments finished
+        store.setState({ isPlaying: false, segmentCurrentTime: 0 })
+      }
     }
 
     const handleTimeUpdate = () => {
-      store.setState({ currentTime: audio.currentTime })
+      const state = store.getState()
+      const segmentCurrentTime = audio.currentTime
+
+      // Calculate total time = sum of previous segments + current position
+      let previousDuration = 0
+      for (let i = 0; i < state.currentSegmentIndex; i++) {
+        previousDuration += (state.segments[i]?.durationMs || 0) / 1000
+      }
+      const currentTime = previousDuration + segmentCurrentTime
+
+      store.setState({ currentTime, segmentCurrentTime })
     }
 
     const handlePlay = () => {
@@ -411,7 +553,31 @@ export function TTSProvider({
       audio.removeEventListener("play", handlePlay)
       audio.removeEventListener("pause", handlePause)
     }
-  }, [store])
+  }, [store, fetchSegmentAudio])
+
+  // Watch for segment becoming ready when we're waiting
+  useEffect(() => {
+    const unsubscribe = store.subscribe(() => {
+      if (!waitingForNextRef.current) return
+
+      const state = store.getState()
+      const segment = state.segments[state.currentSegmentIndex]
+
+      if (segment?.status === "ready" && segment.audioUrl && audioRef.current) {
+        waitingForNextRef.current = false
+        audioRef.current.src = segment.audioUrl
+        audioRef.current.play()
+        store.setState({ isPlaying: true })
+
+        // Pre-fetch next segment
+        if (state.currentSegmentIndex + 1 < state.segments.length) {
+          fetchSegmentAudio(state.currentSegmentIndex + 1)
+        }
+      }
+    })
+
+    return unsubscribe
+  }, [store, fetchSegmentAudio])
 
   const valueRef = useRef<{
     store: TTSStore
@@ -424,13 +590,13 @@ export function TTSProvider({
       actions: {
         enable,
         disable,
-        loadChunkTTS,
-        synthesize,
+        loadBlockTTS,
         play,
         pause,
         togglePlayPause,
         skip,
         setVoice,
+        goToSegment,
       },
       audioRef,
     }
@@ -438,13 +604,13 @@ export function TTSProvider({
   valueRef.current.actions = {
     enable,
     disable,
-    loadChunkTTS,
-    synthesize,
+    loadBlockTTS,
     play,
     pause,
     togglePlayPause,
     skip,
     setVoice,
+    goToSegment,
   }
 
   return (

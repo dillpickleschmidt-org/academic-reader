@@ -1,7 +1,7 @@
 import { AwsClient } from "aws4fetch"
 import { readFileSync, existsSync } from "fs"
 import type { PresignedUrlResult } from "../types"
-import type { Storage } from "./types"
+import type { Storage, SaveFileOptions } from "./types"
 import { getImageMimeType } from "../utils/mime-types"
 
 const TUNNEL_URL_FILE = "/tunnel/url"
@@ -71,13 +71,17 @@ export class S3Storage implements Storage {
     return undefined
   }
 
-  async getFileUrl(uploadKey: string): Promise<string> {
-    const url = this.getObjectUrl(uploadKey)
-
+  async getFileUrl(uploadKey: string, internal?: boolean): Promise<string> {
     const tunnelUrl = this.getTunnelUrl()
     if (tunnelUrl) {
       return `${tunnelUrl}/${this.config.bucket}/${uploadKey}`
     }
+
+    // internal=true uses endpoint (Docker network), otherwise publicUrl (browser access)
+    const baseUrl = internal
+      ? this.config.endpoint
+      : this.config.publicUrl || this.config.endpoint
+    const url = new URL(`${baseUrl}/${this.config.bucket}/${uploadKey}`)
 
     const signedRequest = await this.client.sign(
       new Request(url.toString(), { method: "GET" }),
@@ -110,12 +114,22 @@ export class S3Storage implements Storage {
   /**
    * Save a file to S3.
    */
-  async saveFile(key: string, data: Buffer | string): Promise<void> {
+  async saveFile(
+    key: string,
+    data: Buffer | string,
+    options?: SaveFileOptions,
+  ): Promise<void> {
     const url = this.getObjectUrl(key)
     const buffer = typeof data === "string" ? Buffer.from(data, "utf-8") : data
 
+    const headers: Record<string, string> = {}
+    if (options?.contentType) {
+      headers["Content-Type"] = options.contentType
+    }
+
     const response = await this.client.fetch(url.toString(), {
       method: "PUT",
+      headers,
       body: new Uint8Array(buffer),
     })
 
@@ -199,5 +213,49 @@ export class S3Storage implements Storage {
     )
 
     return Object.fromEntries(entries)
+  }
+
+  /**
+   * Delete all files with a given prefix.
+   * Used for cleaning up document folders including audio files.
+   * @returns Number of files deleted
+   */
+  async deletePrefix(prefix: string): Promise<number> {
+    try {
+      // List objects with prefix
+      const listUrl = new URL(
+        `${this.config.endpoint}/${this.config.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`,
+      )
+
+      const listResponse = await this.client.fetch(listUrl.toString(), {
+        method: "GET",
+      })
+
+      if (!listResponse.ok) {
+        console.warn(`[S3] Failed to list files with prefix ${prefix}`)
+        return 0
+      }
+
+      const xml = await listResponse.text()
+
+      // Parse keys from XML response
+      const keyMatches = xml.matchAll(/<Key>([^<]+)<\/Key>/g)
+      const keys: string[] = []
+      for (const match of keyMatches) {
+        keys.push(match[1])
+      }
+
+      if (keys.length === 0) {
+        return 0
+      }
+
+      // Delete each file
+      await Promise.all(keys.map((key) => this.deleteFile(key)))
+
+      return keys.length
+    } catch (error) {
+      console.warn(`[S3] Failed to delete prefix ${prefix}:`, error)
+      return 0
+    }
   }
 }

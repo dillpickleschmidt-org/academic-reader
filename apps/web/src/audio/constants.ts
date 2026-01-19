@@ -3,6 +3,7 @@ export const VOICES = [
   { value: "female_1", label: "Female 1" },
 ] as const
 
+// prettier-ignore
 export const AMBIENT_SOUNDS = [
   {
     id: "brown-noise",
@@ -16,7 +17,8 @@ export const AMBIENT_SOUNDS = [
   { id: "fireplace-2", name: "Fireplace 2", src: "/audio/ambience/fireplace_2.mp3" },
   { id: "forest", name: "Forest", src: null },
   { id: "ocean", name: "Ocean", src: null },
-  { id: "thunder", name: "Thunder", src: null },
+  { id: "thunder", name: "Thunder", src: "/audio/ambience/dry_thunder.mp3" },
+  { id: "thunderstorm", name: "Thunderstorm", src: "/audio/ambience/cozy_thunderstorm.mp3" },
 ] as const
 
 export const MUSIC_TRACKS = [
@@ -24,11 +26,12 @@ export const MUSIC_TRACKS = [
     id: "dawn-of-time",
     name: "Dawn of Time",
     src: "/audio/music/dawn_of_time.mp3",
+    previewStart: 31.5,
   },
-  { id: "lofi", name: "Lo-fi beats", src: null },
-  { id: "classical", name: "Classical piano", src: null },
-  { id: "jazz", name: "Jazz cafe", src: null },
-  { id: "synthwave", name: "Synthwave", src: null },
+  { id: "lofi", name: "Lo-fi beats", src: null, previewStart: 0 },
+  { id: "classical", name: "Classical piano", src: null, previewStart: 0 },
+  { id: "jazz", name: "Jazz cafe", src: null, previewStart: 0 },
+  { id: "synthwave", name: "Synthwave", src: null, previewStart: 0 },
 ] as const
 
 export const DEFAULT_PRESETS: readonly { id: string; name: string }[] = []

@@ -13,6 +13,7 @@ import {
   syncConvexEnv,
 } from "./convex"
 import { validateEnv, devEnvRules } from "./env"
+import { generateMusicPreviews } from "./audio"
 
 // =============================================================================
 // Public API
@@ -55,6 +56,7 @@ const devCommand: Command = {
   description: "Start development servers",
   async execute(env: Env, options: CommandOptions): Promise<void> {
     validateEnv(env, devEnvRules)
+    await generateMusicPreviews()
 
     const mode = env.BACKEND_MODE!
     const processes: Subprocess[] = []

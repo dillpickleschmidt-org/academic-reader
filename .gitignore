@@ -32,3 +32,6 @@ dist/
 
 # Local storage
 /minio-data/
+
+# Audio preview files (auto-generated)
+apps/web/public/audio/music/previews/*

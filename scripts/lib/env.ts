@@ -18,7 +18,8 @@ export const devEnvRules: EnvRule[] = [
   { key: "GOOGLE_API_KEY", required: (env) => env.BACKEND_MODE !== "datalab" },
   { key: "DATALAB_API_KEY", required: (env) => env.BACKEND_MODE === "datalab" },
   { key: "RUNPOD_API_KEY", required: (env) => env.BACKEND_MODE === "runpod" },
-  { key: "RUNPOD_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" },
+  { key: "RUNPOD_MARKER_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" },
+  { key: "RUNPOD_TTS_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" },
 ];
 
 // =============================================================================

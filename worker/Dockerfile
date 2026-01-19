@@ -32,6 +32,6 @@ print(f'Saved to {font_path}')"
 
 EXPOSE 8000
 
-# No CMD - specified at runtime:
-# Local: docker-compose sets "uvicorn app.main:app ..."
-# Runpod: "python -m app.handler"
+# Default to Runpod serverless handler
+# Local dev: docker-compose overrides with "uvicorn app.main:app ..."
+CMD ["python", "-u", "-m", "app.handler"]

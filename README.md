@@ -188,14 +188,15 @@ For structured logging via Grafana/Loki:
 
 ### Development (.env.dev)
 
-| Variable             | Required     | Description                            |
-| -------------------- | ------------ | -------------------------------------- |
-| `BACKEND_MODE`       | Yes          | `local`, `runpod`, or `datalab`        |
-| `SITE_URL`           | Yes          | Frontend URL (default: localhost:5173) |
-| `DATALAB_API_KEY`    | datalab      | From [datalab.to](https://datalab.to)  |
-| `RUNPOD_API_KEY`     | runpod       | From Runpod dashboard                  |
-| `RUNPOD_ENDPOINT_ID` | runpod       | Your endpoint ID                       |
-| `GOOGLE_API_KEY`     | local/runpod | For Gemini API                         |
+| Variable                   | Required     | Description                            |
+| -------------------------- | ------------ | -------------------------------------- |
+| `BACKEND_MODE`             | Yes          | `local`, `runpod`, or `datalab`        |
+| `SITE_URL`                 | Yes          | Frontend URL (default: localhost:5173) |
+| `DATALAB_API_KEY`          | datalab      | From [datalab.to](https://datalab.to)  |
+| `RUNPOD_API_KEY`           | runpod       | From Runpod dashboard                  |
+| `RUNPOD_MARKER_ENDPOINT_ID`| runpod       | Marker conversion endpoint ID          |
+| `RUNPOD_TTS_ENDPOINT_ID`   | runpod       | TTS synthesis endpoint ID              |
+| `GOOGLE_API_KEY`           | local/runpod | For Gemini API                         |
 
 ### Production (set in Dokploy UI)
 
@@ -206,7 +207,9 @@ For structured logging via Grafana/Loki:
 | `BACKEND_MODE`                | Yes      | `datalab` or `runpod`                   |
 | `SITE_URL`                    | Yes      | <https://yourdomain.com>                |
 | `DATALAB_API_KEY`             | datalab  | Production API key                      |
-| `RUNPOD_ENDPOINT_ID`          | runpod   | Your Runpod endpoint ID                 |
+| `RUNPOD_API_KEY`              | runpod   | From Runpod dashboard                   |
+| `RUNPOD_MARKER_ENDPOINT_ID`   | runpod   | Marker conversion endpoint ID           |
+| `RUNPOD_TTS_ENDPOINT_ID`      | runpod   | TTS synthesis endpoint ID               |
 | `S3_*`                        | runpod   | S3/R2 credentials                       |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No       | `http://alloy:4318` for Grafana logging |
 

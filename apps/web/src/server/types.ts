@@ -86,7 +86,8 @@ export interface Env {
   LOCAL_WORKER_URL?: string
 
   // Runpod backend
-  RUNPOD_ENDPOINT_ID?: string
+  RUNPOD_MARKER_ENDPOINT_ID?: string
+  RUNPOD_TTS_ENDPOINT_ID?: string
   RUNPOD_API_KEY?: string
 
   // Datalab backend

@@ -159,17 +159,17 @@ class RunpodBackend implements ConversionBackend {
  * Create Runpod backend from environment.
  */
 export function createRunpodBackend(env: {
-  RUNPOD_ENDPOINT_ID?: string
+  RUNPOD_MARKER_ENDPOINT_ID?: string
   RUNPOD_API_KEY?: string
 }): RunpodBackend {
-  if (!env.RUNPOD_ENDPOINT_ID || !env.RUNPOD_API_KEY) {
+  if (!env.RUNPOD_MARKER_ENDPOINT_ID || !env.RUNPOD_API_KEY) {
     throw new Error(
-      "Runpod backend requires RUNPOD_ENDPOINT_ID and RUNPOD_API_KEY",
+      "Runpod backend requires RUNPOD_MARKER_ENDPOINT_ID and RUNPOD_API_KEY",
     )
   }
 
   return new RunpodBackend({
-    endpointId: env.RUNPOD_ENDPOINT_ID,
+    endpointId: env.RUNPOD_MARKER_ENDPOINT_ID,
     apiKey: env.RUNPOD_API_KEY,
   })
 }

@@ -32,5 +32,6 @@ print('Model cached successfully')"
 
 EXPOSE 8001
 
-# No CMD - specified at runtime via docker-compose:
-# uvicorn app.main:app --host 0.0.0.0 --port 8001
+# Default to Runpod serverless handler
+# Local dev: docker-compose overrides with "uvicorn app.main:app ..."
+CMD ["python", "-u", "-m", "app.handler"]

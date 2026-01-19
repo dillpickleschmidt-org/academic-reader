@@ -18,7 +18,7 @@ export function createBackend(): ConversionBackend {
 
     case "runpod":
       return createRunpodBackend({
-        RUNPOD_ENDPOINT_ID: process.env.RUNPOD_ENDPOINT_ID,
+        RUNPOD_MARKER_ENDPOINT_ID: process.env.RUNPOD_MARKER_ENDPOINT_ID,
         RUNPOD_API_KEY: process.env.RUNPOD_API_KEY,
       })
 

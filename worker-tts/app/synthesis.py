@@ -6,10 +6,9 @@ import time
 
 import numpy as np
 from scipy.io import wavfile
-from scipy.signal import fftconvolve, resample
 
 from .models import get_or_create_model
-from .voices import VoiceConfig, get_voice
+from .voices import get_voice
 
 
 def compress(
@@ -39,41 +38,6 @@ def compress(
 
     compressed = audio * 10 ** (-smoothed_gr / 20)
     return compressed / np.max(np.abs(compressed)) * 0.99
-
-
-def apply_reverb(
-    audio: np.ndarray,
-    sr: int,
-    ir: np.ndarray,
-    ir_sr: int,
-    mix: float = 0.1,
-) -> np.ndarray:
-    """Apply convolution reverb using an impulse response."""
-    # Normalize IR
-    ir = ir.astype(np.float32)
-    if ir.max() > 1.0:
-        ir = ir / 32767  # Convert from int16
-
-    # Skip direct sound (first 30ms)
-    ir = ir[int(0.03 * ir_sr) :]
-    ir = ir / np.max(np.abs(ir))
-
-    # Fade out last 100ms
-    fade_samples = int(0.1 * ir_sr)
-    if len(ir) > fade_samples:
-        ir[-fade_samples:] *= np.linspace(1, 0, fade_samples)
-
-    # Resample IR if needed
-    if ir_sr != sr:
-        ir = resample(ir, int(len(ir) * sr / ir_sr))
-
-    # Apply convolution
-    wet = fftconvolve(audio, ir, mode="full")[: len(audio)]
-    wet = wet / np.max(np.abs(wet))
-
-    # Mix
-    output = (1 - mix) * audio + mix * wet
-    return output / np.max(np.abs(output))
 
 
 def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
@@ -108,8 +72,6 @@ def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
     if voice.post_process:
         print("[synthesis] Applying post-processing...", flush=True)
         audio = compress(audio, sr)
-        # Note: Reverb IR would need to be bundled in the container
-        # For now, skip reverb - can add later if needed
 
     # Calculate duration
     duration_ms = len(audio) / sr * 1000

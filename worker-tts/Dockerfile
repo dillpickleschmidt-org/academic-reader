@@ -17,11 +17,8 @@ RUN pip install --no-cache-dir chatterbox-tts --no-deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY app/ ./app/
-COPY voices/ ./voices/
-
 # Pre-download and cache Chatterbox models during build
+# IMPORTANT: This must be BEFORE copying app code so app changes don't invalidate model cache
 RUN python -c "\
 from chatterbox.tts import ChatterboxTTS; \
 import torch; \
@@ -29,6 +26,9 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'; \
 print(f'Loading model on {device}...'); \
 ChatterboxTTS.from_pretrained(device); \
 print('Model cached successfully')"
+
+COPY app/ ./app/
+COPY voices/ ./voices/
 
 EXPOSE 8001
 

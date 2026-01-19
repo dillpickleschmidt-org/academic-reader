@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'worker-tts/**'
+      - "worker-tts/**"
 
 jobs:
   build-worker-tts:
@@ -30,7 +30,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: ./worker-tts
           push: true
@@ -39,3 +39,4 @@ jobs:
             dillpickleschmidt/academic-reader-worker-tts:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false

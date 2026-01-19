@@ -50,14 +50,17 @@ export class RunpodTTSBackend implements TTSBackend {
 
     if (!runResponse.ok) {
       const error = await runResponse.text()
-      throw new Error(`Runpod batch start failed (${runResponse.status}): ${error}`)
+      throw new Error(
+        `Runpod batch start failed (${runResponse.status}): ${error}`,
+      )
     }
 
     const { id: jobId } = (await runResponse.json()) as { id: string }
 
     // Poll /stream/{jobId} for yielded results
+    // Track seen indices since Runpod may clear stream after each read
     const startTime = Date.now()
-    let lastIndex = 0
+    const seenIndices = new Set<number>()
 
     while (Date.now() - startTime < MAX_POLL_TIME_MS) {
       const streamResponse = await fetch(`${this.baseUrl}/stream/${jobId}`, {
@@ -71,16 +74,19 @@ export class RunpodTTSBackend implements TTSBackend {
 
       const data = (await streamResponse.json()) as {
         status: string
-        stream?: BatchSegmentResult[]
+        stream?: Array<{ output: BatchSegmentResult }>
         error?: string
       }
 
       // Yield any new results
-      if (data.stream && data.stream.length > lastIndex) {
-        for (let i = lastIndex; i < data.stream.length; i++) {
-          yield data.stream[i]
+      if (data.stream) {
+        for (const item of data.stream) {
+          const result = item.output
+          if (!seenIndices.has(result.segmentIndex)) {
+            seenIndices.add(result.segmentIndex)
+            yield result
+          }
         }
-        lastIndex = data.stream.length
       }
 
       // Check if job is done
@@ -88,11 +94,16 @@ export class RunpodTTSBackend implements TTSBackend {
         if (data.error) {
           throw new Error(`Batch synthesis failed: ${data.error}`)
         }
-        break
+        return
       }
 
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
     }
+
+    // If we exit the loop without returning, we timed out
+    throw new Error(
+      `Batch synthesis timed out after ${MAX_POLL_TIME_MS / 1000}s`,
+    )
   }
 
   async listVoices(): Promise<VoiceInfo[]> {
@@ -120,7 +131,9 @@ export class RunpodTTSBackend implements TTSBackend {
     }
 
     if (data.status !== "COMPLETED" || data.output?.error) {
-      throw new Error(`Runpod listVoices failed: ${data.output?.error || data.error}`)
+      throw new Error(
+        `Runpod listVoices failed: ${data.output?.error || data.error}`,
+      )
     }
 
     return data.output?.voices || []

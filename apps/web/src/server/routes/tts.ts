@@ -103,6 +103,11 @@ tts.post("/tts/chunk", async (c) => {
 
   const segments = segmentsResult.data as SegmentData[]
   if (segments.length === 0) {
+    event.error = {
+      category: "validation",
+      message: "No segments found for block",
+      code: "NO_SEGMENTS",
+    }
     return c.json({ error: "No segments found. Call /api/tts/rewrite first." }, 404)
   }
 
@@ -246,9 +251,15 @@ tts.post("/tts/chunk", async (c) => {
 
         sendEvent({ type: "done" })
       } catch (e) {
+        const errorMessage = getErrorMessage(e)
+        event.error = {
+          category: "backend",
+          message: errorMessage,
+          code: "TTS_STREAMING_ERROR",
+        }
         sendEvent({
           type: "fatal",
-          error: e instanceof Error ? e.message : "Batch synthesis failed",
+          error: errorMessage,
         })
       }
 
@@ -299,16 +310,27 @@ tts.get("/tts/voices", async (c) => {
 
 // Unload TTS model to free GPU memory (local mode only)
 tts.post("/tts/unload", async (c) => {
+  const event = c.get("event")
+
   if (process.env.BACKEND_MODE !== "local") {
     return c.json({ unloaded: false, reason: "not local mode" })
   }
 
   const ttsWorkerUrl = process.env.TTS_WORKER_URL || "http://worker-tts:8001"
-  const response = await fetch(`${ttsWorkerUrl}/unload`, { method: "POST" })
+  const unloadResult = await tryCatch(
+    fetch(`${ttsWorkerUrl}/unload`, { method: "POST" }),
+  )
 
-  if (!response.ok) {
+  if (!unloadResult.success || !unloadResult.data.ok) {
+    event.error = {
+      category: "backend",
+      message: unloadResult.success
+        ? `Worker returned ${unloadResult.data.status}`
+        : getErrorMessage(unloadResult.error),
+      code: "TTS_UNLOAD_ERROR",
+    }
     return c.json({ unloaded: false, reason: "worker error" }, 500)
   }
 
-  return c.json(await response.json())
+  return c.json(await unloadResult.data.json())
 })

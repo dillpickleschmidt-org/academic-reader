@@ -7,11 +7,10 @@ import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { createTTSBackend } from "../backends/tts/factory"
 
-interface TTSSegmentRequest {
+interface TTSChunkRequest {
   documentId: string
   blockId: string
   variation?: string
-  segmentIndex: number
   voiceId?: string
 }
 
@@ -19,6 +18,14 @@ interface TTSSegmentRequest {
 interface SegmentData {
   index: number
   text: string
+}
+
+/** Audio record from Convex */
+interface AudioRecord {
+  segmentIndex: number
+  storagePath: string
+  durationMs: number
+  sampleRate: number
 }
 
 type Variables = {
@@ -31,10 +38,10 @@ export const tts = new Hono<{ Variables: Variables }>()
 tts.use("/tts/*", requireAuth)
 
 /**
- * Synthesize audio for a single segment.
- * Returns presigned S3 URL if audio exists or after generating.
+ * Synthesize audio for all segments in a chunk via SSE.
+ * Streams results back as each segment completes.
  */
-tts.post("/tts/segment", async (c) => {
+tts.post("/tts/chunk", async (c) => {
   const event = c.get("event")
   const storage = c.get("storage")
   const userId = c.get("userId")
@@ -50,7 +57,7 @@ tts.post("/tts/segment", async (c) => {
     return c.json({ error: "Authentication failed" }, 401)
   }
 
-  const bodyResult = await tryCatch(c.req.json<TTSSegmentRequest>())
+  const bodyResult = await tryCatch(c.req.json<TTSChunkRequest>())
   if (!bodyResult.success) {
     event.error = {
       category: "validation",
@@ -64,49 +71,20 @@ tts.post("/tts/segment", async (c) => {
     documentId,
     blockId,
     variation = "default",
-    segmentIndex,
     voiceId = "male_1",
   } = bodyResult.data
 
-  if (!documentId || !blockId || segmentIndex === undefined) {
+  if (!documentId || !blockId) {
     event.error = {
       category: "validation",
-      message: "Missing required fields: documentId, blockId, segmentIndex",
+      message: "Missing required fields: documentId, blockId",
       code: "MISSING_FIELDS",
     }
     return c.json({ error: "Missing required fields" }, 400)
   }
 
-  // Check if audio already exists
-  const existingAudio = await tryCatch(
-    convex.query(api.api.ttsSegments.getAudio, {
-      documentId: documentId as Id<"documents">,
-      blockId,
-      variation,
-      segmentIndex,
-      voiceId,
-    }),
-  )
-
-  if (existingAudio.success && existingAudio.data) {
-    // Audio exists - return presigned URL
-    const audioUrl = await storage.getFileUrl(existingAudio.data.storagePath)
-    event.metadata = {
-      cached: true,
-      blockId,
-      segmentIndex,
-      voiceId,
-    }
-    return c.json({
-      audioUrl,
-      durationMs: existingAudio.data.durationMs,
-      sampleRate: existingAudio.data.sampleRate,
-      cached: true,
-    })
-  }
-
-  // Get segment text from Convex
-  const segments = await tryCatch(
+  // Get all segments for this block
+  const segmentsResult = await tryCatch(
     convex.query(api.api.ttsSegments.getSegments, {
       documentId: documentId as Id<"documents">,
       blockId,
@@ -114,35 +92,43 @@ tts.post("/tts/segment", async (c) => {
     }),
   )
 
-  if (!segments.success) {
+  if (!segmentsResult.success) {
     event.error = {
       category: "backend",
-      message: getErrorMessage(segments.error),
+      message: getErrorMessage(segmentsResult.error),
       code: "SEGMENTS_QUERY_ERROR",
     }
     return c.json({ error: "Failed to query segments" }, 500)
   }
 
-  const segment = segments.data.find(
-    (s: SegmentData) => s.index === segmentIndex,
-  )
-  if (!segment) {
-    event.error = {
-      category: "validation",
-      message: `Segment ${segmentIndex} not found. Call /api/tts/rewrite first.`,
-      code: "SEGMENT_NOT_FOUND",
-    }
-    return c.json({ error: "Segment not found" }, 404)
+  const segments = segmentsResult.data as SegmentData[]
+  if (segments.length === 0) {
+    return c.json({ error: "No segments found. Call /api/tts/rewrite first." }, 404)
   }
 
-  // Get document to find storageId
-  const doc = await tryCatch(
+  // Get cached audio for this block/voice
+  const cachedAudioResult = await tryCatch(
+    convex.query(api.api.ttsSegments.getBlockAudio, {
+      documentId: documentId as Id<"documents">,
+      blockId,
+      variation,
+      voiceId,
+    }),
+  )
+
+  const cachedAudio = cachedAudioResult.success
+    ? (cachedAudioResult.data as AudioRecord[])
+    : []
+  const cachedIndices = new Set(cachedAudio.map((a) => a.segmentIndex))
+
+  // Get document for storage path
+  const docResult = await tryCatch(
     convex.query(api.api.documents.get, {
       documentId: documentId as Id<"documents">,
     }),
   )
 
-  if (!doc.success || !doc.data) {
+  if (!docResult.success || !docResult.data) {
     event.error = {
       category: "validation",
       message: "Document not found",
@@ -150,6 +136,8 @@ tts.post("/tts/segment", async (c) => {
     }
     return c.json({ error: "Document not found" }, 404)
   }
+
+  const doc = docResult.data
 
   // Create TTS backend
   let backend
@@ -164,79 +152,118 @@ tts.post("/tts/segment", async (c) => {
     return c.json({ error: "TTS backend configuration error" }, 500)
   }
 
-  // Synthesize speech
-  const synthesizeStart = performance.now()
+  // Segments that need synthesis
+  const segmentsToSynthesize = segments.filter((s) => !cachedIndices.has(s.index))
 
-  const synthesizeResult = await tryCatch(
-    backend.synthesize({ text: segment.text, voiceId }),
-  )
+  // Create SSE stream
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      const sendEvent = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
 
-  if (!synthesizeResult.success) {
-    event.error = {
-      category: "backend",
-      message: getErrorMessage(synthesizeResult.error),
-      code: "TTS_SYNTHESIZE_ERROR",
-    }
-    return c.json({ error: "Failed to synthesize speech" }, 500)
-  }
+      try {
+        // 1. Emit cached segments immediately
+        for (const cached of cachedAudio) {
+          const audioUrl = await storage.getFileUrl(cached.storagePath)
+          sendEvent({
+            type: "segment",
+            segmentIndex: cached.segmentIndex,
+            audioUrl,
+            durationMs: cached.durationMs,
+            sampleRate: cached.sampleRate,
+            cached: true,
+          })
+        }
 
-  const { audio, sampleRate, durationMs } = synthesizeResult.data
-  const synthesizeDurationMs = Math.round(performance.now() - synthesizeStart)
+        // 2. If nothing to synthesize, we're done
+        if (segmentsToSynthesize.length === 0) {
+          sendEvent({ type: "done" })
+          controller.close()
+          return
+        }
 
-  // Save audio to S3 (sanitize blockId to be S3-safe)
-  const safeBlockId = blockId.replace(/\//g, "_")
-  const storagePath = `documents/${userId}/${doc.data.storageId}/audio/${variation}/${voiceId}/${safeBlockId}-${segmentIndex}.wav`
+        // 3. Stream synthesis results
+        const batchInput = segmentsToSynthesize.map((s) => ({
+          index: s.index,
+          text: s.text,
+        }))
 
-  // Convert base64 to buffer and save with proper content type
-  const audioBuffer = Buffer.from(audio, "base64")
-  const saveResult = await tryCatch(
-    storage.saveFile(storagePath, audioBuffer, { contentType: "audio/wav" }),
-  )
+        for await (const result of backend.synthesizeBatch(batchInput, voiceId)) {
+          if (result.error) {
+            sendEvent({
+              type: "error",
+              segmentIndex: result.segmentIndex,
+              error: result.error,
+            })
+            continue
+          }
 
-  if (!saveResult.success) {
-    event.error = {
-      category: "storage",
-      message: getErrorMessage(saveResult.error),
-      code: "S3_SAVE_ERROR",
-    }
-    return c.json({ error: "Failed to save audio" }, 500)
-  }
+          // Save audio to S3
+          const safeBlockId = blockId.replace(/\//g, "_")
+          const storagePath = `documents/${userId}/${doc.storageId}/audio/${variation}/${voiceId}/${safeBlockId}-${result.segmentIndex}.wav`
+          const audioBuffer = Buffer.from(result.audio!, "base64")
 
-  // Create audio record in Convex
-  const createAudioResult = await tryCatch(
-    convex.mutation(api.api.ttsSegments.createAudio, {
-      documentId: documentId as Id<"documents">,
-      blockId,
-      variation,
-      segmentIndex,
-      voiceId,
-      storagePath,
-      durationMs,
-      sampleRate,
-    }),
-  )
+          const saveResult = await tryCatch(
+            storage.saveFile(storagePath, audioBuffer, { contentType: "audio/wav" }),
+          )
 
-  if (!createAudioResult.success) {
-    console.error("Failed to create audio record:", createAudioResult.error)
-  }
+          if (!saveResult.success) {
+            sendEvent({
+              type: "error",
+              segmentIndex: result.segmentIndex,
+              error: "Failed to save audio",
+            })
+            continue
+          }
 
-  // Get presigned URL for the saved file
-  const audioUrl = await storage.getFileUrl(storagePath)
+          // Create audio record in Convex (fire and forget)
+          convex
+            .mutation(api.api.ttsSegments.createAudio, {
+              documentId: documentId as Id<"documents">,
+              blockId,
+              variation,
+              segmentIndex: result.segmentIndex,
+              voiceId,
+              storagePath,
+              durationMs: result.durationMs!,
+              sampleRate: result.sampleRate!,
+            })
+            .catch((e) => console.error("Failed to create audio record:", e))
 
-  event.metadata = {
-    cached: false,
-    blockId,
-    segmentIndex,
-    voiceId,
-    audioDurationMs: durationMs,
-    synthesizeDurationMs,
-  }
+          // Get presigned URL and emit
+          const audioUrl = await storage.getFileUrl(storagePath)
+          sendEvent({
+            type: "segment",
+            segmentIndex: result.segmentIndex,
+            audioUrl,
+            durationMs: result.durationMs,
+            sampleRate: result.sampleRate,
+            cached: false,
+          })
+        }
 
-  return c.json({
-    audioUrl,
-    durationMs,
-    sampleRate,
-    cached: false,
+        sendEvent({ type: "done" })
+      } catch (e) {
+        sendEvent({
+          type: "fatal",
+          error: e instanceof Error ? e.message : "Batch synthesis failed",
+        })
+      }
+
+      controller.close()
+    },
+  })
+
+  event.metadata = { blockId, voiceId, segmentCount: segments.length }
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
   })
 })
 

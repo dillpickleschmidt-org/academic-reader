@@ -1,17 +1,18 @@
 /**
- * Interface for TTS backends.
- * Simpler than ConversionBackend since TTS is synchronous.
+ * Interface for TTS backends with batch streaming support.
  */
 
-export interface TTSSynthesizeInput {
+export interface BatchSegmentInput {
+  index: number
   text: string
-  voiceId: string
 }
 
-export interface TTSSynthesizeResult {
-  audio: string // Base64 encoded WAV
-  sampleRate: number
-  durationMs: number
+export interface BatchSegmentResult {
+  segmentIndex: number
+  audio?: string // Base64 encoded WAV
+  sampleRate?: number
+  durationMs?: number
+  error?: string // Set if this segment failed
 }
 
 export interface VoiceInfo {
@@ -26,10 +27,13 @@ export interface TTSBackend {
   readonly name: string
 
   /**
-   * Synthesize speech from text.
-   * This is a synchronous operation (waits for audio to be generated).
+   * Synthesize multiple segments in a batch.
+   * Yields results as each segment completes (streaming).
    */
-  synthesize(input: TTSSynthesizeInput): Promise<TTSSynthesizeResult>
+  synthesizeBatch(
+    segments: BatchSegmentInput[],
+    voiceId: string,
+  ): AsyncGenerator<BatchSegmentResult>
 
   /**
    * List available voices.

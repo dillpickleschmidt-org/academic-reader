@@ -1,7 +1,7 @@
 import type {
   TTSBackend,
-  TTSSynthesizeInput,
-  TTSSynthesizeResult,
+  BatchSegmentInput,
+  BatchSegmentResult,
   VoiceInfo,
 } from "./interface"
 
@@ -14,6 +14,7 @@ interface LocalTTSConfig {
 /**
  * Local TTS backend - passes through to FastAPI TTS worker running locally.
  * Used for development when running docker compose.
+ * Calls /synthesize sequentially for each segment (no cold start concern locally).
  */
 export class LocalTTSBackend implements TTSBackend {
   readonly name = "local-tts"
@@ -23,32 +24,48 @@ export class LocalTTSBackend implements TTSBackend {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "")
   }
 
-  async synthesize(input: TTSSynthesizeInput): Promise<TTSSynthesizeResult> {
-    const response = await fetch(`${this.baseUrl}/synthesize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: input.text,
-        voiceId: input.voiceId,
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
+  async *synthesizeBatch(
+    segments: BatchSegmentInput[],
+    voiceId: string,
+  ): AsyncGenerator<BatchSegmentResult> {
+    for (const seg of segments) {
+      if (!seg.text.trim()) {
+        yield { segmentIndex: seg.index, error: "Empty text" }
+        continue
+      }
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`TTS synthesis failed: ${error}`)
-    }
+      try {
+        const response = await fetch(`${this.baseUrl}/synthesize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: seg.text, voiceId }),
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
 
-    const data = (await response.json()) as {
-      audio: string
-      sampleRate: number
-      durationMs: number
-    }
+        if (!response.ok) {
+          const error = await response.text()
+          yield { segmentIndex: seg.index, error: `Synthesis failed: ${error}` }
+          continue
+        }
 
-    return {
-      audio: data.audio,
-      sampleRate: data.sampleRate,
-      durationMs: data.durationMs,
+        const data = (await response.json()) as {
+          audio: string
+          sampleRate: number
+          durationMs: number
+        }
+
+        yield {
+          segmentIndex: seg.index,
+          audio: data.audio,
+          sampleRate: data.sampleRate,
+          durationMs: data.durationMs,
+        }
+      } catch (e) {
+        yield {
+          segmentIndex: seg.index,
+          error: e instanceof Error ? e.message : "Synthesis failed",
+        }
+      }
     }
   }
 

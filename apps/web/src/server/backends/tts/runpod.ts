@@ -1,12 +1,12 @@
 import type {
   TTSBackend,
-  TTSSynthesizeInput,
-  TTSSynthesizeResult,
+  BatchSegmentInput,
+  BatchSegmentResult,
   VoiceInfo,
 } from "./interface"
 
-// Longer timeout for TTS synthesis (up to 3 minutes for long text)
-const TIMEOUT_MS = 180_000
+const POLL_INTERVAL_MS = 500
+const MAX_POLL_TIME_MS = 600_000 // 10 minutes
 
 interface RunpodTTSConfig {
   endpointId: string
@@ -14,8 +14,8 @@ interface RunpodTTSConfig {
 }
 
 /**
- * Runpod TTS backend - calls Runpod serverless TTS endpoint.
- * Uses /runsync for synchronous execution (TTS is fast enough).
+ * Runpod TTS backend with batch streaming support.
+ * Uses /run + /stream for generator-based streaming.
  */
 export class RunpodTTSBackend implements TTSBackend {
   readonly name = "runpod-tts"
@@ -27,8 +27,12 @@ export class RunpodTTSBackend implements TTSBackend {
     this.baseUrl = `https://api.runpod.ai/v2/${config.endpointId}`
   }
 
-  async synthesize(input: TTSSynthesizeInput): Promise<TTSSynthesizeResult> {
-    const response = await fetch(`${this.baseUrl}/runsync`, {
+  async *synthesizeBatch(
+    segments: BatchSegmentInput[],
+    voiceId: string,
+  ): AsyncGenerator<BatchSegmentResult> {
+    // Start job with /run (async, not /runsync)
+    const runResponse = await fetch(`${this.baseUrl}/run`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
@@ -36,48 +40,58 @@ export class RunpodTTSBackend implements TTSBackend {
       },
       body: JSON.stringify({
         input: {
-          operation: "synthesize",
-          text: input.text,
-          voiceId: input.voiceId,
+          operation: "synthesizeBatch",
+          segments: segments.map((s) => ({ index: s.index, text: s.text })),
+          voiceId,
         },
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(30_000),
     })
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(
-        `Runpod TTS synthesis failed (${response.status}): ${error}`,
-      )
+    if (!runResponse.ok) {
+      const error = await runResponse.text()
+      throw new Error(`Runpod batch start failed (${runResponse.status}): ${error}`)
     }
 
-    const data = (await response.json()) as {
-      status: string
-      output?: {
-        audio?: string
-        sampleRate?: number
-        durationMs?: number
+    const { id: jobId } = (await runResponse.json()) as { id: string }
+
+    // Poll /stream/{jobId} for yielded results
+    const startTime = Date.now()
+    let lastIndex = 0
+
+    while (Date.now() - startTime < MAX_POLL_TIME_MS) {
+      const streamResponse = await fetch(`${this.baseUrl}/stream/${jobId}`, {
+        headers: { Authorization: `Bearer ${this.config.apiKey}` },
+        signal: AbortSignal.timeout(30_000),
+      })
+
+      if (!streamResponse.ok) {
+        throw new Error(`Stream poll failed: ${await streamResponse.text()}`)
+      }
+
+      const data = (await streamResponse.json()) as {
+        status: string
+        stream?: BatchSegmentResult[]
         error?: string
       }
-      error?: string
-    }
 
-    if (data.status !== "COMPLETED") {
-      throw new Error(`Runpod TTS job failed: ${data.error || data.status}`)
-    }
+      // Yield any new results
+      if (data.stream && data.stream.length > lastIndex) {
+        for (let i = lastIndex; i < data.stream.length; i++) {
+          yield data.stream[i]
+        }
+        lastIndex = data.stream.length
+      }
 
-    if (data.output?.error) {
-      throw new Error(`TTS synthesis error: ${data.output.error}`)
-    }
+      // Check if job is done
+      if (data.status === "COMPLETED" || data.status === "FAILED") {
+        if (data.error) {
+          throw new Error(`Batch synthesis failed: ${data.error}`)
+        }
+        break
+      }
 
-    if (!data.output?.audio) {
-      throw new Error("Runpod TTS returned no audio data")
-    }
-
-    return {
-      audio: data.output.audio,
-      sampleRate: data.output.sampleRate!,
-      durationMs: data.output.durationMs!,
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
     }
   }
 
@@ -89,9 +103,7 @@ export class RunpodTTSBackend implements TTSBackend {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        input: {
-          operation: "listVoices",
-        },
+        input: { operation: "listVoices" },
       }),
       signal: AbortSignal.timeout(30_000),
     })
@@ -103,17 +115,12 @@ export class RunpodTTSBackend implements TTSBackend {
 
     const data = (await response.json()) as {
       status: string
-      output?: {
-        voices?: VoiceInfo[]
-        error?: string
-      }
+      output?: { voices?: VoiceInfo[]; error?: string }
       error?: string
     }
 
     if (data.status !== "COMPLETED" || data.output?.error) {
-      throw new Error(
-        `Runpod listVoices failed: ${data.output?.error || data.error}`,
-      )
+      throw new Error(`Runpod listVoices failed: ${data.output?.error || data.error}`)
     }
 
     return data.output?.voices || []
@@ -121,15 +128,10 @@ export class RunpodTTSBackend implements TTSBackend {
 
   async healthCheck(): Promise<boolean> {
     try {
-      // Use /health endpoint on Runpod to check endpoint status
       const response = await fetch(`${this.baseUrl}/health`, {
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
+        headers: { Authorization: `Bearer ${this.config.apiKey}` },
         signal: AbortSignal.timeout(10_000),
       })
-
-      // Consider healthy if endpoint responds (even if no workers ready)
       return response.ok
     } catch {
       return false

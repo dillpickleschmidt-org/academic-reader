@@ -11,7 +11,7 @@ class Job(TypedDict, total=False):
     status: Literal["pending", "processing", "html_ready", "completed", "failed", "cancelled"]
     file_id: str
     output_format: str
-    html_content: str  # For html_ready phase (HTML without embedded images)
+    html_content: str
     result: JobResult
     error: str
 

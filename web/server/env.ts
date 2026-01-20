@@ -94,7 +94,7 @@ function parseEnv(): Env {
   const result = envSchema.safeParse(process.env)
   if (!result.success) {
     console.error("Environment validation failed:")
-    for (const error of result.error.errors) {
+    for (const error of result.error.issues) {
       console.error(`  ${error.path.join(".")}: ${error.message}`)
     }
     process.exit(1)

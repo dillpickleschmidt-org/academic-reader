@@ -23,7 +23,7 @@ const passwordSchema = z
   .max(128, "Password must be less than 128 characters")
 
 export function AuthDialog() {
-  const { authProviders } = useAppConfig()
+  const { authProviders, isLoading } = useAppConfig()
   const [open, setOpen] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState("")
@@ -131,7 +131,16 @@ export function AuthDialog() {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {authProviders.google && (
+          {isLoading ? (
+            <>
+              <div className="h-11 animate-pulse bg-muted rounded-md" />
+              <div className="flex items-center gap-3">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">OR</span>
+                <Separator className="flex-1" />
+              </div>
+            </>
+          ) : authProviders.google ? (
             <>
               <Button
                 variant="outline"
@@ -171,7 +180,7 @@ export function AuthDialog() {
                 <Separator className="flex-1" />
               </div>
             </>
-          )}
+          ) : null}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {isSignUp && (

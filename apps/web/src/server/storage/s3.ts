@@ -77,17 +77,14 @@ export class S3Storage implements Storage {
       return `${tunnelUrl}/${this.config.bucket}/${uploadKey}`
     }
 
-    // internal=true uses endpoint (Docker network), otherwise publicUrl (browser access)
-    const baseUrl = internal
-      ? this.config.endpoint
-      : this.config.publicUrl || this.config.endpoint
-    const url = new URL(`${baseUrl}/${this.config.bucket}/${uploadKey}`)
+    if (!internal && this.config.publicUrl) {
+      return `${this.config.publicUrl}/${uploadKey}`
+    }
 
     const signedRequest = await this.client.sign(
-      new Request(url.toString(), { method: "GET" }),
+      new Request(this.getObjectUrl(uploadKey).toString(), { method: "GET" }),
       { aws: { signQuery: true } },
     )
-
     return signedRequest.url
   }
 

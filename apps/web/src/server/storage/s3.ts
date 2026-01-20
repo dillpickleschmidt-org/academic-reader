@@ -210,7 +210,7 @@ export class S3Storage implements Storage {
           throw new Error(`S3 image upload failed for ${filename}: ${error}`)
         }
 
-        return [filename, `${baseUrl}/${this.config.bucket}/${key}`] as const
+        return [filename, `${baseUrl}/${key}`] as const
       }),
     )
 

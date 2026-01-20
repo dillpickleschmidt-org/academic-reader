@@ -8,6 +8,7 @@ WORKDIR /app
 # Copy workspace config and package files
 COPY package.json bun.lock* tsconfig.base.json ./
 COPY web/package.json ./web/
+COPY mobile/package.json ./mobile/
 COPY shared/core/package.json ./shared/core/
 COPY shared/convex/package.json ./shared/convex/
 
@@ -33,6 +34,7 @@ WORKDIR /app
 # Copy workspace config and package files
 COPY package.json bun.lock* tsconfig.base.json ./
 COPY web/package.json ./web/
+COPY mobile/package.json ./mobile/
 COPY shared/core/package.json ./shared/core/
 COPY shared/convex/package.json ./shared/convex/
 

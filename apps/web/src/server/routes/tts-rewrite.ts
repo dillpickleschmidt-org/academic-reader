@@ -30,7 +30,7 @@ If a sentence exceeds ~40 words, break it at an existing comma or conjunction; k
 You should perform **glue word changes** wherever the cadence feels stilted **when read aloud**; do **as many or as few** as needed—no quota, no ceiling.
 Never change verbs, adjectives, or technical nouns.
 
-After these five passes, output the text only.
+After these four passes, output the text only.
 
 An example sentence:
 Before:

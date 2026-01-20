@@ -18,7 +18,7 @@ declare module "hono" {
 }
 
 // Routes that call emitStreamingEvent() manually
-const MANUAL_EMIT_ROUTES = ["/api/jobs/*/stream", "/api/chat", "/api/documents/*/embeddings"]
+const MANUAL_EMIT_ROUTES = ["/api/jobs/*/stream", "/api/chat", "/api/documents/*/embeddings", "/api/tts/chunk"]
 
 /**
  * Check if a path matches a manual-emit route.

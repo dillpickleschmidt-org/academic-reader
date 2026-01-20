@@ -83,9 +83,10 @@ persist.post("/documents/persist", requireAuth, async (c) => {
   )
 
   if (!persistResult.success) {
+    const errorMsg = getErrorMessage(persistResult.error)
     event.error = {
       category: "storage",
-      message: getErrorMessage(persistResult.error),
+      message: errorMsg,
       code: "PERSIST_ERROR",
     }
     return c.json({ error: "Failed to persist document" }, 500)

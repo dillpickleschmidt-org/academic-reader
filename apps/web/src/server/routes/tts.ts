@@ -6,6 +6,7 @@ import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { createTTSBackend } from "../backends/tts/factory"
+import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 
 interface TTSChunkRequest {
   documentId: string
@@ -161,6 +162,7 @@ tts.post("/tts/chunk", async (c) => {
   const segmentsToSynthesize = segments.filter((s) => !cachedIndices.has(s.index))
 
   // Create SSE stream
+  const streamStart = performance.now()
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
@@ -186,6 +188,10 @@ tts.post("/tts/chunk", async (c) => {
         if (segmentsToSynthesize.length === 0) {
           sendEvent({ type: "done" })
           controller.close()
+          emitStreamingEvent(event, {
+            durationMs: Math.round(performance.now() - streamStart),
+            status: 200,
+          })
           return
         }
 
@@ -264,6 +270,10 @@ tts.post("/tts/chunk", async (c) => {
       }
 
       controller.close()
+      emitStreamingEvent(event, {
+        durationMs: Math.round(performance.now() - streamStart),
+        status: event.error ? 500 : 200,
+      })
     },
   })
 

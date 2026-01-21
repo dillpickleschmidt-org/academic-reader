@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "chandra/**"
+      - ".github/workflows/deploy-worker-chandra.yml"
 
 jobs:
   build-worker-chandra:

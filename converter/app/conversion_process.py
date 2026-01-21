@@ -25,7 +25,6 @@ def run_conversion_process(
     file_path: Path,
     output_format: str,
     use_llm: bool,
-    force_ocr: bool,
     page_range: str | None,
     jobs_dict: dict,  # Manager.dict()
     progress_queue: mp.Queue,
@@ -48,7 +47,7 @@ def run_conversion_process(
         from .conversion import _build_and_render_all, _process_html
         from .html_processing import images_to_base64
 
-        all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
+        all_formats = _build_and_render_all(file_path, use_llm, page_range)
 
         # Process HTML (inject image dimensions) - no base64 embedding
         # Server will upload images to bucket and rewrite URLs

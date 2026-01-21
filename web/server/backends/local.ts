@@ -37,10 +37,10 @@ export class LocalBackend implements ConversionBackend {
   }
 
   async submitJob(input: ConversionInput): Promise<string> {
+    // processingMode ignored for now (placeholder for Chandra)
     const params = new URLSearchParams({
       output_format: input.outputFormat,
       use_llm: String(input.useLlm),
-      force_ocr: String(input.forceOcr),
     })
 
     if (input.pageRange) {

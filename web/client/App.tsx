@@ -23,6 +23,8 @@ const ConfigureProcessingPage = lazy(() =>
 
 const ResultPage = lazy(resultPageImport)
 
+const backendMode = import.meta.env.VITE_BACKEND_MODE
+
 function App() {
   const conversion = useConversion()
   const { user } = useAppConfig()
@@ -80,16 +82,17 @@ function App() {
             uploadProgress={conversion.uploadProgress}
             uploadComplete={conversion.uploadComplete}
             outputFormat={conversion.outputFormat}
+            backendMode={backendMode}
+            processingMode={conversion.processingMode}
             useLlm={conversion.useLlm}
-            forceOcr={conversion.forceOcr}
             pageRange={conversion.pageRange}
             error={conversion.error}
             isProcessing={conversion.page === "processing"}
             isCancelling={conversion.isCancelling}
             stages={conversion.stages}
             onOutputFormatChange={conversion.setOutputFormat}
+            onProcessingModeChange={conversion.setProcessingMode}
             onUseLlmChange={conversion.setUseLlm}
-            onForceOcrChange={conversion.setForceOcr}
             onPageRangeChange={conversion.setPageRange}
             onStartConversion={conversion.startConversion}
             onCancel={conversion.cancelConversion}

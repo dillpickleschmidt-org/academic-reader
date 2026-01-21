@@ -22,7 +22,6 @@ def handler(job: dict) -> dict:
         file_url: URL to download the file from
         output_format: "html" | "markdown" | "json" (default: "html")
         use_llm: bool (default: False)
-        force_ocr: bool (default: False)
         page_range: str | None (default: None)
         progress_webhook_url: str | None - URL to POST progress updates to
 
@@ -39,7 +38,6 @@ def handler(job: dict) -> dict:
 
     output_format = job_input.get("output_format", "html")
     use_llm = job_input.get("use_llm", False)
-    force_ocr = job_input.get("force_ocr", False)
     page_range = job_input.get("page_range")
     progress_webhook_url = job_input.get("progress_webhook_url")
 
@@ -85,7 +83,6 @@ def handler(job: dict) -> dict:
             file_path=temp_path,
             output_format=output_format,
             use_llm=use_llm,
-            force_ocr=force_ocr,
             page_range=page_range,
         )
         return result

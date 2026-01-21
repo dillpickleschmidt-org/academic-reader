@@ -152,7 +152,7 @@ const devCommand: Command = {
     processes.push(
       await runProcess(["bun", "run", "dev", "--port", sitePort], {
         cwd: resolve(ROOT_DIR, "web"),
-        env: { VITE_API_URL: apiUrl },
+        env: { VITE_API_URL: apiUrl, VITE_BACKEND_MODE: mode },
       }),
     )
 

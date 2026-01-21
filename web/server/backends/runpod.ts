@@ -27,11 +27,11 @@ class RunpodBackend implements ConversionBackend {
   }
 
   async submitJob(input: ConversionInput): Promise<string> {
+    // processingMode ignored for now (placeholder for Chandra)
     const inputPayload: Record<string, unknown> = {
       file_url: input.fileUrl,
       output_format: input.outputFormat,
       use_llm: input.useLlm,
-      force_ocr: input.forceOcr,
       page_range: input.pageRange,
     }
 

@@ -21,7 +21,9 @@ COPY shared/ ./shared/
 
 # Build
 ARG VITE_CONVEX_URL
+ARG VITE_BACKEND_MODE
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
+ENV VITE_BACKEND_MODE=$VITE_BACKEND_MODE
 RUN bun run --cwd web build
 
 # ─────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ VOICES: dict[str, VoiceConfig] = {
         display_name="Male 1",
         reference_audio="male_1.wav",
         exaggeration=0.25,
-        post_process=False,
+        post_process=True,
     ),
     "female_1": VoiceConfig(
         id="female_1",

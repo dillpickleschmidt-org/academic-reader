@@ -61,7 +61,6 @@ class ProcessManager:
         file_path: Path,
         output_format: str,
         use_llm: bool,
-        force_ocr: bool,
         page_range: str | None,
     ) -> None:
         """Start a conversion job in a separate process."""
@@ -76,7 +75,6 @@ class ProcessManager:
                 file_path,
                 output_format,
                 use_llm,
-                force_ocr,
                 page_range,
                 self._jobs,  # Shared dict
                 queue,  # Progress queue

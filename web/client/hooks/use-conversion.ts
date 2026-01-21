@@ -9,6 +9,7 @@ import {
   subscribeToJob,
   type ConversionProgress,
   type OutputFormat,
+  type ProcessingMode,
   type ChunkBlock,
 } from "@repo/core/client/api-client"
 import { downloadFile, downloadContent } from "@repo/core/client/download"
@@ -16,7 +17,7 @@ import { useAppConfig } from "./use-app-config"
 import { preloadResultPage } from "../utils/preload"
 
 export type Page = "upload" | "configure" | "processing" | "result"
-export type { OutputFormat, ChunkBlock }
+export type { OutputFormat, ProcessingMode, ChunkBlock }
 
 export interface StageInfo {
   stage: string
@@ -42,8 +43,8 @@ export function useConversion() {
 
   // Config options
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("html")
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>("fast")
   const [useLlm, setUseLlm] = useState(false)
-  const [forceOcr, setForceOcr] = useState(false)
   const [pageRange, setPageRange] = useState("")
 
   // Processing state
@@ -97,8 +98,8 @@ export function useConversion() {
     setUploadComplete(false)
     setUrl("")
     setOutputFormat("html")
+    setProcessingMode("fast")
     setUseLlm(false)
-    setForceOcr(false)
     setPageRange("")
     setJobId("")
     setContent("")
@@ -188,8 +189,8 @@ export function useConversion() {
     try {
       const { job_id } = await apiStartConversion(fileId, fileName, {
         outputFormat,
+        processingMode,
         useLlm,
-        forceOcr,
         pageRange,
       })
       setJobId(job_id)
@@ -322,8 +323,8 @@ export function useConversion() {
     uploadComplete,
     url,
     outputFormat,
+    processingMode,
     useLlm,
-    forceOcr,
     pageRange,
     content,
     error,
@@ -338,8 +339,8 @@ export function useConversion() {
     // Setters
     setUrl,
     setOutputFormat,
+    setProcessingMode,
     setUseLlm,
-    setForceOcr,
     setPageRange,
 
     // Actions

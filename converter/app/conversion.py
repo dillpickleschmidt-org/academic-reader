@@ -15,7 +15,6 @@ def _to_dict(obj: Any) -> Any:
 
 def _create_converter(
     use_llm: bool,
-    force_ocr: bool,
     page_range: str | None,
 ):
     """Create a configured PDF converter (without renderer - we'll run all renderers manually)."""
@@ -25,7 +24,6 @@ def _create_converter(
     config_dict = {
         "output_format": "html",  # Doesn't matter, we'll use all renderers
         "use_llm": use_llm,
-        "force_ocr": force_ocr,
     }
     if page_range:
         config_dict["page_range"] = page_range
@@ -94,11 +92,10 @@ def _process_html(html: str, images: dict, embed_images: bool = False) -> tuple[
 def _build_and_render_all(
     file_path: Path,
     use_llm: bool,
-    force_ocr: bool,
     page_range: str | None,
 ) -> dict:
     """Build document once and render to all formats."""
-    converter = _create_converter(use_llm, force_ocr, page_range)
+    converter = _create_converter(use_llm, page_range)
 
     # Build and process document (expensive part)
     document = converter.build_document(str(file_path))
@@ -119,11 +116,10 @@ def run_conversion_sync(
     file_path: Path,
     output_format: str,
     use_llm: bool,
-    force_ocr: bool,
     page_range: str | None,
 ) -> dict:
     """Synchronous conversion without job tracking. Used by serverless handler."""
-    all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
+    all_formats = _build_and_render_all(file_path, use_llm, page_range)
 
     # Process HTML (inject dimensions) - server handles image upload and URL rewriting
     html_content, images = _process_html(all_formats["html"], all_formats["images"])

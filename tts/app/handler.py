@@ -15,7 +15,7 @@ def handler(job: dict):
 
         For synthesizeBatch:
             segments: list[{index: int, text: str}] - Segments to synthesize
-            voiceId: str - Voice ID (default: "male_1")
+            voiceId: str - Voice ID (default: "female_1")
 
     Yields:
         For synthesizeBatch: {segmentIndex, audio, sampleRate, durationMs} per segment
@@ -31,7 +31,7 @@ def handler(job: dict):
 
     if operation == "synthesizeBatch":
         segments = job_input.get("segments", [])
-        voice_id = job_input.get("voiceId", "male_1")
+        voice_id = job_input.get("voiceId", "female_1")
 
         if not segments:
             yield {"error": "No segments provided"}

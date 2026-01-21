@@ -2,6 +2,7 @@
 
 export type BackendType = "local" | "runpod" | "datalab"
 export type OutputFormat = "html" | "markdown" | "json"
+export type ProcessingMode = "fast" | "balanced" | "accurate"
 export type JobStatus =
   | "pending"
   | "processing"
@@ -15,9 +16,9 @@ export interface ConversionInput {
   fileData?: ArrayBuffer | Buffer // For Datalab (direct upload)
   filename?: string // For Datalab (original filename)
   outputFormat: OutputFormat
-  useLlm: boolean
-  forceOcr: boolean
-  pageRange: string // Empty string = all pages
+  processingMode: ProcessingMode
+  useLlm: boolean // fast mode only, non-datalab
+  pageRange: string // empty string = all pages
 }
 
 export interface ConversionProgress {

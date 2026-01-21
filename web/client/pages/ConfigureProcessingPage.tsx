@@ -4,7 +4,6 @@ import {
   Code,
   AlignLeft,
   Braces,
-  ScanLine,
   ArrowLeft,
   Loader2,
   AlertCircle,
@@ -17,6 +16,17 @@ import { cn } from "@repo/core/lib/utils"
 import { Button } from "@repo/core/ui/primitives/button"
 import { Input } from "@repo/core/ui/primitives/input"
 import { Switch } from "@repo/core/ui/primitives/switch"
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@repo/core/ui/primitives/radio-group"
+import {
+  Field,
+  FieldLabel,
+  FieldContent,
+  FieldTitle,
+  FieldDescription,
+} from "@repo/core/ui/primitives/field"
 import { InfoTooltip } from "@repo/core/ui/info-tooltip"
 import {
   Select,
@@ -25,7 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/core/ui/primitives/select"
-import type { OutputFormat, StageInfo } from "../hooks/use-conversion"
+import type {
+  OutputFormat,
+  ProcessingMode,
+  StageInfo,
+} from "../hooks/use-conversion"
+import type { BackendType } from "@repo/core/types/api"
 
 const FORMAT_OPTIONS: {
   value: OutputFormat
@@ -45,21 +60,47 @@ const PROCESSING_STEPS = [
   { id: "text", label: "Recognizing Text" },
 ]
 
+const MODE_OPTIONS: {
+  value: ProcessingMode
+  label: string
+  description: string
+}[] = [
+  {
+    value: "fast",
+    label: "Fast",
+    description:
+      "Faster results, though complex, scanned documents may have inconsistencies.",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description:
+      "Balanced accuracy and latency, works well with most documents.",
+  },
+  {
+    value: "accurate",
+    label: "Accurate",
+    description:
+      "Highest accuracy and latency. Good for complex math and/or scanned documents.",
+  },
+]
+
 interface Props {
   fileName: string
   uploadProgress: number
   uploadComplete: boolean
   outputFormat: OutputFormat
+  backendMode: BackendType
+  processingMode: ProcessingMode
   useLlm: boolean
-  forceOcr: boolean
   pageRange: string
   error: string
   isProcessing: boolean
   isCancelling: boolean
   stages: StageInfo[]
   onOutputFormatChange: (format: OutputFormat) => void
+  onProcessingModeChange: (mode: ProcessingMode) => void
   onUseLlmChange: (value: boolean) => void
-  onForceOcrChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
   onStartConversion: () => void
   onCancel: () => void
@@ -255,16 +296,17 @@ export function ConfigureProcessingPage({
   uploadProgress,
   uploadComplete,
   outputFormat,
+  backendMode,
+  processingMode,
   useLlm,
-  forceOcr,
   pageRange,
   error,
   isProcessing,
   isCancelling,
   stages,
   onOutputFormatChange,
+  onProcessingModeChange,
   onUseLlmChange,
-  onForceOcrChange,
   onPageRangeChange,
   onStartConversion,
   onCancel,
@@ -279,7 +321,7 @@ export function ConfigureProcessingPage({
       </div>
 
       <main className="flex flex-col items-center justify-center flex-1 pb-16">
-        <div className="w-full max-w-[720px] grid gap-8 grid-cols-[240px_1fr] max-sm:grid-cols-1">
+        <div className="w-full max-w-210 grid gap-8 grid-cols-[240px_1fr] max-sm:grid-cols-1">
           {/* Steps Panel */}
           <div
             className={cn(
@@ -447,8 +489,42 @@ export function ConfigureProcessingPage({
                   />
                 </div>
 
-                {/* Options */}
-                <div className="flex flex-col gap-3">
+                {/* Processing Mode */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-3">
+                    Processing Mode
+                  </label>
+                  <RadioGroup
+                    value={processingMode}
+                    onValueChange={(value) =>
+                      onProcessingModeChange(value as ProcessingMode)
+                    }
+                    className="grid grid-cols-3 gap-3"
+                  >
+                    {MODE_OPTIONS.filter(
+                      (opt) =>
+                        opt.value !== "balanced" || backendMode === "datalab",
+                    ).map((opt) => (
+                      <FieldLabel key={opt.value} htmlFor={opt.value}>
+                        <Field
+                          orientation="horizontal"
+                          className="p-4 cursor-pointer"
+                        >
+                          <FieldContent>
+                            <FieldTitle>{opt.label}</FieldTitle>
+                            <FieldDescription>
+                              {opt.description}
+                            </FieldDescription>
+                          </FieldContent>
+                          <RadioGroupItem value={opt.value} id={opt.value} />
+                        </Field>
+                      </FieldLabel>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                {/* Enhanced Detection - only for fast mode on non-datalab backends */}
+                {processingMode === "fast" && backendMode !== "datalab" && (
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-md flex items-center justify-center bg-muted text-muted-foreground">
@@ -472,31 +548,7 @@ export function ConfigureProcessingPage({
                     </div>
                     <Switch checked={useLlm} onCheckedChange={onUseLlmChange} />
                   </div>
-
-                  <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-md flex items-center justify-center bg-muted text-muted-foreground">
-                        <ScanLine className="w-4 h-4" strokeWidth={1.5} />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-foreground">
-                          Force OCR
-                        </div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1">
-                          <span>Can help with equations</span>
-                          <InfoTooltip
-                            content="This is only applicable to searchable, text-based PDFs since scanned documents are subjected to OCR automatically."
-                            side="top"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={forceOcr}
-                      onCheckedChange={onForceOcrChange}
-                    />
-                  </div>
-                </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-3 mt-2">

@@ -2,6 +2,7 @@
 export type {
   BackendType,
   OutputFormat,
+  ProcessingMode,
   JobStatus,
   ConversionInput,
   ConversionProgress,
@@ -14,7 +15,7 @@ export type {
   PresignedUrlResult,
 } from "@repo/core/types/api"
 
-import type { BackendType, OutputFormat } from "@repo/core/types/api"
+import type { BackendType, OutputFormat, ProcessingMode } from "@repo/core/types/api"
 
 // Server-only types
 
@@ -57,8 +58,8 @@ export interface WideEvent {
   fileSize?: number
   contentType?: string
   outputFormat?: OutputFormat
+  processingMode?: ProcessingMode
   useLlm?: boolean
-  forceOcr?: boolean
 
   // Error context
   error?: WideEventError

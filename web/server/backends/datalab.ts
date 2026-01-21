@@ -56,12 +56,8 @@ class DatalabBackend implements ConversionBackend {
     formData.append("output_format", "html,markdown,json,chunks")
     formData.append("add_block_ids", "true")
 
-    // Mode: balanced (default) or accurate (with LLM/Gemini 2.0 Flash)
-    formData.append("mode", input.useLlm ? "accurate" : "balanced")
-
-    if (input.forceOcr) {
-      formData.append("force_ocr", "true")
-    }
+    // Processing mode: fast, balanced, or accurate
+    formData.append("mode", input.processingMode)
 
     if (input.pageRange) {
       formData.append("page_range", input.pageRange)

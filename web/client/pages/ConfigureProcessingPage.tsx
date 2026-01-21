@@ -501,10 +501,17 @@ export function ConfigureProcessingPage({
                     }
                     className="grid grid-cols-3 gap-3"
                   >
-                    {MODE_OPTIONS.filter(
-                      (opt) =>
-                        opt.value !== "balanced" || backendMode === "datalab",
-                    ).map((opt) => (
+                    {MODE_OPTIONS.filter((opt) => {
+                      // Hide "balanced" for non-datalab backends
+                      if (opt.value === "balanced" && backendMode !== "datalab") {
+                        return false
+                      }
+                      // Hide "accurate" for local backend (no Chandra support)
+                      if (opt.value === "accurate" && backendMode === "local") {
+                        return false
+                      }
+                      return true
+                    }).map((opt) => (
                       <FieldLabel key={opt.value} htmlFor={opt.value}>
                         <Field
                           orientation="horizontal"

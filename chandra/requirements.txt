@@ -1,0 +1,3 @@
+chandra-ocr
+runpod
+httpx

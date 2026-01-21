@@ -9,7 +9,8 @@ import type {
 const TIMEOUT_MS = 30_000
 
 interface RunpodConfig {
-  endpointId: string
+  markerEndpointId: string
+  chandraEndpointId?: string
   apiKey: string
 }
 
@@ -19,25 +20,44 @@ interface RunpodConfig {
 class RunpodBackend implements ConversionBackend {
   readonly name = "runpod"
   private config: RunpodConfig
-  private baseUrl: string
+  private markerBaseUrl: string
+  private chandraBaseUrl: string | null
 
   constructor(config: RunpodConfig) {
     this.config = config
-    this.baseUrl = `https://api.runpod.ai/v2/${config.endpointId}`
+    this.markerBaseUrl = `https://api.runpod.ai/v2/${config.markerEndpointId}`
+    this.chandraBaseUrl = config.chandraEndpointId
+      ? `https://api.runpod.ai/v2/${config.chandraEndpointId}`
+      : null
   }
 
   async submitJob(input: ConversionInput): Promise<string> {
-    // processingMode ignored for now (placeholder for Chandra)
-    const inputPayload: Record<string, unknown> = {
-      file_url: input.fileUrl,
-      output_format: input.outputFormat,
-      use_llm: input.useLlm,
-      page_range: input.pageRange,
+    const useChandra = input.processingMode === "accurate"
+
+    // Validate Chandra endpoint if needed
+    if (useChandra && !this.chandraBaseUrl) {
+      throw new Error(
+        "Accurate mode requires RUNPOD_CHANDRA_ENDPOINT_ID to be configured",
+      )
     }
 
-    const body: Record<string, unknown> = { input: inputPayload }
+    // Build payload based on endpoint
+    const inputPayload: Record<string, unknown> = useChandra
+      ? {
+          file_url: input.fileUrl,
+          page_range: input.pageRange || undefined,
+        }
+      : {
+          file_url: input.fileUrl,
+          output_format: input.outputFormat,
+          use_llm: input.useLlm,
+          page_range: input.pageRange,
+        }
 
-    const response = await fetch(`${this.baseUrl}/run`, {
+    const body: Record<string, unknown> = { input: inputPayload }
+    const baseUrl = useChandra ? this.chandraBaseUrl! : this.markerBaseUrl
+
+    const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
@@ -60,11 +80,14 @@ class RunpodBackend implements ConversionBackend {
         `Runpod returned invalid job ID (${response.status}): ${JSON.stringify(data)}`,
       )
     }
-    return data.id
+
+    // Prefix job ID to track which endpoint it belongs to
+    return useChandra ? `chandra:${data.id}` : `marker:${data.id}`
   }
 
   async getJobStatus(jobId: string): Promise<ConversionJob> {
-    const response = await fetch(`${this.baseUrl}/status/${jobId}`, {
+    const { baseUrl, rawJobId } = this.parseJobId(jobId)
+    const response = await fetch(`${baseUrl}/status/${rawJobId}`, {
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
@@ -129,8 +152,9 @@ class RunpodBackend implements ConversionBackend {
   }
 
   async cancelJob(jobId: string): Promise<boolean> {
+    const { baseUrl, rawJobId } = this.parseJobId(jobId)
     try {
-      const response = await fetch(`${this.baseUrl}/cancel/${jobId}`, {
+      const response = await fetch(`${baseUrl}/cancel/${rawJobId}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
@@ -145,6 +169,24 @@ class RunpodBackend implements ConversionBackend {
   }
 
   // Private helpers
+
+  /**
+   * Parse prefixed job ID to get base URL and raw job ID.
+   * Format: "chandra:abc123" or "marker:abc123" or just "abc123" (legacy)
+   */
+  private parseJobId(jobId: string): { baseUrl: string; rawJobId: string } {
+    if (jobId.startsWith("chandra:")) {
+      if (!this.chandraBaseUrl) {
+        throw new Error("Chandra endpoint not configured but job ID indicates Chandra")
+      }
+      return { baseUrl: this.chandraBaseUrl, rawJobId: jobId.slice(8) }
+    }
+    if (jobId.startsWith("marker:")) {
+      return { baseUrl: this.markerBaseUrl, rawJobId: jobId.slice(7) }
+    }
+    // Legacy: no prefix, assume Marker
+    return { baseUrl: this.markerBaseUrl, rawJobId: jobId }
+  }
 
   private mapStatus(status: string): JobStatus {
     const STATUS_MAP: Record<string, JobStatus> = {
@@ -162,6 +204,7 @@ class RunpodBackend implements ConversionBackend {
  */
 export function createRunpodBackend(env: {
   RUNPOD_MARKER_ENDPOINT_ID?: string
+  RUNPOD_CHANDRA_ENDPOINT_ID?: string
   RUNPOD_API_KEY?: string
 }): RunpodBackend {
   if (!env.RUNPOD_MARKER_ENDPOINT_ID || !env.RUNPOD_API_KEY) {
@@ -171,7 +214,8 @@ export function createRunpodBackend(env: {
   }
 
   return new RunpodBackend({
-    endpointId: env.RUNPOD_MARKER_ENDPOINT_ID,
+    markerEndpointId: env.RUNPOD_MARKER_ENDPOINT_ID,
+    chandraEndpointId: env.RUNPOD_CHANDRA_ENDPOINT_ID,
     apiKey: env.RUNPOD_API_KEY,
   })
 }

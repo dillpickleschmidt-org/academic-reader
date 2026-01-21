@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install dependencies (PyTorch already in base image)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies (--ignore-installed needed because base image has
+# distutils-installed packages like blinker that conflict with chandra-ocr deps)
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
 COPY app/ ./app/
 

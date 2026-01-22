@@ -7,11 +7,18 @@ export interface BatchSegmentInput {
   text: string
 }
 
+export interface WordTimestamp {
+  word: string
+  startMs: number
+  endMs: number
+}
+
 export interface BatchSegmentResult {
   segmentIndex: number
   audio?: string // Base64 encoded WAV
   sampleRate?: number
   durationMs?: number
+  wordTimestamps?: WordTimestamp[] // Word-level timing for text highlighting
   error?: string // Set if this segment failed
 }
 

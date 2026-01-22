@@ -27,6 +27,13 @@ print(f'Loading model on {device}...'); \
 ChatterboxTTS.from_pretrained(device); \
 print('Model cached successfully')"
 
+# Pre-download MMS alignment model for word-level timestamps
+RUN python -c "\
+from torchaudio.pipelines import MMS_FA; \
+print('Downloading MMS alignment model...'); \
+MMS_FA.get_model(); \
+print('MMS model cached successfully')"
+
 COPY app/ ./app/
 COPY voices/ ./voices/
 

@@ -18,7 +18,7 @@ def handler(job: dict):
             voiceId: str - Voice ID (default: "female_1")
 
     Yields:
-        For synthesizeBatch: {segmentIndex, audio, sampleRate, durationMs} per segment
+        For synthesizeBatch: {segmentIndex, audio, sampleRate, durationMs, wordTimestamps} per segment
         For listVoices: {voices: [...]}
         On error: {error: str}
     """
@@ -50,12 +50,15 @@ def handler(job: dict):
                 continue
 
             try:
-                audio_base64, sample_rate, duration_ms = synthesize(text, voice_id)
+                audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
+                    text, voice_id
+                )
                 yield {
                     "segmentIndex": index,
                     "audio": audio_base64,
                     "sampleRate": sample_rate,
                     "durationMs": duration_ms,
+                    "wordTimestamps": word_timestamps,
                 }
             except Exception as e:
                 yield {"segmentIndex": index, "error": str(e)}

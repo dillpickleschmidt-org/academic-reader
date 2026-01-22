@@ -14,6 +14,12 @@ export interface CreateSegmentsInput {
   texts: string[]
 }
 
+export interface WordTimestamp {
+  word: string
+  startMs: number
+  endMs: number
+}
+
 export interface CreateAudioInput {
   documentId: Id<"documents">
   blockId: string
@@ -23,6 +29,7 @@ export interface CreateAudioInput {
   storagePath: string
   durationMs: number
   sampleRate: number
+  wordTimestamps: WordTimestamp[]
 }
 
 // ===== Query Helpers =====
@@ -202,6 +209,7 @@ export async function createAudio(ctx: MutationCtx, input: CreateAudioInput) {
       storagePath: input.storagePath,
       durationMs: input.durationMs,
       sampleRate: input.sampleRate,
+      wordTimestamps: input.wordTimestamps,
       createdAt: Date.now(),
     })
     return { id: existing._id, updated: true }
@@ -217,6 +225,7 @@ export async function createAudio(ctx: MutationCtx, input: CreateAudioInput) {
     storagePath: input.storagePath,
     durationMs: input.durationMs,
     sampleRate: input.sampleRate,
+    wordTimestamps: input.wordTimestamps,
     createdAt: Date.now(),
   })
 

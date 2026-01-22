@@ -55,6 +55,13 @@ export default defineSchema({
     storagePath: v.string(), // S3 key
     durationMs: v.number(),
     sampleRate: v.number(),
+    wordTimestamps: v.array(
+      v.object({
+        word: v.string(),
+        startMs: v.number(),
+        endMs: v.number(),
+      }),
+    ),
     createdAt: v.number(),
   }).index("by_segment_voice", [
     "documentId",

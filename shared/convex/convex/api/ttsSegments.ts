@@ -86,6 +86,13 @@ export const createAudio = mutation({
     storagePath: v.string(),
     durationMs: v.number(),
     sampleRate: v.number(),
+    wordTimestamps: v.array(
+      v.object({
+        word: v.string(),
+        startMs: v.number(),
+        endMs: v.number(),
+      }),
+    ),
   },
   handler: (ctx, args) => TTSSegments.createAudio(ctx, args),
 })

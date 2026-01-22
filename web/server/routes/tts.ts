@@ -28,6 +28,7 @@ interface AudioRecord {
   storagePath: string
   durationMs: number
   sampleRate: number
+  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
 }
 
 type Variables = {
@@ -181,6 +182,7 @@ tts.post("/tts/chunk", async (c) => {
             audioUrl,
             durationMs: cached.durationMs,
             sampleRate: cached.sampleRate,
+            wordTimestamps: cached.wordTimestamps,
             cached: true,
           })
         }
@@ -234,18 +236,31 @@ tts.post("/tts/chunk", async (c) => {
           }
 
           // Create audio record in Convex (fire and forget)
-          convex
-            .mutation(api.api.ttsSegments.createAudio, {
-              documentId: documentId as Id<"documents">,
-              blockId,
-              variation,
-              segmentIndex: result.segmentIndex,
-              voiceId,
-              storagePath,
-              durationMs: result.durationMs!,
-              sampleRate: result.sampleRate!,
-            })
-            .catch((e) => console.error("Failed to create audio record:", e))
+          if (!result.wordTimestamps) {
+            event.warning = {
+              message: `Missing wordTimestamps for segment ${result.segmentIndex} - skipping cache`,
+              code: "TTS_MISSING_TIMESTAMPS",
+            }
+          } else {
+            convex
+              .mutation(api.api.ttsSegments.createAudio, {
+                documentId: documentId as Id<"documents">,
+                blockId,
+                variation,
+                segmentIndex: result.segmentIndex,
+                voiceId,
+                storagePath,
+                durationMs: result.durationMs!,
+                sampleRate: result.sampleRate!,
+                wordTimestamps: result.wordTimestamps,
+              })
+              .catch((e) => {
+                event.warning = {
+                  message: getErrorMessage(e),
+                  code: "TTS_AUDIO_CACHE_FAILED",
+                }
+              })
+          }
 
           // Get presigned URL and emit
           const audioUrl = await storage.getFileUrl(storagePath)
@@ -255,6 +270,7 @@ tts.post("/tts/chunk", async (c) => {
             audioUrl,
             durationMs: result.durationMs,
             sampleRate: result.sampleRate,
+            wordTimestamps: result.wordTimestamps,
             cached: false,
           })
         }

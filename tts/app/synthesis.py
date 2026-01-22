@@ -7,6 +7,7 @@ import time
 import numpy as np
 from scipy.io import wavfile
 
+from .alignment import get_word_timestamps, start_loading_alignment_model
 from .models import get_or_create_model
 from .voices import get_voice
 
@@ -40,18 +41,24 @@ def compress(
     return compressed / np.max(np.abs(compressed)) * 0.99
 
 
-def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
-    """Synthesize speech from text.
+def synthesize(
+    text: str, voice_id: str
+) -> tuple[str, int, float, list[dict[str, float | str]]]:
+    """Synthesize speech from text with word-level timestamps.
 
     Args:
         text: Text to synthesize
         voice_id: Voice configuration ID
 
     Returns:
-        Tuple of (base64_audio, sample_rate, duration_ms)
+        Tuple of (base64_audio, sample_rate, duration_ms, word_timestamps)
+        where word_timestamps is a list of {"word": str, "startMs": float, "endMs": float}
     """
     voice = get_voice(voice_id)
     model = get_or_create_model()
+
+    # Start loading alignment model in background while Chatterbox generates
+    start_loading_alignment_model()
 
     print(f"[synthesis] Generating speech with voice '{voice_id}'...", flush=True)
     start = time.time()
@@ -62,11 +69,24 @@ def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
         audio_prompt_path=str(voice.reference_path),
         exaggeration=voice.exaggeration,
     )
-    audio = wav.squeeze(0).numpy()
+    audio_tensor = wav.squeeze(0)  # Keep as tensor for alignment
     sr = model.sr
 
     gen_time = time.time() - start
     print(f"[synthesis] Generated in {gen_time:.1f}s", flush=True)
+
+    # Get word timestamps (alignment model should be loaded by now)
+    print("[synthesis] Computing word alignments...", flush=True)
+    align_start = time.time()
+    word_timestamps = get_word_timestamps(audio_tensor, text, sr)
+    align_time = time.time() - align_start
+    print(
+        f"[synthesis] Aligned {len(word_timestamps)} words in {align_time:.2f}s",
+        flush=True,
+    )
+
+    # Convert to numpy for post-processing
+    audio = audio_tensor.numpy()
 
     # Post-process if configured
     if voice.post_process:
@@ -85,4 +105,4 @@ def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
     # Encode as base64
     audio_base64 = base64.b64encode(wav_bytes).decode("utf-8")
 
-    return audio_base64, sr, duration_ms
+    return audio_base64, sr, duration_ms, word_timestamps

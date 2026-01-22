@@ -52,6 +52,7 @@ export class LocalTTSBackend implements TTSBackend {
           audio: string
           sampleRate: number
           durationMs: number
+          wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>
         }
 
         yield {
@@ -59,6 +60,7 @@ export class LocalTTSBackend implements TTSBackend {
           audio: data.audio,
           sampleRate: data.sampleRate,
           durationMs: data.durationMs,
+          wordTimestamps: data.wordTimestamps,
         }
       } catch (e) {
         yield {

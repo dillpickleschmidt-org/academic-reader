@@ -16,12 +16,21 @@ class SynthesizeRequest(BaseModel):
     voiceId: str = "male_1"
 
 
+class WordTimestamp(BaseModel):
+    """Word-level timestamp for text highlighting."""
+
+    word: str
+    startMs: float
+    endMs: float
+
+
 class SynthesizeResponse(BaseModel):
     """Response body for synthesis endpoint."""
 
     audio: str  # Base64 encoded WAV
     sampleRate: int
     durationMs: float
+    wordTimestamps: list[WordTimestamp]
 
 
 class VoiceInfo(BaseModel):
@@ -56,13 +65,14 @@ async def synthesize_endpoint(request: SynthesizeRequest):
         )
 
     try:
-        audio_base64, sample_rate, duration_ms = synthesize(
+        audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
             request.text, request.voiceId
         )
         return SynthesizeResponse(
             audio=audio_base64,
             sampleRate=sample_rate,
             durationMs=duration_ms,
+            wordTimestamps=[WordTimestamp(**wt) for wt in word_timestamps],
         )
     except Exception as e:
         print(f"[error] Synthesis failed: {e}", flush=True)

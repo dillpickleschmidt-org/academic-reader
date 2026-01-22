@@ -5,23 +5,13 @@ on:
     branches: [main]
     paths:
       - 'converter/**'
+      - '.github/workflows/deploy-worker.yml'
 
 jobs:
   build-worker:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
-
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
 
       - name: Setup Blacksmith Builder
         uses: useblacksmith/setup-docker-builder@v1
@@ -38,3 +28,4 @@ jobs:
           tags: |
             dillpickleschmidt/academic-reader-worker:latest
             dillpickleschmidt/academic-reader-worker:${{ github.sha }}
+          provenance: false

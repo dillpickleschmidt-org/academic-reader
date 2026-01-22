@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react"
 import type { ChunkBlock } from "@repo/core/types/api"
 import { useAudioSelector, useAudioActions } from "@/context/AudioContext"
+import { ensureWordsWrapped } from "@/utils/tts-word-wrapping"
 
 // Block types to skip for TTS (from Marker BlockTypes enum)
 // These contain non-readable content (images, tables, page furniture)
@@ -38,6 +39,7 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
   /**
    * Handle click on reader content.
    * Reads data-block-id attribute and triggers TTS for that chunk.
+   * If a specific word is clicked, uses that word as the starting point.
    */
   const handleContentClick = useCallback(
     (event: React.MouseEvent) => {
@@ -60,11 +62,26 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
         return
       }
 
-      // Strip HTML from chunk content
       const chunkContent = chunk.html.replace(/<[^>]*>/g, "")
-      if (chunkContent.trim()) {
-        loadBlockTTS(blockId, chunkContent)
+      if (!chunkContent.trim()) return
+
+      // Ensure words are wrapped for word-level detection
+      ensureWordsWrapped(element!)
+
+      // Check if a word was clicked (look for data-word-index)
+      // Re-resolve click target after wrapping in case spans were just created
+      let wordSpan = target.closest("[data-word-index]")
+      if (!wordSpan) {
+        const freshTarget = document.elementFromPoint(event.clientX, event.clientY)
+        wordSpan = freshTarget?.closest("[data-word-index]") ?? null
       }
+      const wordIndex = wordSpan?.getAttribute("data-word-index")
+
+      loadBlockTTS(
+        blockId,
+        chunkContent,
+        wordIndex ? { wordIndex: parseInt(wordIndex, 10) } : undefined,
+      )
     },
     [isEnabled, chunkMap, loadBlockTTS],
   )

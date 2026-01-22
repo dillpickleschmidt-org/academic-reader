@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useAudioSelector, useAudioRef } from "@/context/AudioContext"
+import { splitWords } from "@/utils/tts-words"
+import { originalHtmlMap, wrapWordsInSpans } from "@/utils/tts-word-wrapping"
 import type { TTSSegment } from "@/audio/types"
 
 /**
@@ -62,8 +64,13 @@ export function useWordHighlighting() {
 
     if (!isSameBlock) {
       blockElementRef.current = blockEl as HTMLElement
-      originalHtmlRef.current = blockEl.innerHTML
-      wrapWordsInSpans(blockEl)
+      originalHtmlRef.current =
+        originalHtmlMap.get(blockElementRef.current) ?? blockEl.innerHTML
+      
+      // Check if already wrapped to prevent duplicate word indices
+      if (!blockEl.querySelector("[data-word-index]")) {
+        wrapWordsInSpans(blockEl)
+      }
 
       spansRef.current = Array.from(
         blockElementRef.current.querySelectorAll("[data-word-index]"),
@@ -145,11 +152,12 @@ export function useWordHighlighting() {
         cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = 0
       }
+      if (blockElementRef.current) {
+        originalHtmlMap.delete(blockElementRef.current)
+      }
     }
   }, [currentBlockId, currentSegmentIndex, segments, isPlaying, audioRef])
 }
-
-// --- Helper functions ---
 
 const NEARBY_THRESHOLD = 3 // Single word OK if within this distance
 const SEQ_LENGTH = 3 // Required sequence for distant matches
@@ -163,11 +171,67 @@ type GapRange = {
 
 type HighlightRange = { start: number; end: number }
 
+export function buildCombinedMapping(
+  originalWords: string[],
+  segments: TTSSegment[],
+): { mapping: Map<number, number>; offsets: number[]; gapRanges: GapRange[] } {
+  const mapping = new Map<number, number>()
+  const offsets: number[] = []
+  const normOrig = originalWords.map(normalizeWord)
+  const used = new Set<number>()
+
+  let combinedIdx = 0
+  let cursor = 0 // Expected position in original
+
+  for (const segment of segments) {
+    offsets.push(combinedIdx)
+    const spokenWords = getSpokenWords(segment)
+    if (spokenWords.length === 0) continue
+
+    const normSpoken = spokenWords.map(normalizeWord)
+    const result = alignWordIndicesWithState(normSpoken, normOrig, used, cursor)
+
+    for (const [spokenIdx, origIdx] of result.mapping) {
+      mapping.set(combinedIdx + spokenIdx, origIdx)
+    }
+
+    used.clear()
+    for (const usedIndex of result.usedIndices) {
+      used.add(usedIndex)
+    }
+
+    combinedIdx += normSpoken.length
+    cursor = result.cursor
+  }
+
+  const gapRanges = detectGapRanges(mapping)
+  return { mapping, offsets, gapRanges }
+}
+
+export function alignWordIndices(
+  spokenWords: string[],
+  originalWords: string[],
+): Map<number, number> {
+  const normSpoken = spokenWords.map(normalizeWord)
+  const normOrig = originalWords.map(normalizeWord)
+  const result = alignWordIndicesWithState(normSpoken, normOrig, new Set(), 0)
+  return result.mapping
+}
+
+// --- Helper functions ---
+
 /**
  * Normalize a word for comparison: lowercase, letters and apostrophes only.
  */
 function normalizeWord(word: string): string {
   return word.toLowerCase().replace(/[^a-z']/g, "")
+}
+
+function getSpokenWords(segment: TTSSegment): string[] {
+  if (segment.wordTimestamps?.length) {
+    return segment.wordTimestamps.map((t) => t.word)
+  }
+  return splitWords(segment.text)
 }
 
 /**
@@ -188,61 +252,51 @@ function matchesSequence(
   return true
 }
 
-/**
- * Build combined mapping with cursor tracking and sequence confirmation.
- * - Distance < NEARBY_THRESHOLD: single word OK
- * - Distance >= NEARBY_THRESHOLD: require 3-word sequence
- * Also detects gaps for block highlighting.
- */
-function buildCombinedMapping(
-  originalWords: string[],
-  segments: TTSSegment[],
-): { mapping: Map<number, number>; offsets: number[]; gapRanges: GapRange[] } {
+type AlignmentResult = {
+  mapping: Map<number, number>
+  usedIndices: Set<number>
+  cursor: number
+}
+
+function alignWordIndicesWithState(
+  spoken: string[],
+  orig: string[],
+  used: Set<number>,
+  cursor: number,
+): AlignmentResult {
   const mapping = new Map<number, number>()
-  const offsets: number[] = []
-  const normOrig = originalWords.map(normalizeWord)
-  const used = new Set<number>()
+  const usedIndices = new Set<number>(used)
+  let nextCursor = cursor
 
-  let combinedIdx = 0
-  let cursor = 0 // Expected position in original
+  for (let i = 0; i < spoken.length; i++) {
+    const word = spoken[i]
+    if (!word) continue
 
-  for (const segment of segments) {
-    offsets.push(combinedIdx)
-    if (!segment.wordTimestamps?.length) continue
+    let match = -1
+    for (let j = nextCursor; j < orig.length; j++) {
+      if (usedIndices.has(j) || word !== orig[j]) continue
 
-    const normSpoken = segment.wordTimestamps.map((t) => normalizeWord(t.word))
-
-    for (let i = 0; i < normSpoken.length; i++, combinedIdx++) {
-      const word = normSpoken[i]
-      if (!word) continue
-
-      let match = -1
-      for (let j = cursor; j < normOrig.length; j++) {
-        if (used.has(j) || word !== normOrig[j]) continue
-
-        const distance = j - cursor
-        if (distance < NEARBY_THRESHOLD) {
-          match = j
-          break
-        }
-
-        // Distance 5+: require 3-word sequence
-        if (matchesSequence(normSpoken, i, normOrig, j, used, SEQ_LENGTH)) {
-          match = j
-          break
-        }
+      const distance = j - nextCursor
+      if (distance < NEARBY_THRESHOLD) {
+        match = j
+        break
       }
 
-      if (match >= 0) {
-        mapping.set(combinedIdx, match)
-        used.add(match)
-        cursor = match + 1
+      // Distance 5+: require 3-word sequence
+      if (matchesSequence(spoken, i, orig, j, usedIndices, SEQ_LENGTH)) {
+        match = j
+        break
       }
+    }
+
+    if (match >= 0) {
+      mapping.set(i, match)
+      usedIndices.add(match)
+      nextCursor = match + 1
     }
   }
 
-  const gapRanges = detectGapRanges(mapping)
-  return { mapping, offsets, gapRanges }
+  return { mapping, usedIndices, cursor: nextCursor }
 }
 
 /**
@@ -281,47 +335,4 @@ function rangesEqual(
   if (a === null && b === null) return true
   if (a === null || b === null) return false
   return a.start === b.start && a.end === b.end
-}
-
-/**
- * Wrap text nodes in spans, treating .katex elements as single blocks.
- */
-function wrapWordsInSpans(element: Element): void {
-  let wordIndex = 0
-
-  function processNode(node: Node) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const el = node as Element
-      // KaTeX element: treat as single word, don't recurse
-      if (el.classList?.contains("katex")) {
-        el.setAttribute("data-word-index", String(wordIndex++))
-        el.classList.add("tts-word")
-        return
-      }
-      // Regular element: recurse into children
-      for (const child of Array.from(node.childNodes)) {
-        processNode(child)
-      }
-    } else if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent || ""
-      if (!text.trim()) return
-
-      const parts = text.split(/(\s+)/)
-      const fragment = document.createDocumentFragment()
-      for (const part of parts) {
-        if (/^\s+$/.test(part)) {
-          fragment.appendChild(document.createTextNode(part))
-        } else if (part) {
-          const span = document.createElement("span")
-          span.setAttribute("data-word-index", String(wordIndex++))
-          span.className = "tts-word"
-          span.textContent = part
-          fragment.appendChild(span)
-        }
-      }
-      node.parentNode?.replaceChild(fragment, node)
-    }
-  }
-
-  processNode(element)
 }

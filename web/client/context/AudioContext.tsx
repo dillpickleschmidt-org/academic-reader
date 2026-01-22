@@ -17,6 +17,8 @@ import type {
   AmbientSoundId,
 } from "@/audio/types"
 import { AMBIENT_SOUNDS } from "@/audio/constants"
+import { alignWordIndices, buildCombinedMapping } from "@/hooks/use-word-highlighting"
+import { splitWords } from "@/utils/tts-words"
 
 // ============================================================================
 // CrossfadeLooper: Encapsulates seamless audio looping with crossfade
@@ -190,6 +192,65 @@ type AudioStore = {
   subscribe: (listener: () => void) => () => void
 }
 
+type PrioritySelection = {
+  segmentIndex?: number
+  combinedIndex?: number
+  segmentOffsets: number[]
+}
+
+function getPrioritySelection(
+  blockId: string,
+  segments: TTSSegment[],
+  wordIndex: number,
+): PrioritySelection {
+  const empty = { segmentOffsets: [] as number[] }
+  const blockEl = document.querySelector(`[data-block-id="${blockId}"]`)
+  if (!blockEl) return empty
+
+  const originalWords = Array.from(
+    blockEl.querySelectorAll("[data-word-index]"),
+  ).map((s) => s.textContent || "")
+
+  const { mapping, offsets } = buildCombinedMapping(originalWords, segments)
+  const segmentRanges = segments.map((segment, index) => {
+    const offset = offsets[index] ?? 0
+    const count = splitWords(segment.text).length
+    return { offset, count }
+  })
+
+  const findSegmentForCombinedIndex = (combinedIdx: number) => {
+    for (let segIdx = 0; segIdx < segmentRanges.length; segIdx++) {
+      const { offset, count } = segmentRanges[segIdx]
+      const nextOffset = offset + count
+      if (combinedIdx >= offset && combinedIdx < nextOffset) {
+        return segIdx
+      }
+    }
+    return undefined
+  }
+
+  let bestCombinedIndex: number | undefined
+  let bestSegmentIndex: number | undefined
+  let bestOriginalIndex = -1
+
+  for (const [combinedIdx, origIdx] of mapping.entries()) {
+    if (origIdx <= wordIndex && origIdx > bestOriginalIndex) {
+      const segmentIndex = findSegmentForCombinedIndex(combinedIdx)
+      if (segmentIndex !== undefined) {
+        bestOriginalIndex = origIdx
+        bestCombinedIndex = combinedIdx
+        bestSegmentIndex = segmentIndex
+      }
+    }
+  }
+
+  return {
+    segmentIndex: bestSegmentIndex,
+    combinedIndex: bestCombinedIndex,
+    segmentOffsets: offsets,
+  }
+}
+
 function createStore(initial: AudioState): AudioStore {
   let state = initial
   const listeners = new Set<() => void>()
@@ -216,7 +277,11 @@ type AudioActions = {
   setNarratorVolume: (volume: number) => void
 
   // TTS playback actions
-  loadBlockTTS: (blockId: string, chunkContent: string) => Promise<void>
+  loadBlockTTS: (
+    blockId: string,
+    chunkContent: string,
+    options?: { wordIndex?: number },
+  ) => Promise<void>
   play: () => void
   pause: () => void
   togglePlayPause: () => void
@@ -476,7 +541,9 @@ export function AudioProvider({
 
   // === TTS Playback Actions ===
   const loadBlockTTS = useCallback(
-    async (blockId: string, chunkContent: string) => {
+    async (blockId: string, chunkContent: string, options?: { wordIndex?: number }) => {
+      const { wordIndex } = options || {}
+
       if (!documentId) {
         const state = store.getState()
         store.setState({
@@ -571,6 +638,18 @@ export function AudioProvider({
           return
         }
 
+        // Step 1.5: Build alignment mapping and find priority segment if wordIndex provided
+        let prioritySegmentIndex: number | undefined
+        let priorityCombinedIdx: number | undefined
+        let prioritySegmentOffsets: number[] = []
+
+        if (wordIndex !== undefined && wordIndex >= 0) {
+          const prioritySelection = getPrioritySelection(blockId, segments, wordIndex)
+          prioritySegmentIndex = prioritySelection.segmentIndex
+          priorityCombinedIdx = prioritySelection.combinedIndex
+          prioritySegmentOffsets = prioritySelection.segmentOffsets
+        }
+
         toast.loading("Generating speech...", { id: "tts-synth" })
 
         // Step 2: Open SSE to /tts/chunk for ALL segments
@@ -585,6 +664,7 @@ export function AudioProvider({
             documentId,
             blockId,
             voiceId: store.getState().narrator.voice,
+            prioritySegmentIndex,
           }),
           signal: abortController.signal,
         })
@@ -597,7 +677,9 @@ export function AudioProvider({
         const reader = chunkResponse.body!.getReader()
         const decoder = new TextDecoder()
         let buffer = ""
-        let firstSegmentPlayed = false
+
+        // Track whether we've started playback
+        let playbackStarted = false
 
         while (true) {
           const { done, value } = await reader.read()
@@ -605,7 +687,7 @@ export function AudioProvider({
 
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split("\n\n")
-          buffer = lines.pop() || "" // Keep incomplete line in buffer
+          buffer = lines.pop() || ""
 
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue
@@ -639,20 +721,74 @@ export function AudioProvider({
                 },
               })
 
-              // Auto-play first segment when it arrives
-              if (!firstSegmentPlayed && event.segmentIndex === 0) {
-                firstSegmentPlayed = true
-                if (audioRef.current) {
+              // If this is the priority segment, start playback from specific timestamp
+              if (
+                prioritySegmentIndex !== undefined &&
+                event.segmentIndex === prioritySegmentIndex &&
+                !playbackStarted &&
+                priorityCombinedIdx !== undefined &&
+                audioRef.current
+              ) {
+                playbackStarted = true
+
+                // Find the timestamp for the priority word
+                const segment = newSegments[prioritySegmentIndex]
+                if (segment?.wordTimestamps) {
+                  // Calculate which word in the segment corresponds to our combined index
+                  const offset = prioritySegmentOffsets[prioritySegmentIndex] ?? 0
+                  const wordInSegmentIdx = priorityCombinedIdx - offset
+
+                  const segmentTextWords = splitWords(segment.text)
+                  const spokenWords = segment.wordTimestamps.map((t) => t.word)
+                  const alignment = alignWordIndices(spokenWords, segmentTextWords)
+
+                  const directMatch = alignment.get(wordInSegmentIdx)
+                  let alignedIndex = directMatch ?? -1
+
+                  if (alignedIndex === -1) {
+                    for (let i = wordInSegmentIdx; i >= 0; i--) {
+                      const fallback = alignment.get(i)
+                      if (fallback !== undefined) {
+                        alignedIndex = fallback
+                        break
+                      }
+                    }
+                  }
+
+                  const timestamp =
+                    segment.wordTimestamps[alignedIndex]?.startMs ?? 0
+
                   audioRef.current.src = event.audioUrl
+                  audioRef.current.currentTime = timestamp / 1000
                   safePlay(audioRef.current)
                   store.setState({
                     playback: {
                       ...store.getState().playback,
                       isPlaying: true,
-                      currentSegmentIndex: 0,
+                      currentSegmentIndex: prioritySegmentIndex,
                     },
                   })
+                  toast.success("Speech ready", { id: "tts-synth" })
                 }
+              }
+
+              // If no priority segment, auto-play segment 0 when ready (existing behavior)
+              if (
+                prioritySegmentIndex === undefined &&
+                event.segmentIndex === 0 &&
+                !playbackStarted &&
+                audioRef.current
+              ) {
+                playbackStarted = true
+                audioRef.current.src = event.audioUrl
+                safePlay(audioRef.current)
+                store.setState({
+                  playback: {
+                    ...store.getState().playback,
+                    isPlaying: true,
+                    currentSegmentIndex: 0,
+                  },
+                })
                 toast.success("Speech ready", { id: "tts-synth" })
               }
             } else if (event.type === "error") {
@@ -1294,7 +1430,11 @@ export function useAudioSelector<T>(selector: (state: AudioState) => T): T {
   const { store } = useAudioContext()
   const [state, setState] = useState(() => selector(store.getState()))
   const selectorRef = useRef(selector)
-  selectorRef.current = selector
+
+  // Update ref when selector changes (after render)
+  useEffect(() => {
+    selectorRef.current = selector
+  })
 
   useEffect(() => {
     // Only update if the selected value actually changed

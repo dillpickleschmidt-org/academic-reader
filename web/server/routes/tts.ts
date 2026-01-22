@@ -14,6 +14,7 @@ interface TTSChunkRequest {
   blockId: string
   variation?: string
   voiceId?: string
+  prioritySegmentIndex?: number
 }
 
 /** Segment data returned from Convex query */
@@ -75,6 +76,7 @@ tts.post("/tts/chunk", async (c) => {
     blockId,
     variation = "default",
     voiceId = "male_1",
+    prioritySegmentIndex,
   } = bodyResult.data
 
   if (!documentId || !blockId) {
@@ -163,6 +165,30 @@ tts.post("/tts/chunk", async (c) => {
   // Segments that need synthesis
   const segmentsToSynthesize = segments.filter((s) => !cachedIndices.has(s.index))
 
+  // Reorder based on priority segment for local backend (sequential processing)
+  // Priority order: [clicked segment] → [forward segments] → [backward segments]
+  let orderedSegments = segmentsToSynthesize
+
+  if (prioritySegmentIndex !== undefined) {
+    const prioritySegment = segmentsToSynthesize.find(
+      (s) => s.index === prioritySegmentIndex,
+    )
+
+    const forwardSegments = segmentsToSynthesize
+      .filter((s) => s.index > prioritySegmentIndex)
+      .sort((a, b) => a.index - b.index)
+
+    const backwardSegments = segmentsToSynthesize
+      .filter((s) => s.index < prioritySegmentIndex)
+      .sort((a, b) => b.index - a.index)
+
+    orderedSegments = [
+      ...(prioritySegment ? [prioritySegment] : []),
+      ...forwardSegments,
+      ...backwardSegments,
+    ]
+  }
+
   // Create SSE stream
   const streamStart = performance.now()
   const stream = new ReadableStream({
@@ -199,7 +225,7 @@ tts.post("/tts/chunk", async (c) => {
         }
 
         // 3. Stream synthesis results
-        const batchInput = segmentsToSynthesize.map((s) => ({
+        const batchInput = orderedSegments.map((s) => ({
           index: s.index,
           text: s.text,
         }))
@@ -297,7 +323,7 @@ tts.post("/tts/chunk", async (c) => {
     },
   })
 
-  event.metadata = { blockId, voiceId, segmentCount: segments.length }
+  event.metadata = { blockId, voiceId, segmentCount: segments.length, prioritySegmentIndex }
 
   return new Response(stream, {
     headers: {

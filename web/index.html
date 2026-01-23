@@ -7,9 +7,18 @@
         var colorTheme = localStorage.getItem("color-theme") || "basic"
         document.documentElement.setAttribute("data-color-theme", colorTheme)
 
-        // Apply system dark mode (not user-configurable)
-        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        // Apply reader mode and dark class
+        var readerTheme = localStorage.getItem("reader-theme")
+        if (readerTheme) {
+          document.documentElement.setAttribute("data-reader-mode", readerTheme)
+          if (readerTheme === "dark") {
+            document.documentElement.classList.add("dark")
+          }
+        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          document.documentElement.setAttribute("data-reader-mode", "dark")
           document.documentElement.classList.add("dark")
+        } else {
+          document.documentElement.setAttribute("data-reader-mode", "light")
         }
       })()
     </script>

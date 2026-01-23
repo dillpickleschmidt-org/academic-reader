@@ -809,6 +809,25 @@
   }
 }
 
+/* Smooth theme transitions for sidebar */
+.bg-sidebar,
+.bg-sidebar-border,
+.border-sidebar-border {
+  transition:
+    background-color 0.3s,
+    border-color 0.3s,
+    color 0.3s;
+}
+
+/* Sidebar sepia tint in comfort mode */
+[data-reader-mode="comfort"] {
+  --sidebar: #e5dfd3;
+  --sidebar-foreground: #3d3632;
+  --sidebar-accent: #dbd4c7;
+  --sidebar-accent-foreground: #3d3632;
+  --sidebar-border: #d4cbbf;
+}
+
 /* Utility: Hide scrollbar while keeping scrollability */
 .no-scrollbar {
   -ms-overflow-style: none;

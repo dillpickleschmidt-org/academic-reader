@@ -33,15 +33,6 @@ function App() {
   // Initialize color cycling animation
   useColorAnimation()
 
-  // Listen for system dark mode changes
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)")
-    const handler = (e: MediaQueryListEvent) => {
-      document.documentElement.classList.toggle("dark", e.matches)
-    }
-    mq.addEventListener("change", handler)
-    return () => mq.removeEventListener("change", handler)
-  }, [])
 
   const recentDocuments = useQuery(
     api.api.documents.listPersisted,

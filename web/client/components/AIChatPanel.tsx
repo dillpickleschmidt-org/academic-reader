@@ -102,7 +102,7 @@ export function AIChatPanel({ onClose }: Props) {
   // Track whether embeddings have been generated for this document
   const [embeddingsReady, setEmbeddingsReady] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
-  const hasTriggeredRef = useRef(false)
+  const triggeredThreadsRef = useRef(new Set<string>())
   const { user, isLoading: configLoading } = useAppConfig()
   const { activeThreadId } = useChatPanel()
   const documentContext = useDocumentContext()
@@ -177,11 +177,6 @@ export function AIChatPanel({ onClose }: Props) {
     }
   }
 
-  // Reset trigger flag when thread changes
-  useEffect(() => {
-    hasTriggeredRef.current = false
-  }, [activeThreadId])
-
   // Auto-trigger summary when new thread starts (if signed in + has markdown)
   const hasMarkdown = !!markdown
   useEffect(() => {
@@ -191,10 +186,10 @@ export function AIChatPanel({ onClose }: Props) {
     if (
       user &&
       hasMarkdown &&
-      !hasTriggeredRef.current &&
+      !triggeredThreadsRef.current.has(activeThreadId) &&
       messages.length === 0
     ) {
-      hasTriggeredRef.current = true
+      triggeredThreadsRef.current.add(activeThreadId)
       sendMessage({ text: "Please summarize this document." })
 
       // Generate embeddings for follow-up questions (if document was persisted)
@@ -214,7 +209,6 @@ export function AIChatPanel({ onClose }: Props) {
 
   // Reset state when panel closes
   const handleClose = () => {
-    hasTriggeredRef.current = false
     setMessages([])
     setInput("")
     setStorageError(null)

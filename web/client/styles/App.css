@@ -805,6 +805,7 @@
     @apply font-sans antialiased;
     text-rendering: optimizeLegibility;
     overflow-y: scroll;
+    overscroll-behavior-x: none;
   }
 }
 

@@ -1,4 +1,4 @@
-import { type ReactNode } from "react"
+import { type ReactNode, useRef } from "react"
 import { Plus } from "lucide-react"
 import { THEMES } from "@/constants/themes"
 import { useReaderTheme } from "@/hooks/use-reader-theme"
@@ -18,6 +18,8 @@ import { AIChatPanel } from "./AIChatPanel"
 import { TTSPlaybackBar } from "./TTSPlaybackBar"
 import { ChatPanelProvider, useChatPanel } from "@/context/ChatPanelContext"
 import { useTableOfContents } from "@/hooks/use-table-of-contents"
+import { useScrollDirection } from "@/hooks/use-scroll-direction"
+import { useDocumentContext } from "@/context/DocumentContext"
 
 interface Props {
   children: ReactNode
@@ -39,6 +41,10 @@ function ReaderLayoutInner({
   const [readerMode, setReaderMode] = useReaderTheme()
   const { isOpen, close } = useChatPanel()
   const tocItems = useTableOfContents()
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useScrollDirection(scrollRef)
+  const documentContext = useDocumentContext()
+  const documentName = documentContext?.documentName?.replace(/\.[^.]+$/, "")
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -71,11 +77,11 @@ function ReaderLayoutInner({
           )}
           <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
             <ResizablePanel id="content-panel" minSize="40%">
-              <div className="overflow-auto h-full">
-                {/* Header inside left panel only */}
-                <header className="flex shrink-0 items-center gap-2">
-                  <div className="flex items-center ml-4 gap-1 my-2">
-                    {showSidebar && <SidebarTrigger className="-ml-1" />}
+              <div ref={scrollRef} className="overflow-auto h-full">
+                {/* Sticky action buttons - top left */}
+                {showSidebar && (
+                  <div className="reader-actions-left sticky top-2 ml-4 mt-2 -mb-10 flex items-center gap-1 z-10 w-fit bg-[var(--reader-bg)] p-1 rounded-lg">
+                    <SidebarTrigger className="-ml-1" />
                     <SidebarMenuButton
                       onClick={onReset}
                       tooltip="New"
@@ -83,8 +89,16 @@ function ReaderLayoutInner({
                     >
                       <Plus />
                     </SidebarMenuButton>
+                    {documentName && (
+                      <>
+                        <div className="w-px h-5 bg-[var(--reader-border)] mx-1.5 lg:mx-2" />
+                        <span className="text-sm text-[var(--reader-text-muted)] whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">
+                          {documentName}
+                        </span>
+                      </>
+                    )}
                   </div>
-                </header>
+                )}
                 <div className="reader-content">{children}</div>
               </div>
             </ResizablePanel>

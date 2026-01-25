@@ -60,7 +60,7 @@ const PROCESSING_STEPS = [
   { id: "text", label: "Recognizing Text" },
 ]
 
-const CHANDRA_SUPPORTED_TYPES = [
+const ACCURATE_MODE_SUPPORTED_TYPES = [
   "application/pdf",
   "image/png",
   "image/jpeg",
@@ -520,15 +520,11 @@ export function ConfigureProcessingPage({
                       ) {
                         return null
                       }
-                      // Hide "accurate" for local backend (no Chandra support)
-                      if (opt.value === "accurate" && backendMode === "local") {
-                        return null
-                      }
 
                       // Disable "accurate" for non-PDF/image files
                       const isDisabled =
                         opt.value === "accurate" &&
-                        !CHANDRA_SUPPORTED_TYPES.includes(fileMimeType)
+                        !ACCURATE_MODE_SUPPORTED_TYPES.includes(fileMimeType)
 
                       return (
                         <div

@@ -1,4 +1,0 @@
-chandra-ocr
-runpod
-httpx
-vllm>=0.11.0

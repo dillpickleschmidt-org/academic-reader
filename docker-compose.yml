@@ -52,6 +52,24 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # GPU worker for local LightOnOCR (accurate mode)
+  # Profile: local
+  lightonocr:
+    build: ./lightonocr
+    profiles: ["local"]
+    command: ./entrypoint.sh
+    environment:
+      - MODE=local
+    volumes:
+      - ./lightonocr/app:/app/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # Self-hosted API (Hono on Bun)
   # Profiles: local, datalab, runpod
   api:
@@ -72,6 +90,7 @@ services:
       - CONVEX_HTTP_URL=http://convex-backend:3211
       - CONVEX_SITE_URL=http://convex-backend:3210
       - LOCAL_WORKER_URL=http://converter:8000
+      - LIGHTONOCR_WORKER_URL=http://lightonocr:8001
       - CHATTERBOX_TTS_WORKER_URL=http://chatterbox-tts:8001
       - QWEN3_TTS_WORKER_URL=http://qwen3-tts:8002
       - S3_ENDPOINT=http://minio:9000
@@ -87,6 +106,9 @@ services:
       convex-backend:
         condition: service_healthy
       converter:
+        condition: service_started
+        required: false
+      lightonocr:
         condition: service_started
         required: false
       chatterbox-tts:

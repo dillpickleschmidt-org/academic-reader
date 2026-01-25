@@ -1,26 +1,41 @@
-"""Runpod Serverless handler for Chandra OCR."""
+"""Runpod Serverless handler for LightOnOCR."""
 import tempfile
 from pathlib import Path
+
 import httpx
 import runpod
-from .conversion import convert_file
 
-# Initialize vLLM client on worker startup (waits for vLLM server to be ready)
-from .models import get_or_create_manager
-get_or_create_manager()
+from .conversion import convert_file
+from .vllm_client import wait_for_vllm_server
+
+
+# Wait for vLLM server on startup
+wait_for_vllm_server()
 
 
 def handler(job: dict) -> dict:
+    """
+    Runpod serverless handler.
+
+    Expected input:
+    {
+        "file_url": "https://...",
+        "page_range": "1-5"  # optional
+    }
+    """
     job_input = job["input"]
     file_url = job_input.get("file_url")
+
     if not file_url:
         return {"error": "Missing required field: file_url"}
 
     page_range = job_input.get("page_range")  # Optional
 
+    # Determine file extension from URL
     url_path = file_url.split("?")[0]
     suffix = Path(url_path).suffix or ".pdf"
 
+    # Download file to temp location
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
         try:
             with httpx.Client(follow_redirects=True, timeout=60.0) as client:

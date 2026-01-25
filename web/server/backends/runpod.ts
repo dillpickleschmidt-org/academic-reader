@@ -10,7 +10,7 @@ const TIMEOUT_MS = 30_000
 
 interface RunpodConfig {
   markerEndpointId: string
-  chandraEndpointId?: string
+  lightonocrEndpointId?: string
   apiKey: string
 }
 
@@ -21,28 +21,28 @@ class RunpodBackend implements ConversionBackend {
   readonly name = "runpod"
   private config: RunpodConfig
   private markerBaseUrl: string
-  private chandraBaseUrl: string | null
+  private lightonocrBaseUrl: string | null
 
   constructor(config: RunpodConfig) {
     this.config = config
     this.markerBaseUrl = `https://api.runpod.ai/v2/${config.markerEndpointId}`
-    this.chandraBaseUrl = config.chandraEndpointId
-      ? `https://api.runpod.ai/v2/${config.chandraEndpointId}`
+    this.lightonocrBaseUrl = config.lightonocrEndpointId
+      ? `https://api.runpod.ai/v2/${config.lightonocrEndpointId}`
       : null
   }
 
   async submitJob(input: ConversionInput): Promise<string> {
-    const useChandra = input.processingMode === "accurate"
+    const useLightOnOCR = input.processingMode === "accurate"
 
-    // Validate Chandra endpoint if needed
-    if (useChandra && !this.chandraBaseUrl) {
+    // Validate LightOnOCR endpoint if needed
+    if (useLightOnOCR && !this.lightonocrBaseUrl) {
       throw new Error(
-        "Accurate mode requires RUNPOD_CHANDRA_ENDPOINT_ID to be configured",
+        "Accurate mode requires RUNPOD_LIGHTONOCR_ENDPOINT_ID to be configured",
       )
     }
 
     // Build payload based on endpoint
-    const inputPayload: Record<string, unknown> = useChandra
+    const inputPayload: Record<string, unknown> = useLightOnOCR
       ? {
           file_url: input.fileUrl,
           page_range: input.pageRange || undefined,
@@ -55,7 +55,7 @@ class RunpodBackend implements ConversionBackend {
         }
 
     const body: Record<string, unknown> = { input: inputPayload }
-    const baseUrl = useChandra ? this.chandraBaseUrl! : this.markerBaseUrl
+    const baseUrl = useLightOnOCR ? this.lightonocrBaseUrl! : this.markerBaseUrl
 
     const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
@@ -82,7 +82,7 @@ class RunpodBackend implements ConversionBackend {
     }
 
     // Prefix job ID to track which endpoint it belongs to
-    return useChandra ? `chandra:${data.id}` : `marker:${data.id}`
+    return useLightOnOCR ? `lightonocr:${data.id}` : `marker:${data.id}`
   }
 
   async getJobStatus(jobId: string): Promise<ConversionJob> {
@@ -172,14 +172,14 @@ class RunpodBackend implements ConversionBackend {
 
   /**
    * Parse prefixed job ID to get base URL and raw job ID.
-   * Format: "chandra:abc123" or "marker:abc123" or just "abc123" (legacy)
+   * Format: "lightonocr:abc123" or "marker:abc123" or just "abc123" (legacy)
    */
   private parseJobId(jobId: string): { baseUrl: string; rawJobId: string } {
-    if (jobId.startsWith("chandra:")) {
-      if (!this.chandraBaseUrl) {
-        throw new Error("Chandra endpoint not configured but job ID indicates Chandra")
+    if (jobId.startsWith("lightonocr:")) {
+      if (!this.lightonocrBaseUrl) {
+        throw new Error("LightOnOCR endpoint not configured but job ID indicates LightOnOCR")
       }
-      return { baseUrl: this.chandraBaseUrl, rawJobId: jobId.slice(8) }
+      return { baseUrl: this.lightonocrBaseUrl, rawJobId: jobId.slice(11) }
     }
     if (jobId.startsWith("marker:")) {
       return { baseUrl: this.markerBaseUrl, rawJobId: jobId.slice(7) }
@@ -204,7 +204,7 @@ class RunpodBackend implements ConversionBackend {
  */
 export function createRunpodBackend(env: {
   RUNPOD_MARKER_ENDPOINT_ID?: string
-  RUNPOD_CHANDRA_ENDPOINT_ID?: string
+  RUNPOD_LIGHTONOCR_ENDPOINT_ID?: string
   RUNPOD_API_KEY?: string
 }): RunpodBackend {
   if (!env.RUNPOD_MARKER_ENDPOINT_ID || !env.RUNPOD_API_KEY) {
@@ -215,7 +215,7 @@ export function createRunpodBackend(env: {
 
   return new RunpodBackend({
     markerEndpointId: env.RUNPOD_MARKER_ENDPOINT_ID,
-    chandraEndpointId: env.RUNPOD_CHANDRA_ENDPOINT_ID,
+    lightonocrEndpointId: env.RUNPOD_LIGHTONOCR_ENDPOINT_ID,
     apiKey: env.RUNPOD_API_KEY,
   })
 }

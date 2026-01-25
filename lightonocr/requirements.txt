@@ -1,0 +1,9 @@
+vllm>=0.6.0
+pillow
+pypdfium2
+markdown
+runpod
+httpx
+fastapi
+uvicorn
+sse-starlette

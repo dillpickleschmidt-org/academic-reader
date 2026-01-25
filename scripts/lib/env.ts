@@ -19,7 +19,7 @@ export const devEnvRules: EnvRule[] = [
   { key: "DATALAB_API_KEY", required: (env) => env.BACKEND_MODE === "datalab" },
   { key: "RUNPOD_API_KEY", required: (env) => env.BACKEND_MODE === "runpod" },
   { key: "RUNPOD_MARKER_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" },
-  { key: "RUNPOD_TTS_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" },
+  { key: "RUNPOD_CHATTERBOX_TTS_ENDPOINT_ID", required: (env) => env.BACKEND_MODE === "runpod" && !env.RUNPOD_QWEN3_TTS_ENDPOINT_ID, message: "At least one TTS endpoint required (RUNPOD_CHATTERBOX_TTS_ENDPOINT_ID or RUNPOD_QWEN3_TTS_ENDPOINT_ID)" },
 ];
 
 // =============================================================================

@@ -152,21 +152,10 @@ export class RunpodTTSBackend implements TTSBackend {
   }
 }
 
-/**
- * Create Runpod TTS backend from environment.
- */
-export function createRunpodTTSBackend(env: {
-  RUNPOD_TTS_ENDPOINT_ID?: string
-  RUNPOD_API_KEY?: string
+/** Create Runpod TTS backend with the given endpoint credentials. */
+export function createRunpodTTSBackend(config: {
+  endpointId: string
+  apiKey: string
 }): RunpodTTSBackend {
-  if (!env.RUNPOD_TTS_ENDPOINT_ID || !env.RUNPOD_API_KEY) {
-    throw new Error(
-      "Runpod TTS backend requires RUNPOD_TTS_ENDPOINT_ID and RUNPOD_API_KEY",
-    )
-  }
-
-  return new RunpodTTSBackend({
-    endpointId: env.RUNPOD_TTS_ENDPOINT_ID,
-    apiKey: env.RUNPOD_API_KEY,
-  })
+  return new RunpodTTSBackend(config)
 }

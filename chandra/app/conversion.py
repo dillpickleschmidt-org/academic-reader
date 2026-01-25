@@ -38,9 +38,9 @@ def convert_pdf(file_path: Path, page_range: str | None = None) -> dict:
     # Load PDF pages as images
     images = load_pdf_images(str(file_path), page_range=pages)
 
-    # Create batch input for all pages
+    # Create batch input for all pages (ocr_layout includes bboxes and labels)
     batch_input = [
-        BatchInputItem(image=img)
+        BatchInputItem(image=img, prompt_type="ocr_layout")
         for img in images
     ]
 

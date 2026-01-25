@@ -30,8 +30,8 @@ export function createTTSBackend(voiceId: string): TTSBackend {
         )
       }
       return createRunpodTTSBackend({
-        RUNPOD_TTS_ENDPOINT_ID: endpointId,
-        RUNPOD_API_KEY: env.RUNPOD_API_KEY,
+        endpointId,
+        apiKey: env.RUNPOD_API_KEY,
       })
     }
   }

@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-# Set vLLM attention backend for optimal performance
-export VLLM_ATTENTION_BACKEND=TORCH_SDPA
 # Avoid CPU contention during preprocessing
 export OMP_NUM_THREADS=1
 

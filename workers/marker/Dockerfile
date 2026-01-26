@@ -28,7 +28,8 @@ font_url = f'{settings.ARTIFACT_URL}/{settings.FONT_NAME}'; \
 font_path = os.path.join(settings.FONT_DIR, settings.FONT_NAME); \
 print(f'Downloading {font_url}'); \
 req = urllib.request.Request(font_url, headers={'User-Agent': 'Mozilla/5.0'}); \
-with urllib.request.urlopen(req) as resp, open(font_path, 'wb') as f: f.write(resp.read()); \
+data = urllib.request.urlopen(req).read(); \
+open(font_path, 'wb').write(data); \
 print(f'Saved to {font_path}')"
 
 EXPOSE 8000

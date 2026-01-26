@@ -403,18 +403,18 @@ export function ConfigureProcessingPage({
                         return null
                       }
 
-                      // Disable "accurate" for non-PDF/image files or non-datalab backends
+                      // Disable "accurate" for non-PDF/image files or runpod backend
                       const isDisabled =
                         opt.value === "accurate" &&
                         (!ACCURATE_MODE_SUPPORTED_TYPES.includes(fileMimeType) ||
-                          backendMode !== "datalab")
+                          backendMode === "runpod")
 
                       return (
                         <div
                           key={opt.value}
                           title={
                             isDisabled
-                              ? backendMode !== "datalab"
+                              ? backendMode === "runpod"
                                 ? "Accurate mode is temporarily unavailable"
                                 : "Accurate mode is only needed for PDFs and images (uses OCR)"
                               : undefined

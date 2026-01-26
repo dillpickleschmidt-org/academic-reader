@@ -119,9 +119,16 @@ export async function handlePollingJob(
               htmlReadySent = true
             }
 
+            // Strip markdown from client payload (saved to S3, not needed by client)
+            const resultForClient = { ...job.result }
+            if (resultForClient.formats?.markdown) {
+              const { markdown: _, ...formatsWithoutMarkdown } = resultForClient.formats
+              resultForClient.formats = formatsWithoutMarkdown as typeof resultForClient.formats
+            }
+
             // Send completed event with fileId for downloads
             sendEvent("completed", {
-              ...job.result,
+              ...resultForClient,
               content,
               ...(imageUrls && { images: imageUrls }),
               jobId,

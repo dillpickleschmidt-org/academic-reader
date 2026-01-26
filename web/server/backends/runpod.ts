@@ -45,7 +45,6 @@ class RunpodBackend implements ConversionBackend {
         }
       : {
           file_url: input.fileUrl,
-          output_format: input.outputFormat,
           use_llm: input.useLlm,
           page_range: input.pageRange,
         }

@@ -53,7 +53,6 @@ export class LocalBackend implements ConversionBackend {
     } else {
       // Marker: existing API with file_id path param
       const params = new URLSearchParams({
-        output_format: input.outputFormat,
         use_llm: String(input.useLlm),
       })
 

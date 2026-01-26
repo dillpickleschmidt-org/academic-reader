@@ -1,12 +1,11 @@
 import type {
-  OutputFormat,
   ProcessingMode,
   ConversionProgress,
   ChunkBlock,
   ChunkOutput,
 } from "../types/api"
 
-export type { OutputFormat, ProcessingMode, ConversionProgress, ChunkBlock, ChunkOutput }
+export type { ProcessingMode, ConversionProgress, ChunkBlock, ChunkOutput }
 
 export interface UploadResponse {
   file_id: string
@@ -16,7 +15,6 @@ export interface UploadResponse {
 }
 
 export interface ConversionOptions {
-  outputFormat: OutputFormat
   processingMode: ProcessingMode
   useLlm: boolean
   pageRange: string
@@ -78,7 +76,6 @@ export async function startConversion(
   options: ConversionOptions,
 ): Promise<{ job_id: string }> {
   const params = new URLSearchParams({
-    output_format: options.outputFormat,
     mode: options.processingMode,
     use_llm: String(options.useLlm),
     filename,

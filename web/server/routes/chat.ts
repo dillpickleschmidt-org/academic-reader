@@ -16,11 +16,12 @@ import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
+import { loadPersistedDocument } from "../services/document-persistence"
+import type { Storage } from "../storage/types"
 
-// Document context passed from frontend
+// Document context passed from frontend (markdown fetched server-side)
 interface DocumentContext {
-  markdown?: string // Full document for summary (first message only)
-  documentId?: string // For RAG searches (after storage)
+  documentId?: string // Required for both summary and RAG
   isFirstMessage: boolean
 }
 
@@ -78,12 +79,19 @@ function createSearchTool(
   })
 }
 
-export const chat = new Hono()
+type Variables = {
+  storage: Storage
+  userId: string
+}
+
+export const chat = new Hono<{ Variables: Variables }>()
 
 chat.use("/chat", requireAuth)
 
 chat.post("/chat", async (c) => {
   const event = c.get("event")
+  const storage = c.get("storage")
+  const userId = c.get("userId")
 
   // Create authenticated Convex client for RAG searches
   const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
@@ -110,21 +118,70 @@ chat.post("/chat", async (c) => {
 
   const { messages, documentContext } = bodyResult.data
 
-  // Determine mode: Summary (first message with markdown) vs RAG (follow-ups)
-  const isSummaryMode =
-    documentContext?.isFirstMessage && documentContext?.markdown
+  // Require documentId for all chat operations
+  if (!documentContext?.documentId) {
+    event.error = {
+      category: "validation",
+      message: "documentId is required",
+      code: "DOCUMENT_ID_REQUIRED",
+    }
+    emitStreamingEvent(event, { status: 400 })
+    return c.json({ error: "documentId is required" }, 400)
+  }
+
+  const isSummaryMode = documentContext.isFirstMessage
+  let markdown: string | undefined
+
+  // For summary mode, fetch markdown from S3
+  if (isSummaryMode) {
+    // Get document from Convex to retrieve storageId
+    const docResult = await tryCatch(
+      convex.query(api.api.documents.get, {
+        documentId: documentContext.documentId as Id<"documents">,
+      }),
+    )
+
+    if (!docResult.success || !docResult.data) {
+      event.error = {
+        category: "storage",
+        message: !docResult.success
+          ? getErrorMessage(docResult.error)
+          : "Document not found",
+        code: "DOCUMENT_NOT_FOUND",
+      }
+      emitStreamingEvent(event, { status: 404 })
+      return c.json({ error: "Document not found" }, 404)
+    }
+
+    // Load markdown from S3
+    const loadResult = await tryCatch(
+      loadPersistedDocument(storage, userId, docResult.data.storageId),
+    )
+
+    if (!loadResult.success) {
+      event.error = {
+        category: "storage",
+        message: getErrorMessage(loadResult.error),
+        code: "DOCUMENT_LOAD_ERROR",
+      }
+      emitStreamingEvent(event, { status: 500 })
+      return c.json({ error: "Failed to load document" }, 500)
+    }
+
+    markdown = loadResult.data.markdown
+  }
 
   // Build system prompt based on mode
   let systemPrompt: string
 
-  if (isSummaryMode) {
+  if (isSummaryMode && markdown) {
     // Summary mode: Include full markdown, request concise summary
     systemPrompt = `You are an academic assistant helping users understand research papers and documents.
 
 The user has uploaded a document. Here is the full content:
 
 <document>
-${documentContext.markdown}
+${markdown}
 </document>
 
 Provide a concise, one-paragraph summary that captures:

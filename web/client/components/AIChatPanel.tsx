@@ -106,12 +106,10 @@ export function AIChatPanel({ onClose }: Props) {
   const { user, isLoading: configLoading } = useAppConfig()
   const { activeThreadId } = useChatPanel()
   const documentContext = useDocumentContext()
-  const markdown = documentContext?.markdown
   const documentId = documentContext?.documentId
 
   // Refs for transport closure
   const documentIdRef = useRef(documentId)
-  const markdownRef = useRef(markdown)
   const messagesRef = useRef<unknown[]>([])
 
   // Transport with document context (created once, uses refs for fresh values)
@@ -120,11 +118,9 @@ export function AIChatPanel({ onClose }: Props) {
       api: "/api/chat",
       credentials: "same-origin",
       body: () => {
-        // First message = summary mode (send full markdown)
         const isFirstMessage = messagesRef.current.length === 0
         return {
           documentContext: {
-            markdown: isFirstMessage ? markdownRef.current : undefined,
             documentId: documentIdRef.current ?? undefined,
             isFirstMessage,
           },
@@ -139,7 +135,6 @@ export function AIChatPanel({ onClose }: Props) {
 
   // Keep refs in sync with current values
   documentIdRef.current = documentId
-  markdownRef.current = markdown
   messagesRef.current = messages
 
   // Generate embeddings for document chunks (enables RAG for follow-up questions)
@@ -177,30 +172,29 @@ export function AIChatPanel({ onClose }: Props) {
     }
   }
 
-  // Auto-trigger summary when new thread starts (if signed in + has markdown)
-  const hasMarkdown = !!markdown
+  // Auto-trigger summary when new thread starts (if signed in + has documentId)
+  // AI chat requires documentId (disabled until persistence completes)
+  const hasDocument = !!documentId
   useEffect(() => {
     if (configLoading) return
     if (!activeThreadId) return // No thread = no auto-trigger
 
     if (
       user &&
-      hasMarkdown &&
+      hasDocument &&
       !triggeredThreadsRef.current.has(activeThreadId) &&
       messages.length === 0
     ) {
       triggeredThreadsRef.current.add(activeThreadId)
       sendMessage({ text: "Please summarize this document." })
 
-      // Generate embeddings for follow-up questions (if document was persisted)
-      if (documentId) {
-        generateEmbeddings()
-      }
+      // Generate embeddings for follow-up questions
+      generateEmbeddings()
     }
   }, [
     configLoading,
     user,
-    hasMarkdown,
+    hasDocument,
     messages.length,
     sendMessage,
     documentId,

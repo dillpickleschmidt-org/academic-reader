@@ -1,16 +1,12 @@
 import {
   FileText,
   Check,
-  Code,
-  AlignLeft,
-  Braces,
   ArrowLeft,
   Loader2,
   AlertCircle,
   Sparkles,
   Circle,
   X,
-  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@repo/core/lib/utils"
 import { Button } from "@repo/core/ui/primitives/button"
@@ -28,31 +24,8 @@ import {
   FieldDescription,
 } from "@repo/core/ui/primitives/field"
 import { InfoTooltip } from "@repo/core/ui/info-tooltip"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/core/ui/primitives/select"
-import type {
-  OutputFormat,
-  ProcessingMode,
-  StageInfo,
-} from "../hooks/use-conversion"
+import type { ProcessingMode, StageInfo } from "../hooks/use-conversion"
 import type { BackendType } from "@repo/core/types/api"
-
-const FORMAT_OPTIONS: {
-  value: OutputFormat
-  icon: LucideIcon
-  label: string
-  recommended?: boolean
-}[] = [
-  { value: "html", icon: Code, label: "HTML", recommended: true },
-  { value: "markdown", icon: AlignLeft, label: "Markdown" },
-  { value: "json", icon: Braces, label: "JSON" },
-]
-
 
 const ACCURATE_MODE_SUPPORTED_TYPES = [
   "application/pdf",
@@ -93,7 +66,6 @@ interface Props {
   fileMimeType: string
   uploadProgress: number
   uploadComplete: boolean
-  outputFormat: OutputFormat
   backendMode: BackendType
   processingMode: ProcessingMode
   useLlm: boolean
@@ -102,7 +74,6 @@ interface Props {
   isProcessing: boolean
   isCancelling: boolean
   stages: StageInfo[]
-  onOutputFormatChange: (format: OutputFormat) => void
   onProcessingModeChange: (mode: ProcessingMode) => void
   onUseLlmChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
@@ -277,7 +248,6 @@ export function ConfigureProcessingPage({
   fileMimeType,
   uploadProgress,
   uploadComplete,
-  outputFormat,
   backendMode,
   processingMode,
   useLlm,
@@ -286,7 +256,6 @@ export function ConfigureProcessingPage({
   isProcessing,
   isCancelling,
   stages,
-  onOutputFormatChange,
   onProcessingModeChange,
   onUseLlmChange,
   onPageRangeChange,
@@ -392,64 +361,6 @@ export function ConfigureProcessingPage({
               </>
             ) : (
               <>
-                {/* Output Format */}
-                <div>
-                  <label
-                    htmlFor="output-format-select"
-                    className="block text-sm font-medium text-foreground mb-2"
-                  >
-                    Output Format
-                  </label>
-                  <Select
-                    value={outputFormat}
-                    onValueChange={(value) =>
-                      onOutputFormatChange(value as OutputFormat)
-                    }
-                  >
-                    <SelectTrigger
-                      id="output-format-select"
-                      className="w-full h-10"
-                    >
-                      <SelectValue>
-                        {(() => {
-                          const opt = FORMAT_OPTIONS.find(
-                            (o) => o.value === outputFormat,
-                          )
-                          if (!opt) return null
-                          const Icon = opt.icon
-                          return (
-                            <span className="flex items-center gap-2">
-                              <Icon className="w-4 h-4" strokeWidth={1.5} />
-                              <span>{opt.label}</span>
-                              {opt.recommended && (
-                                <span className="text-muted-foreground text-xs">
-                                  (Recommended)
-                                </span>
-                              )}
-                            </span>
-                          )
-                        })()}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FORMAT_OPTIONS.map((opt) => {
-                        const Icon = opt.icon
-                        return (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            <Icon className="w-4 h-4" strokeWidth={1.5} />
-                            {opt.label}
-                            {opt.recommended && (
-                              <span className="text-muted-foreground text-xs ml-1">
-                                (Recommended)
-                              </span>
-                            )}
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {/* Page Range */}
                 <div>
                   <label

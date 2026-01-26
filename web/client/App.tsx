@@ -111,7 +111,6 @@ function App() {
             fileMimeType={conversion.fileMimeType}
             uploadProgress={conversion.uploadProgress}
             uploadComplete={conversion.uploadComplete}
-            outputFormat={conversion.outputFormat}
             backendMode={backendMode}
             processingMode={conversion.processingMode}
             useLlm={conversion.useLlm}
@@ -120,7 +119,6 @@ function App() {
             isProcessing={conversion.page === "processing"}
             isCancelling={conversion.isCancelling}
             stages={conversion.stages}
-            onOutputFormatChange={conversion.setOutputFormat}
             onProcessingModeChange={conversion.setProcessingMode}
             onUseLlmChange={conversion.setUseLlm}
             onPageRangeChange={conversion.setPageRange}
@@ -134,7 +132,6 @@ function App() {
     case "result":
       return (
         <DocumentProvider
-          markdown={conversion.markdown}
           documentId={conversion.documentId}
           chunks={conversion.chunks}
           documentName={conversion.fileName}
@@ -142,7 +139,6 @@ function App() {
           <AudioProvider documentId={conversion.documentId}>
             <Suspense fallback={<PageLoader />}>
               <ResultPage
-                outputFormat={conversion.outputFormat}
                 content={conversion.content}
                 imagesReady={conversion.imagesReady}
                 onDownload={conversion.downloadResult}

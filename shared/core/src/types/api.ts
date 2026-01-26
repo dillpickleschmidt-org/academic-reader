@@ -1,7 +1,6 @@
 // Shared type definitions between frontend and API
 
 export type BackendType = "local" | "runpod" | "datalab"
-export type OutputFormat = "html" | "markdown" | "json"
 export type ProcessingMode = "fast" | "balanced" | "accurate"
 export type JobStatus =
   | "pending"
@@ -15,7 +14,6 @@ export interface ConversionInput {
   fileUrl?: string // For Runpod/local (S3 URL)
   fileData?: ArrayBuffer | Buffer // For Datalab (direct upload)
   filename?: string // For Datalab (original filename)
-  outputFormat: OutputFormat
   processingMode: ProcessingMode
   useLlm: boolean // fast mode only, non-datalab
   pageRange: string // empty string = all pages

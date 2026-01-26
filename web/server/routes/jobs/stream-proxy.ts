@@ -136,6 +136,11 @@ export async function handleStreamingJob(
             parsed.fileId = fileInfo?.fileId
             if (imageUrls) parsed.images = imageUrls
 
+            // Strip markdown from client payload (saved to S3, not needed by client)
+            if (parsed.formats?.markdown) {
+              delete parsed.formats.markdown
+            }
+
             clearJobFileInfo(jobId)
 
             emitStreamingEvent(event, {

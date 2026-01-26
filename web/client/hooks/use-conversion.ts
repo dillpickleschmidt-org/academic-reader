@@ -6,16 +6,15 @@ import {
   persistDocument as apiPersistDocument,
   subscribeToJob,
   type ConversionProgress,
-  type OutputFormat,
   type ProcessingMode,
   type ChunkBlock,
 } from "@repo/core/client/api-client"
-import { downloadFile, downloadContent } from "@repo/core/client/download"
+import { downloadFile } from "@repo/core/client/download"
 import { useAppConfig } from "./use-app-config"
 import { preloadResultPage } from "../utils/preload"
 
 export type Page = "landing" | "configure" | "processing" | "result"
-export type { OutputFormat, ProcessingMode, ChunkBlock }
+export type { ProcessingMode, ChunkBlock }
 
 export interface StageInfo {
   stage: string
@@ -39,7 +38,6 @@ export function useConversion() {
   const [uploadComplete, setUploadComplete] = useState(false)
 
   // Config options
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>("html")
   const [processingMode, setProcessingMode] = useState<ProcessingMode>("fast")
   const [useLlm, setUseLlm] = useState(false)
   const [pageRange, setPageRange] = useState("")
@@ -54,7 +52,6 @@ export function useConversion() {
   // Document context for AI chat (RAG)
   const [documentId, setDocumentId] = useState<string | null>(null)
   const [chunks, setChunks] = useState<ChunkBlock[] | undefined>()
-  const [markdown, setMarkdown] = useState<string | undefined>()
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
@@ -94,7 +91,6 @@ export function useConversion() {
     setFileMimeType("")
     setUploadProgress(0)
     setUploadComplete(false)
-    setOutputFormat("html")
     setProcessingMode("fast")
     setUseLlm(false)
     setPageRange("")
@@ -105,7 +101,6 @@ export function useConversion() {
     setStages([])
     setDocumentId(null)
     setChunks(undefined)
-    setMarkdown(undefined)
   }
 
   const uploadFile = async (file: File) => {
@@ -152,7 +147,6 @@ export function useConversion() {
 
     try {
       const { job_id } = await apiStartConversion(fileId, fileName, {
-        outputFormat,
         processingMode,
         useLlm,
         pageRange,
@@ -176,7 +170,6 @@ export function useConversion() {
 
           setImagesReady(true)
           setChunks(result.formats?.chunks?.blocks ?? [])
-          setMarkdown(result.formats?.markdown ?? "")
           sseCleanupRef.current = null
 
           // Fire-and-forget persistence (doesn't block render)
@@ -202,10 +195,8 @@ export function useConversion() {
 
   const handleDownload = async () => {
     try {
-      if (outputFormat === "html" && fileId) {
+      if (fileId) {
         await downloadFile(fileId, fileName)
-      } else {
-        downloadContent(content, fileName, outputFormat)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed")
@@ -256,10 +247,8 @@ export function useConversion() {
 
       const data = await response.json()
       setContent(data.html)
-      setMarkdown(data.markdown ?? "")
       setDocumentId(docId)
       setFileId(data.storageId)
-      setOutputFormat("html")
       setImagesReady(true)
       // Transform Convex chunks to ChunkBlock format for TTS
       setChunks(
@@ -286,7 +275,6 @@ export function useConversion() {
     fileMimeType,
     uploadProgress,
     uploadComplete,
-    outputFormat,
     processingMode,
     useLlm,
     pageRange,
@@ -298,11 +286,9 @@ export function useConversion() {
     // Document context for AI chat
     documentId,
     chunks,
-    markdown,
 
     // Setters
     setPage,
-    setOutputFormat,
     setProcessingMode,
     setUseLlm,
     setPageRange,

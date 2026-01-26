@@ -1,7 +1,6 @@
 // Re-export shared types from @repo/core
 export type {
   BackendType,
-  OutputFormat,
   ProcessingMode,
   JobStatus,
   ConversionInput,
@@ -15,7 +14,7 @@ export type {
   PresignedUrlResult,
 } from "@repo/core/types/api"
 
-import type { BackendType, OutputFormat, ProcessingMode } from "@repo/core/types/api"
+import type { BackendType, ProcessingMode } from "@repo/core/types/api"
 
 // Server-only types
 
@@ -57,7 +56,6 @@ export interface WideEvent {
   filename?: string
   fileSize?: number
   contentType?: string
-  outputFormat?: OutputFormat
   processingMode?: ProcessingMode
   useLlm?: boolean
 

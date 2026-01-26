@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { BackendType, OutputFormat, ProcessingMode, ConversionInput } from "../types"
+import type { BackendType, ProcessingMode, ConversionInput } from "../types"
 import type { Storage } from "../storage/types"
 import { getDocumentPath } from "../storage/types"
 import { jobFileMap } from "../storage/job-file-map"
@@ -32,7 +32,6 @@ convert.post("/convert/:fileId", async (c) => {
   event.fileId = fileId
   event.backend = backendType as BackendType
   event.filename = filename
-  event.outputFormat = (query.output_format as OutputFormat) || "html"
   event.processingMode = (query.mode as ProcessingMode) || "fast"
   event.useLlm = query.use_llm === "true"
 
@@ -52,7 +51,6 @@ convert.post("/convert/:fileId", async (c) => {
 
   const baseInput = {
     fileId,
-    outputFormat: (query.output_format as OutputFormat) || "html",
     processingMode: (query.mode as ProcessingMode) || "fast",
     useLlm: query.use_llm === "true",
     pageRange: query.page_range || "",

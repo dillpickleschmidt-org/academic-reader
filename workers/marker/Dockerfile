@@ -27,7 +27,8 @@ os.makedirs(settings.FONT_DIR, exist_ok=True); \
 font_url = f'{settings.ARTIFACT_URL}/{settings.FONT_NAME}'; \
 font_path = os.path.join(settings.FONT_DIR, settings.FONT_NAME); \
 print(f'Downloading {font_url}'); \
-urllib.request.urlretrieve(font_url, font_path); \
+req = urllib.request.Request(font_url, headers={'User-Agent': 'Mozilla/5.0'}); \
+with urllib.request.urlopen(req) as resp, open(font_path, 'wb') as f: f.write(resp.read()); \
 print(f'Saved to {font_path}')"
 
 EXPOSE 8000

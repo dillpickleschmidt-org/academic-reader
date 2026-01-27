@@ -12,7 +12,7 @@ import type { ChunkOutput, ConversionJob, JobStatus } from "../types"
 // ============================================================================
 
 /**
- * Raw response from Local workers (Marker and LightOnOCR).
+ * Raw response from Local workers (Marker and CHANDRA).
  */
 export interface LocalWorkerResponse {
   job_id: string

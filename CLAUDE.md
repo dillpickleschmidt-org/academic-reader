@@ -30,7 +30,7 @@ bun run typecheck
 ### Processing Modes
 
 - `fast` - Uses Marker (layout-aware extraction)
-- `accurate` - Uses LightOnOCR (vision model OCR)
+- `accurate` - Uses CHANDRA (vision model OCR)
 - `balanced` - Datalab-only mode
 
 ## Code Conventions
@@ -47,7 +47,7 @@ bun run typecheck
 - `web/server/` - Hono API server
 - `shared/convex/` - Convex functions + better-auth
 - `shared/core/` - Shared UI components (shadcn/ui)
-- `workers/` - GPU workers (marker, lightonocr, chatterbox-tts, qwen3-tts)
+- `workers/` - GPU workers (marker, chandra, chatterbox-tts, qwen3-tts)
 
 ### File Organization
 

@@ -42,7 +42,7 @@ const baseSchema = z.object({
   // RunPod backend
   RUNPOD_API_KEY: z.string().optional(),
   RUNPOD_MARKER_ENDPOINT_ID: z.string().optional(),
-  RUNPOD_LIGHTONOCR_ENDPOINT_ID: z.string().optional(),
+  RUNPOD_CHANDRA_ENDPOINT_ID: z.string().optional(),
 
   // DataLab backend
   DATALAB_API_KEY: z.string().optional(),

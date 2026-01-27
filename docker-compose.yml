@@ -52,24 +52,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # GPU worker for local LightOnOCR (accurate mode)
-  # Profile: local
-  lightonocr:
-    build: ./workers/lightonocr
-    profiles: ["local"]
-    command: ./entrypoint.sh
-    environment:
-      - MODE=local
-    volumes:
-      - ./workers/lightonocr/app:/app/app
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
   # Self-hosted API (Hono on Bun)
   # Profiles: local, datalab, runpod
   api:
@@ -104,9 +86,6 @@ services:
       convex-backend:
         condition: service_healthy
       marker:
-        condition: service_started
-        required: false
-      lightonocr:
         condition: service_started
         required: false
       chatterbox-tts:

@@ -9,7 +9,6 @@ import { env } from "../env"
 
 export const WORKERS = {
   marker: { url: "http://marker:8000", category: "conversion" },
-  lightonocr: { url: "http://lightonocr:8001", category: "conversion" },
   chatterbox: { url: env.CHATTERBOX_TTS_WORKER_URL, category: "tts" },
   qwen3: { url: env.QWEN3_TTS_WORKER_URL, category: "tts" },
 } as const

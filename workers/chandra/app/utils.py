@@ -1,4 +1,4 @@
-"""Shared utilities for LightOnOCR worker."""
+"""Shared utilities for CHANDRA worker."""
 from pathlib import Path
 
 MIME_TO_EXT = {

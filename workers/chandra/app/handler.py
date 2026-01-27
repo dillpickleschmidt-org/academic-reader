@@ -1,4 +1,4 @@
-"""Runpod Serverless handler for LightOnOCR."""
+"""Runpod Serverless handler for CHANDRA."""
 import tempfile
 from pathlib import Path
 
@@ -6,7 +6,13 @@ import httpx
 import runpod
 
 from .conversion import convert_file
+from .models import get_or_create_manager
 from .utils import get_suffix
+
+# Initialize manager on startup (vLLM should already be running from entrypoint)
+print("[chandra] Initializing InferenceManager...", flush=True)
+get_or_create_manager()
+print("[chandra] Handler ready", flush=True)
 
 
 def handler(job: dict) -> dict:

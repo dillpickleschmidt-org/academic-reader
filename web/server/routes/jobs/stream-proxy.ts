@@ -1,5 +1,5 @@
 /**
- * SSE stream proxy for local backend (Marker and LightOnOCR workers).
+ * SSE stream proxy for local backend (Marker and CHANDRA workers).
  *
  * Proxies the worker's SSE stream while processing events:
  * - html_ready: Apply HTML transforms for early preview

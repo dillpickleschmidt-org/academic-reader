@@ -1,13 +1,13 @@
 /**
- * Shared job ID utilities for routing between Marker and LightOnOCR workers.
+ * Shared job ID utilities for routing between Marker and CHANDRA workers.
  *
  * Job IDs are prefixed to identify which worker to query:
  * - "marker:abc123" → Marker worker (fast mode)
- * - "lightonocr:abc123" → LightOnOCR worker (accurate mode)
+ * - "chandra:abc123" → CHANDRA worker (accurate mode)
  * - "abc123" → Legacy format, assumed to be Marker
  */
 
-export type WorkerType = "marker" | "lightonocr"
+export type WorkerType = "marker" | "chandra"
 
 /**
  * Prefix a raw job ID with the worker type.
@@ -20,8 +20,8 @@ export function prefixJobId(rawId: string, worker: WorkerType): string {
  * Parse a prefixed job ID to extract the worker type and raw ID.
  */
 export function parseJobId(jobId: string): { worker: WorkerType; rawId: string } {
-  if (jobId.startsWith("lightonocr:")) {
-    return { worker: "lightonocr", rawId: jobId.slice(11) }
+  if (jobId.startsWith("chandra:")) {
+    return { worker: "chandra", rawId: jobId.slice(8) }
   }
   if (jobId.startsWith("marker:")) {
     return { worker: "marker", rawId: jobId.slice(7) }
@@ -36,5 +36,5 @@ export function parseJobId(jobId: string): { worker: WorkerType; rawId: string }
 export function getWorkerFromProcessingMode(
   processingMode: string | undefined,
 ): WorkerType {
-  return processingMode === "accurate" ? "lightonocr" : "marker"
+  return processingMode === "accurate" ? "chandra" : "marker"
 }

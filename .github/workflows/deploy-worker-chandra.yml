@@ -1,14 +1,14 @@
-name: Build and Deploy LightOnOCR Worker
+name: Build and Deploy CHANDRA Worker
 
 on:
   push:
     branches: [main]
     paths:
-      - "workers/lightonocr/**"
-      - ".github/workflows/deploy-worker-lightonocr.yml"
+      - "workers/chandra/**"
+      - ".github/workflows/deploy-worker-chandra.yml"
 
 jobs:
-  build-worker-lightonocr:
+  build-worker-chandra:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +23,9 @@ jobs:
 
       - uses: useblacksmith/build-push-action@v2
         with:
-          context: ./workers/lightonocr
+          context: ./workers/chandra
           push: true
           tags: |
-            dillpickleschmidt/academic-reader-worker-lightonocr:latest
-            dillpickleschmidt/academic-reader-worker-lightonocr:${{ github.sha }}
+            dillpickleschmidt/academic-reader-worker-chandra:latest
+            dillpickleschmidt/academic-reader-worker-chandra:${{ github.sha }}
           provenance: false

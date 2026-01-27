@@ -40,10 +40,10 @@ function ReaderLayoutInner({
 }: Props) {
   const [readerMode, setReaderMode] = useReaderTheme()
   const { isOpen, close } = useChatPanel()
-  const tocItems = useTableOfContents()
+  const documentContext = useDocumentContext()
+  const tocItems = useTableOfContents(documentContext?.toc)
   const scrollRef = useRef<HTMLDivElement>(null)
   useScrollDirection(scrollRef)
-  const documentContext = useDocumentContext()
   const documentName = documentContext?.documentName?.replace(/\.[^.]+$/, "")
 
   return (

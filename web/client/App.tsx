@@ -136,6 +136,7 @@ function App() {
           documentId={conversion.documentId}
           chunks={conversion.chunks}
           documentName={conversion.fileName}
+          toc={conversion.toc}
         >
           <AudioProvider documentId={conversion.documentId}>
             <Suspense fallback={<PageLoader />}>

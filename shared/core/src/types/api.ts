@@ -58,6 +58,19 @@ export interface ConversionResult {
   images?: Record<string, string> // For progressive image loading
 }
 
+export interface TocSection {
+  id: string
+  title: string
+  page: number
+  children?: TocSection[]
+}
+
+export interface TocResult {
+  sections: TocSection[]
+  offset: number
+  hasRomanNumerals?: boolean
+}
+
 export interface ConversionJob {
   jobId: string
   status: JobStatus

@@ -3,9 +3,11 @@ import type {
   ConversionProgress,
   ChunkBlock,
   ChunkOutput,
+  TocSection,
+  TocResult,
 } from "../types/api"
 
-export type { ProcessingMode, ConversionProgress, ChunkBlock, ChunkOutput }
+export type { ProcessingMode, ConversionProgress, ChunkBlock, ChunkOutput, TocSection, TocResult }
 
 export interface UploadResponse {
   file_id: string
@@ -36,6 +38,7 @@ export interface JobStatus {
       chunks?: ChunkOutput
     }
     images?: Record<string, string> // filename -> public URL
+    toc?: TocResult // Table of contents extracted from document
   }
   error?: string
   progress?: ConversionProgress

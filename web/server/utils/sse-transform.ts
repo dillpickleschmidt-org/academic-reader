@@ -28,6 +28,14 @@ function parseSSEBlock(block: string): { event: string; data: string } {
   return { event, data: dataLines.join("\n") }
 }
 
+export interface ProgressData {
+  stage: string
+  current: number
+  total: number
+}
+
+type EmitProgress = (progress: ProgressData) => void
+
 /**
  * Transform SSE events in a stream.
  *
@@ -36,11 +44,13 @@ function parseSSEBlock(block: string): { event: string; data: string } {
  * @param onCompleted - Optional async handler for "completed" event.
  *                      If provided, the completed event is buffered and processed
  *                      in flush() to allow async operations like image upload.
+ *                      The handler receives an emitProgress function to send
+ *                      progress events during async processing.
  */
 export function transformSSEStream(
   input: ReadableStream<Uint8Array>,
   transform: (event: string, data: string) => string | null,
-  onCompleted?: (data: string) => Promise<string | null>,
+  onCompleted?: (data: string, emitProgress: EmitProgress) => Promise<string | null>,
 ): ReadableStream<Uint8Array> {
   let buffer = ""
   let pendingCompleted: string | null = null
@@ -90,7 +100,12 @@ export function transformSSEStream(
 
         // Process buffered completed event with async handler
         if (pendingCompleted !== null && onCompleted) {
-          const processed = await onCompleted(pendingCompleted)
+          // Create progress emitter function for the async handler
+          const emitProgress: EmitProgress = (progress) => {
+            controller.enqueue(formatSSE("progress", JSON.stringify(progress)))
+          }
+
+          const processed = await onCompleted(pendingCompleted, emitProgress)
           if (processed !== null) {
             controller.enqueue(formatSSE("completed", processed))
           }

@@ -118,12 +118,15 @@ export async function handleStreamingJob(
           }
           return data
         },
-        // Async handler for completed event - upload images and rewrite URLs
-        async (data) => {
+        // Async handler for completed event - upload images, rewrite URLs, extract TOC
+        async (data, emitProgress) => {
           try {
             const parsed = JSON.parse(data)
 
-            const { content, imageUrls } = await processCompletedJob(
+            // Emit TOC extraction progress
+            emitProgress({ stage: "Extracting table of contents", current: 0, total: 1 })
+
+            const { content, imageUrls, toc } = await processCompletedJob(
               jobId,
               parsed,
               fileInfo,
@@ -135,6 +138,7 @@ export async function handleStreamingJob(
             parsed.jobId = jobId
             parsed.fileId = fileInfo?.fileId
             if (imageUrls) parsed.images = imageUrls
+            if (toc) parsed.toc = toc
 
             // Strip markdown from client payload (saved to S3, not needed by client)
             if (parsed.formats?.markdown) {

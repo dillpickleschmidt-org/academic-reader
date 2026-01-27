@@ -18,22 +18,25 @@ import {
   SidebarMenuSubItem,
 } from "@repo/core/ui/primitives/sidebar"
 
+type NavSubItem =
+  | {
+      title: string
+      url: string
+      displayPage?: number
+      isChild?: boolean
+      onClick?: () => void
+    }
+  | {
+      render: ReactNode
+    }
+
 type NavItem = {
   title: string
   url: string
   icon?: LucideIcon
   isActive?: boolean
   onClick?: () => boolean | "open" | void // false = no change, "open" = force open
-  items?: (
-    | {
-        title: string
-        url: string
-        onClick?: () => void
-      }
-    | {
-        render: ReactNode
-      }
-  )[]
+  items?: NavSubItem[]
 }
 
 function NavItem({ item }: { item: NavItem }) {
@@ -70,7 +73,7 @@ function NavItem({ item }: { item: NavItem }) {
                   {subItem.render}
                 </SidebarMenuSubItem>
               ) : (
-                <SidebarMenuSubItem key={subItem.title}>
+                <SidebarMenuSubItem key={`${subItem.title}-${index}`}>
                   <SidebarMenuSubButton
                     render={
                       <a
@@ -83,8 +86,14 @@ function NavItem({ item }: { item: NavItem }) {
                         }}
                       />
                     }
+                    className={subItem.isChild ? "pl-6" : ""}
                   >
-                    <span>{subItem.title}</span>
+                    <span className="flex-1 truncate">{subItem.title}</span>
+                    {subItem.displayPage !== undefined && (
+                      <span className="text-muted-foreground text-xs ml-2 shrink-0">
+                        {subItem.displayPage}
+                      </span>
+                    )}
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
               ),

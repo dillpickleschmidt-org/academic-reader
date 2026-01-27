@@ -8,6 +8,7 @@ import {
   type ConversionProgress,
   type ProcessingMode,
   type ChunkBlock,
+  type TocResult,
 } from "@repo/core/client/api-client"
 import { downloadFile } from "@repo/core/client/download"
 import { useAppConfig } from "./use-app-config"
@@ -53,6 +54,9 @@ export function useConversion() {
   // Document context for AI chat (RAG)
   const [documentId, setDocumentId] = useState<string | null>(null)
   const [chunks, setChunks] = useState<ChunkBlock[] | undefined>()
+
+  // Table of contents from server
+  const [toc, setToc] = useState<TocResult | undefined>()
 
   // SSE cleanup ref
   const sseCleanupRef = useRef<(() => void) | null>(null)
@@ -103,6 +107,7 @@ export function useConversion() {
     setStages([])
     setDocumentId(null)
     setChunks(undefined)
+    setToc(undefined)
   }
 
   const uploadFile = async (file: File) => {
@@ -173,6 +178,7 @@ export function useConversion() {
 
           setImagesReady(true)
           setChunks(result.formats?.chunks?.blocks ?? [])
+          setToc(result.toc)
           sseCleanupRef.current = null
 
           // Fire-and-forget persistence (doesn't block render)
@@ -290,6 +296,8 @@ export function useConversion() {
     // Document context for AI chat
     documentId,
     chunks,
+    // Table of contents
+    toc,
 
     // Setters
     setPage,

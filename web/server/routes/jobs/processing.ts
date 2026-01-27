@@ -17,7 +17,12 @@ import {
   convertMathToHtml,
   wrapTablesInScrollContainers,
   rewriteImageSources,
+  injectPageMarkers,
 } from "../../utils/html-processing"
+import {
+  extractTableOfContents,
+  type TocResult,
+} from "../../services/toc-extraction"
 import { stripHtmlForEmbedding } from "../../services/embeddings"
 import { extractLinkMappings, injectLinks } from "../../services/link-extraction"
 import { tryCatch, getErrorMessage } from "../../utils/try-catch"
@@ -63,6 +68,7 @@ export interface FileInfo {
 export interface ProcessedJobResult {
   content: string
   imageUrls?: Record<string, string>
+  toc?: TocResult
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -179,16 +185,25 @@ export async function processCompletedJob(
     processedContent = processHtml(processedContent, HTML_TRANSFORMS)
   }
 
-  // Extract and inject PDF links (all backends)
+  // Extract and inject PDF links + TOC (all backends)
   const chunks = result.formats?.chunks?.blocks
+  let tocResult: TocResult | undefined
+  let pageOffset = 0
+
   if (chunks?.length && fileInfo?.documentPath) {
+    const chunkPageInfo = chunks.map((c) => ({ id: c.id, page: c.page }))
+
+    // Try to read PDF for link extraction and TOC
     const pdfReadResult = await tryCatch(
       storage.readFile(`${fileInfo.documentPath}/original.pdf`),
     )
+
     if (pdfReadResult.success) {
+      const pdfBuffer = pdfReadResult.data
+
+      // Extract PDF links
       try {
-        const chunkPageInfo = chunks.map((c) => ({ id: c.id, page: c.page }))
-        const mappings = extractLinkMappings(pdfReadResult.data)
+        const mappings = extractLinkMappings(pdfBuffer)
 
         if (mappings.length) {
           const { html: linkedHtml, linkCount } = injectLinks(
@@ -210,10 +225,35 @@ export async function processCompletedJob(
         }
       } catch (err) {
         console.warn("[jobs] Link extraction failed:", err)
-        // Graceful degradation - continue without links
+      }
+
+      // Extract table of contents
+      try {
+        const textContent = result.formats?.markdown || result.content || ""
+        const tocExtractResult = await tryCatch(
+          extractTableOfContents(textContent, pdfBuffer),
+        )
+        if (tocExtractResult.success && tocExtractResult.data) {
+          tocResult = tocExtractResult.data
+          pageOffset = tocResult.offset
+          event.tocSections = tocResult.sections.length
+        }
+      } catch (err) {
+        console.warn("[jobs] TOC extraction failed:", err)
       }
     } else {
       console.warn("[jobs] Failed to read PDF for link extraction:", pdfReadResult.error)
+    }
+
+    // Inject page markers (always runs, uses offset=0 as fallback)
+    try {
+      processedContent = injectPageMarkers(processedContent, chunkPageInfo, pageOffset)
+
+      if (result.formats?.html) {
+        result.formats.html = injectPageMarkers(result.formats.html, chunkPageInfo, pageOffset)
+      }
+    } catch (err) {
+      console.warn("[jobs] Page marker injection failed:", err)
     }
   }
 
@@ -250,7 +290,7 @@ export async function processCompletedJob(
     cacheJobResult(jobId, { ...result, content: processedContent }, fileInfo)
   }
 
-  return { content: processedContent, imageUrls }
+  return { content: processedContent, imageUrls, toc: tocResult }
 }
 
 /**

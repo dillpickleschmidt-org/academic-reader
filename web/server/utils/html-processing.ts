@@ -256,3 +256,44 @@ export function rewriteImageSources(
   return $("body").html() ?? ""
 }
 
+interface ChunkPageInfo {
+  id: string
+  page: number
+}
+
+/**
+ * Inject page markers into HTML before each page's first block.
+ * Markers serve as scroll targets for TOC navigation and display page numbers.
+ *
+ * @param html - The HTML content to process
+ * @param chunks - Array of chunks with block IDs and page numbers
+ * @param offset - Page offset (physical - display), defaults to 0
+ */
+export function injectPageMarkers(
+  html: string,
+  chunks: ChunkPageInfo[],
+  offset: number = 0,
+): string {
+  const $ = cheerio.load(html)
+
+  // Build page -> first block ID map
+  const pageFirstBlock = new Map<number, string>()
+  for (const chunk of chunks) {
+    if (!pageFirstBlock.has(chunk.page)) {
+      pageFirstBlock.set(chunk.page, chunk.id)
+    }
+  }
+
+  // Inject marker before each page's first block
+  for (const [physicalPage, blockId] of pageFirstBlock) {
+    const displayPage = physicalPage - offset
+    const marker = `<span class="page-marker" id="page-marker-${physicalPage}">${displayPage}</span>`
+    const block = $(`[data-block-id="${blockId}"]`)
+    if (block.length) {
+      block.before(marker)
+    }
+  }
+
+  return $("body").html() ?? ""
+}
+

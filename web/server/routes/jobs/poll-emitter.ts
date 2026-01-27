@@ -119,7 +119,10 @@ export async function handlePollingJob(
               content: job.result?.content || job.htmlContent,
             }
 
-            const { content, imageUrls } = await processCompletedJob(
+            // Emit TOC extraction progress
+            sendEvent("progress", { stage: "Extracting table of contents", current: 0, total: 1 })
+
+            const { content, imageUrls, toc } = await processCompletedJob(
               jobId,
               resultToProcess,
               fileInfo,
@@ -145,6 +148,7 @@ export async function handlePollingJob(
               ...resultForClient,
               content,
               ...(imageUrls && { images: imageUrls }),
+              ...(toc && { toc }),
               jobId,
               fileId: fileInfo?.fileId,
             })

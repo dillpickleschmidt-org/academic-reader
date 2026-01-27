@@ -497,3 +497,19 @@
 .tts-word-active {
   background-color: oklch(from var(--foreground) L C H / 15%);
 }
+
+/* ========================================
+   Page Markers
+   Floating page numbers for TOC navigation
+   ======================================== */
+
+.page-marker {
+  float: right;
+  clear: right;
+  font-size: 0.75rem;
+  color: var(--reader-text-muted);
+  padding: 0.125rem 0.5rem;
+  margin-left: 1rem;
+  opacity: 0.6;
+  scroll-margin-top: 5rem;
+}

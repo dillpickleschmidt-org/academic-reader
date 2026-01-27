@@ -34,6 +34,9 @@ print(f'Saved to {font_path}')"
 
 EXPOSE 8000
 
+# H100 batch size optimization for Runpod
+ENV MARKER_BATCH_SIZES=h100
+
 # Default to Runpod serverless handler
 # Local dev: docker-compose overrides with "uvicorn app.main:app ..."
 CMD ["python", "-u", "-m", "app.handler"]

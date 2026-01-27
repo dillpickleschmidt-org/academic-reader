@@ -20,10 +20,12 @@ def _create_converter(
     """Create a configured PDF converter (without renderer - we'll run all renderers manually)."""
     from marker.config.parser import ConfigParser
     from marker.converters.pdf import PdfConverter
+    from .config import BATCH_SIZE_OVERRIDES
 
     config_dict = {
-        "output_format": "html",  # Doesn't matter, we'll use all renderers
+        "output_format": "html",
         "use_llm": use_llm,
+        **BATCH_SIZE_OVERRIDES,
     }
     if page_range:
         config_dict["page_range"] = page_range

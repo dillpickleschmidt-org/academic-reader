@@ -4,8 +4,6 @@ set -e
 # Runpod-only: Start vLLM server then run handler
 # CHANDRA requires ~19GB+ VRAM, so no local mode support
 
-export VLLM_ATTENTION_BACKEND=TORCH_SDPA
-
 echo "[chandra] Starting vLLM server..."
 vllm serve datalab-to/chandra \
     --dtype bfloat16 \

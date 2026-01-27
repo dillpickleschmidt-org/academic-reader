@@ -14,6 +14,7 @@ export interface ConversionInput {
   fileUrl?: string // For Runpod/local (S3 URL)
   fileData?: ArrayBuffer | Buffer // For Datalab (direct upload)
   filename?: string // For Datalab (original filename)
+  mimeType?: string // For determining file type
   processingMode: ProcessingMode
   useLlm: boolean // fast mode only, non-datalab
   pageRange: string // empty string = all pages

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
 from .conversion import convert_image
+from .utils import get_suffix
 
 
 class JobStatus(str, Enum):
@@ -31,6 +32,7 @@ class Job:
     result: dict[str, Any] | None = None
     error: str | None = None
     file_url: str = ""
+    mime_type: str | None = None
     page_range: str | None = None
     # Progress info
     progress: dict[str, Any] | None = None
@@ -70,9 +72,7 @@ async def process_job(job: Job):
     job.status = JobStatus.PROCESSING
     await emit_event(job, "progress", {"stage": "Starting", "current": 0, "total": 1})
 
-    # Determine file extension from URL
-    url_path = job.file_url.split("?")[0]
-    suffix = Path(url_path).suffix.lower() or ".pdf"
+    suffix = get_suffix(job.mime_type, job.file_url)
 
     # Download file to temp location
     temp_path: Path | None = None
@@ -233,6 +233,7 @@ def convert_pdf_page(pdf_path: Path, page_idx: int, image_counter: int) -> dict:
 @app.post("/convert")
 async def convert(
     file_url: str = Query(..., description="URL to download the file from"),
+    mime_type: str | None = Query(None, description="MIME type of the file"),
     page_range: str | None = Query(None, description="Page range like '1-5' or '1,3,5'"),
 ):
     """
@@ -245,7 +246,7 @@ async def convert(
 
     # Create job
     job_id = str(uuid.uuid4())
-    job = Job(job_id=job_id, file_url=file_url, page_range=page_range)
+    job = Job(job_id=job_id, file_url=file_url, mime_type=mime_type, page_range=page_range)
     jobs[job_id] = job
 
     # Start processing in background

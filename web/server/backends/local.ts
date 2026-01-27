@@ -29,10 +29,13 @@ export class LocalBackend implements ConversionBackend {
     const useLightOnOCR = input.processingMode === "accurate"
 
     if (useLightOnOCR) {
-      // LightOnOCR: simple API with file_url and page_range
+      // LightOnOCR: simple API with file_url, mime_type, and page_range
       const params = new URLSearchParams()
       if (input.fileUrl) {
         params.set("file_url", input.fileUrl)
+      }
+      if (input.mimeType) {
+        params.set("mime_type", input.mimeType)
       }
       if (input.pageRange) {
         params.set("page_range", input.pageRange)

@@ -6,6 +6,7 @@ import httpx
 import runpod
 
 from .conversion import convert_file
+from .utils import get_suffix
 
 
 def handler(job: dict) -> dict:
@@ -15,6 +16,7 @@ def handler(job: dict) -> dict:
     Expected input:
     {
         "file_url": "https://...",
+        "mime_type": "application/pdf",  # optional but recommended
         "page_range": "1-5"  # optional
     }
     """
@@ -25,10 +27,8 @@ def handler(job: dict) -> dict:
         return {"error": "Missing required field: file_url"}
 
     page_range = job_input.get("page_range")  # Optional
-
-    # Determine file extension from URL
-    url_path = file_url.split("?")[0]
-    suffix = Path(url_path).suffix or ".pdf"
+    mime_type = job_input.get("mime_type")  # Optional
+    suffix = get_suffix(mime_type, file_url)
 
     # Download file to temp location
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:

@@ -73,12 +73,14 @@ export async function fetchFromUrl(url: string): Promise<UploadResponse> {
 export async function startConversion(
   fileId: string,
   filename: string,
+  mimeType: string,
   options: ConversionOptions,
 ): Promise<{ job_id: string }> {
   const params = new URLSearchParams({
     mode: options.processingMode,
     use_llm: String(options.useLlm),
     filename,
+    mime_type: mimeType,
   })
   if (options.pageRange.trim()) {
     params.set("page_range", options.pageRange.trim())

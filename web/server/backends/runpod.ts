@@ -41,6 +41,7 @@ class RunpodBackend implements ConversionBackend {
     const inputPayload: Record<string, unknown> = useLightOnOCR
       ? {
           file_url: input.fileUrl,
+          mime_type: input.mimeType,
           page_range: input.pageRange || undefined,
         }
       : {

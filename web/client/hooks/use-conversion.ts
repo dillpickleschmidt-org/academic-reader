@@ -146,7 +146,7 @@ export function useConversion() {
     htmlReadyFiredRef.current = false
 
     try {
-      const { job_id } = await apiStartConversion(fileId, fileName, {
+      const { job_id } = await apiStartConversion(fileId, fileName, fileMimeType, {
         processingMode,
         useLlm,
         pageRange,

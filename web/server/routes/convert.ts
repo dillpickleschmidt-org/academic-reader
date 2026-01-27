@@ -20,6 +20,7 @@ convert.post("/convert/:fileId", async (c) => {
   const query = c.req.query()
   const backendType = env.BACKEND_MODE
   const filename = query.filename
+  const mimeType = query.mime_type
   if (!filename) {
     return c.json({ error: "Missing filename parameter" }, { status: 400 })
   }
@@ -82,7 +83,7 @@ convert.post("/convert/:fileId", async (c) => {
       }
       return c.json({ error: "Failed to get file URL" }, { status: 500 })
     }
-    input = { ...baseInput, fileUrl: fileUrlResult.data }
+    input = { ...baseInput, fileUrl: fileUrlResult.data, mimeType }
   } else {
     event.error = {
       category: "validation",

@@ -22,7 +22,8 @@ if os.getenv("MARKER_BATCH_SIZES") == "h100":
         "ocr_error_batch_size": 12,
         "recognition_batch_size": 64,
         "equation_batch_size": 16,
-        "detector_postprocessing_cpu_workers": 2,
+        "pdftext_workers": 16,
+        "detector_postprocessing_cpu_workers": 8,
     }
 
 # Supported file types

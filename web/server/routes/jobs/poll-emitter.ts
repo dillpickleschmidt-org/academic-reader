@@ -44,13 +44,22 @@ export async function handlePollingJob(
 
   const stream = new ReadableStream({
     async start(controller) {
+      let lastEventTime = Date.now()
+      const KEEPALIVE_INTERVAL_MS = 30_000
+
       const sendEvent = (sseEvent: string, data: unknown) => {
         eventCount++
+        lastEventTime = Date.now()
         controller.enqueue(
           encoder.encode(
             `event: ${sseEvent}\ndata: ${JSON.stringify(data)}\n\n`,
           ),
         )
+      }
+
+      const sendKeepalive = () => {
+        lastEventTime = Date.now()
+        controller.enqueue(encoder.encode(":keepalive\n\n"))
       }
 
       let completed = false
@@ -60,6 +69,11 @@ export async function handlePollingJob(
       let finalStatus: FinalStatus = "timeout"
 
       while (!completed && pollCount < POLLING.MAX_POLLS) {
+        // Send keepalive if no events sent recently (prevents Cloudflare 524 timeout)
+        if (Date.now() - lastEventTime > KEEPALIVE_INTERVAL_MS) {
+          sendKeepalive()
+          lastEventTime = Date.now()
+        }
         // Check if client disconnected
         if (signal.aborted) {
           finalStatus = "cancelled"

@@ -3,8 +3,6 @@ import base64
 import io
 from pathlib import Path
 
-from PIL import Image
-
 from .models import get_or_create_manager
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff", ".tif", ".bmp"}
@@ -15,10 +13,10 @@ MAX_WORKERS = 32  # Concurrent inference threads (SDK default: min(64, batch_siz
 BATCH_SIZE = 32   # Pages per batch (CLI default for vllm: 28)
 
 
-def pil_to_base64(img: Image.Image, format: str = "PNG") -> str:
-    """Convert PIL Image to base64 string."""
+def pil_to_base64(img) -> str:
+    """Convert PIL Image to base64 WEBP string (matches chandra SDK format)."""
     buffer = io.BytesIO()
-    img.save(buffer, format=format)
+    img.save(buffer, format="WEBP")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
@@ -41,7 +39,7 @@ def convert_file(file_path: Path, page_range: str | None = None) -> dict:
                 "json": None,
                 "chunks": {"blocks": [...]},
             },
-            "images": {"image_N.png": "base64...", ...}
+            "images": {"hash_idx_img.webp": "base64...", ...}
         }
     """
     suffix = file_path.suffix.lower()
@@ -92,42 +90,28 @@ def _convert_pdf(pdf_path: Path, page_range: str | None) -> dict:
     markdown_parts: list[str] = []
     all_chunks: list[dict] = []
     all_images: dict[str, str] = {}
-    image_counter = 0
 
     for idx, result in enumerate(results):
-        # Check for errors
-        if hasattr(result, "error") and result.error:
-            print(f"[chandra] Warning: Page {idx + 1} had an error during processing", flush=True)
+        # Skip pages with errors (error is a bool in BatchOutputItem)
+        if result.error:
+            print(f"[chandra] Warning: Page {idx + 1} had an error, skipping", flush=True)
+            continue
 
-        # CHANDRA returns HTML with proper table structure (rowspan/colspan)
-        page_html = result.html if hasattr(result, "html") else ""
-        page_markdown = result.markdown if hasattr(result, "markdown") else ""
+        if result.html:
+            html_parts.append(result.html)
+        if result.markdown:
+            markdown_parts.append(result.markdown)
 
-        if not page_html.strip():
-            print(f"[chandra] Warning: Page {idx + 1} returned empty HTML", flush=True)
-
-        html_parts.append(page_html)
-        markdown_parts.append(page_markdown)
-
-        # Extract chunks if available
-        if hasattr(result, "chunks") and result.chunks:
+        # Extract chunks if available (chunks is a dict with bbox/label/content)
+        if result.chunks:
             for chunk in result.chunks:
-                all_chunks.append({
-                    "page": pages[idx] + 1 if idx < len(pages) else idx + 1,  # 1-indexed for output
-                    "type": getattr(chunk, "type", "text"),
-                    "content": getattr(chunk, "content", ""),
-                    "bbox": getattr(chunk, "bbox", None),
-                })
+                chunk_with_page = dict(chunk) if isinstance(chunk, dict) else {"content": str(chunk)}
+                chunk_with_page["page"] = pages[idx] + 1 if idx < len(pages) else idx + 1
+                all_chunks.append(chunk_with_page)
 
-        # Extract images if available
-        if hasattr(result, "images") and result.images:
-            for img_name, img_data in result.images.items():
-                image_counter += 1
-                new_name = f"image_{image_counter}.png"
-                if isinstance(img_data, Image.Image):
-                    all_images[new_name] = pil_to_base64(img_data)
-                elif isinstance(img_data, str):
-                    all_images[new_name] = img_data
+        if result.images:
+            for name, img in result.images.items():
+                all_images[name] = pil_to_base64(img)
 
     # Join pages with horizontal rule separator
     html_content = "\n<hr>\n".join(html_parts)
@@ -163,31 +147,21 @@ def _convert_image(image_path: Path) -> dict:
     result = results[0]
 
     # Extract content
-    html_content = result.html if hasattr(result, "html") else ""
-    markdown_content = result.markdown if hasattr(result, "markdown") else ""
+    html_content = result.html or ""
+    markdown_content = result.markdown or ""
 
     # Extract chunks
     chunks: list[dict] = []
-    if hasattr(result, "chunks") and result.chunks:
+    if result.chunks:
         for chunk in result.chunks:
-            chunks.append({
-                "page": 1,
-                "type": getattr(chunk, "type", "text"),
-                "content": getattr(chunk, "content", ""),
-                "bbox": getattr(chunk, "bbox", None),
-            })
+            chunk_with_page = dict(chunk) if isinstance(chunk, dict) else {"content": str(chunk)}
+            chunk_with_page["page"] = 1
+            chunks.append(chunk_with_page)
 
-    # Extract images
     all_images: dict[str, str] = {}
-    if hasattr(result, "images") and result.images:
-        image_counter = 0
-        for img_name, img_data in result.images.items():
-            image_counter += 1
-            new_name = f"image_{image_counter}.png"
-            if isinstance(img_data, Image.Image):
-                all_images[new_name] = pil_to_base64(img_data)
-            elif isinstance(img_data, str):
-                all_images[new_name] = img_data
+    if result.images:
+        for name, img in result.images.items():
+            all_images[name] = pil_to_base64(img)
 
     return {
         "content": html_content,

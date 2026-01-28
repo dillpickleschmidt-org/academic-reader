@@ -13,6 +13,7 @@ image = (
         "scipy",
         "pydantic",
         "fastapi[standard]",
+        "huggingface_hub[hf_transfer]",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .run_commands(

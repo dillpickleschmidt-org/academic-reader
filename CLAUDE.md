@@ -64,6 +64,20 @@ function helperA() { ... }
 function helperB() { ... }
 ```
 
+### No Thin Wrappers
+
+While thin wrappers may be useful for readability in highly repeated invocations, they should generally be avoided when it would be simpler to inline. An example of what NOT to do:
+
+```
+function isMarkerBlock(block: WorkerChunkBlock): block is MarkerChunkBlock {
+  return "id" in block && "block_type" in block
+}
+```
+
+### Avoid comments explaining "changes"
+
+While I'm fine with comments and documentation, I don't want any comments that explain code "changes" made as that's useless for new developers.
+
 ### Data Loading States
 
 - `undefined` = not yet loaded → show skeleton/loader

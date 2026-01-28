@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to OpenCode when working with code in this repository.
 
 ## Overview
 
@@ -63,6 +63,20 @@ export function mainFunction() {
 function helperA() { ... }
 function helperB() { ... }
 ```
+
+### No Thin Wrappers
+
+While thin wrappers may be useful for readability in highly repeated invocations, they should generally be avoided when it would be simpler to inline. An example of what not to do:
+
+```
+function isMarkerBlock(block: WorkerChunkBlock): block is MarkerChunkBlock {
+  return "id" in block && "block_type" in block
+}
+```
+
+### Avoid comments explaining "changes"
+
+While I'm fine with comments and documentation, I don't want any comments that explain code "changes" made as that's useless for new developers.
 
 ### Data Loading States
 

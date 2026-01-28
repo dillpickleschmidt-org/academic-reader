@@ -11,7 +11,7 @@ image = (
 app = modal.App("marker", image=image)
 
 
-@app.function(gpu="A10G", cpu=4.0, memory=16384, timeout=1800)
+@app.function(gpu="A100-40GB", cpu=4.0, memory=16384, timeout=1800)
 def convert(
     file_url: str,
     result_upload_url: str,

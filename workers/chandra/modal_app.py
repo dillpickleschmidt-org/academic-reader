@@ -11,6 +11,7 @@ image = (
         "pydantic",
         "fastapi[standard]",
         "pypdfium2",
+        "huggingface_hub[hf_transfer]",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .run_commands(

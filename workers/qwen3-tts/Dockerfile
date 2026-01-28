@@ -20,14 +20,13 @@ RUN pip install --no-cache-dir qwen-tts
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download and cache Qwen3-TTS model during build
-# IMPORTANT: This must be BEFORE copying app code so app changes don't invalidate model cache
+# Pre-download and cache Qwen3-TTS model during build (CPU, no flash_attention_2)
+# At runtime, model loads with flash_attention_2 when GPU is available
 RUN python -c "\
-from qwen_tts import Qwen3TTSModel; \
 import torch; \
-device = 'cuda' if torch.cuda.is_available() else 'cpu'; \
-print(f'Loading model on {device}...'); \
-Qwen3TTSModel.from_pretrained('Qwen/Qwen3-TTS-12Hz-1.7B-Base', device_map=device, dtype=torch.bfloat16, attn_implementation='flash_attention_2'); \
+from qwen_tts import Qwen3TTSModel; \
+print('Caching model weights...'); \
+Qwen3TTSModel.from_pretrained('Qwen/Qwen3-TTS-12Hz-1.7B-Base', device_map='cpu', dtype=torch.bfloat16); \
 print('Model cached successfully')"
 
 # Pre-download MMS alignment model for word-level timestamps

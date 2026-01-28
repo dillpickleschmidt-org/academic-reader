@@ -1,12 +1,15 @@
 """Modal worker for Marker PDF conversion."""
+from pathlib import Path
 import modal
+
+_here = Path(__file__).parent
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("build-essential")
     .pip_install("marker-pdf==1.9.2", "httpx", "pydantic", "fastapi[standard]")
     .run_commands("python -c 'from marker.models import create_model_dict; create_model_dict()'")
-    .add_local_file("shared.py", "/root/shared.py")
+    .add_local_file(_here / "shared.py", "/root/shared.py")
 )
 
 app = modal.App("marker", image=image)

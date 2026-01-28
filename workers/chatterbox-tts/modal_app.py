@@ -21,15 +21,13 @@ image = (
         # Pre-download MMS alignment model
         "python -c \"from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()\"",
     )
+    .add_local_dir(VOICES_DIR, remote_path="/voices")
 )
 
 app = modal.App("chatterbox-tts", image=image)
 
-# Mount voice files from local directory
-voices_mount = modal.Mount.from_local_dir(VOICES_DIR, remote_path="/voices")
 
-
-@app.cls(gpu="A10G", cpu=2.0, memory=8192, timeout=300, mounts=[voices_mount])
+@app.cls(gpu="A10G", cpu=2.0, memory=8192, timeout=300)
 class ChatterboxTTS:
     """Chatterbox TTS worker with persistent model."""
 

@@ -5,16 +5,24 @@ from pathlib import Path
 # Get the path to voices directory relative to this file
 VOICES_DIR = Path(__file__).parent / "voices"
 
+# Pre-built flash-attn wheel for Python 3.11 + PyTorch 2.5 + CUDA 12
+FLASH_ATTN_WHEEL = (
+    "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/"
+    "flash_attn-2.8.3+cu12torch2.5cxx11abiFALSE-cp311-cp311-linux_x86_64.whl"
+)
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("build-essential", "ffmpeg", "libsndfile1", "sox")
     .pip_install(
-        "flash-attn",
+        "torch==2.5.*",
+        "torchaudio==2.5.*",
         "qwen-tts",
         "scipy",
         "pydantic",
         "fastapi[standard]",
         "huggingface_hub[hf_transfer]",
+        FLASH_ATTN_WHEEL,
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .run_commands(

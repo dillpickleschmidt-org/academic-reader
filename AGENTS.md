@@ -21,6 +21,8 @@ docker compose --profile local build
 bun run typecheck
 ```
 
+Don't ever commit or push code to git unless I explicitly ask. If I allow you to commit, that does not necessarily mean I allow you to push.
+
 ### Backend Modes (set `BACKEND_MODE` in `.env.local`)
 
 - `local` - Local GPU via Docker (requires NVIDIA Docker)

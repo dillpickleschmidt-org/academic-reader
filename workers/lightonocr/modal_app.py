@@ -1,5 +1,8 @@
 """Modal worker for LightOnOCR conversion."""
+from pathlib import Path
 import modal
+
+_here = Path(__file__).parent
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -16,19 +19,14 @@ image = (
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     .pip_install("huggingface_hub[hf_transfer]")
     .run_commands(
-        # Pre-download model
         "python -c \"from huggingface_hub import snapshot_download; snapshot_download('lightonai/LightOnOCR-2-1B-bbox-soup')\""
     )
+    .add_local_file(_here / "app/__init__.py", "/root/app/__init__.py")
+    .add_local_file(_here / "app/conversion.py", "/root/app/conversion.py")
+    .add_local_file(_here / "app/markdown_utils.py", "/root/app/markdown_utils.py")
 )
 
 app = modal.App("lightonocr", image=image)
-
-# Change this to invalidate the snapshot cache
-snapshot_key = "v1"
-
-# Import in global scope so imports can be snapshot
-with image.imports():
-    from vllm import LLM
 
 
 @app.cls(
@@ -36,14 +34,14 @@ with image.imports():
     cpu=2.0,
     memory=16384,
     timeout=1800,
-    enable_memory_snapshot=True,
-    experimental_options={"enable_gpu_snapshot": True},
 )
 class LightOnOCR:
     """LightOnOCR worker with persistent vLLM model."""
 
-    @modal.enter(snap=True)
+    @modal.enter()
     def load_model(self):
+        from vllm import LLM
+
         print("[lightonocr] Loading vLLM model...", flush=True)
         self.llm = LLM(
             "lightonai/LightOnOCR-2-1B-bbox-soup",
@@ -52,7 +50,7 @@ class LightOnOCR:
             limit_mm_per_prompt={"image": 1},
             gpu_memory_utilization=0.9,
         )
-        print(f"[lightonocr] Model loaded, snapshotting {snapshot_key}", flush=True)
+        print("[lightonocr] Model loaded", flush=True)
 
     @modal.method()
     def convert(

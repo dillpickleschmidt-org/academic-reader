@@ -4,47 +4,39 @@ import modal
 
 _here = Path(__file__).parent
 
+MODEL_CACHE_PATH = "/root/.cache/datalab/"
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("build-essential")
     .pip_install("marker-pdf==1.9.2", "httpx", "pydantic", "fastapi[standard]")
-    .run_commands("python -c 'from marker.models import create_model_dict; create_model_dict()'")
     .add_local_file(_here / "shared.py", "/root/shared.py")
 )
 
 app = modal.App("marker", image=image)
 
-# Change this to invalidate the snapshot cache
-snapshot_key = "v1"
-
-# Import in global scope so imports can be snapshot
-with image.imports():
-    import sys
-    sys.path.insert(0, "/root")
-    from shared import extract_chunks, encode_images
-    from marker.config.parser import ConfigParser
-    from marker.converters.pdf import PdfConverter
-    from marker.models import create_model_dict
-    from marker.renderers.html import HTMLRenderer
-    from marker.renderers.markdown import MarkdownRenderer
+models_volume = modal.Volume.from_name("marker-models", create_if_missing=True)
 
 
 @app.cls(
-    gpu="A100-40GB",
-    cpu=4.0,
-    memory=16384,
+    gpu="L40S",
+    retries=3,
     timeout=1800,
-    enable_memory_snapshot=True,
-    experimental_options={"enable_gpu_snapshot": True},
+    volumes={MODEL_CACHE_PATH: models_volume},
 )
 class Marker:
     """Marker worker with persistent models."""
 
-    @modal.enter(snap=True)
+    @modal.enter()
     def load_models(self):
+        import sys
+        sys.path.insert(0, "/root")
+        from marker.models import create_model_dict
+
         print("[marker] Loading models...", flush=True)
         self.model_dict = create_model_dict()
-        print(f"[marker] Models loaded, snapshotting {snapshot_key}", flush=True)
+        models_volume.commit()
+        print("[marker] Models loaded", flush=True)
 
     @modal.method()
     def convert(
@@ -57,9 +49,17 @@ class Marker:
         """Download file, convert with Marker, upload result to S3."""
         import json
         import tempfile
+        import sys
         from pathlib import Path
 
         import httpx
+
+        sys.path.insert(0, "/root")
+        from shared import extract_chunks, encode_images
+        from marker.config.parser import ConfigParser
+        from marker.converters.pdf import PdfConverter
+        from marker.renderers.html import HTMLRenderer
+        from marker.renderers.markdown import MarkdownRenderer
 
         # Download
         suffix = Path(file_url.split("?")[0]).suffix or ".pdf"

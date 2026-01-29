@@ -28,6 +28,7 @@ import {
 import { InfoTooltip } from "@repo/core/ui/info-tooltip"
 import type { ProcessingMode, StageInfo } from "../hooks/use-conversion"
 import type { BackendType } from "@repo/core/types/api"
+import { useAppConfig } from "../hooks/use-app-config"
 
 const AGGRESSIVE_MODE_SUPPORTED_TYPES = [
   "application/pdf",
@@ -392,6 +393,7 @@ export function ConfigureProcessingPage({
   onCancel,
   onBack,
 }: Props) {
+  const { user } = useAppConfig()
   const currentStep: Step = isProcessing ? "convert" : "configure"
 
   return (
@@ -554,28 +556,36 @@ export function ConfigureProcessingPage({
                 )}
 
                 {/* Actions */}
-                <div className="flex gap-3 mt-2">
-                  <Button variant="outline" onClick={onBack} className="h-10">
-                    <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={2} />
-                    Back
-                  </Button>
-                  <Button
-                    onClick={onStartConversion}
-                    disabled={!uploadComplete}
-                    className="flex-1 h-10 primary-animated-gradient text-white border-0 hover:opacity-90"
-                  >
-                    {uploadComplete ? (
-                      "Convert"
-                    ) : (
-                      <>
-                        <Loader2
-                          className="w-4 h-4 mr-2 animate-spin"
-                          strokeWidth={2}
-                        />
-                        Uploading...
-                      </>
-                    )}
-                  </Button>
+                <div className="flex flex-col gap-3 mt-2 items-end">
+                  {!user && (
+                    <p className="text-xs text-muted-foreground">
+                      We require a free account to prevent abuse by bots.
+                      You'll be prompted to sign in / sign up.
+                    </p>
+                  )}
+                  <div className="flex gap-3 w-full">
+                    <Button variant="outline" onClick={onBack} className="h-10">
+                      <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={2} />
+                      Back
+                    </Button>
+                    <Button
+                      onClick={onStartConversion}
+                      disabled={!uploadComplete}
+                      className="flex-1 h-10 primary-animated-gradient text-white border-0 hover:opacity-90"
+                    >
+                      {uploadComplete ? (
+                        "Convert"
+                      ) : (
+                        <>
+                          <Loader2
+                            className="w-4 h-4 mr-2 animate-spin"
+                            strokeWidth={2}
+                          />
+                          Uploading...
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </>
             )}

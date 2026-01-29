@@ -27,6 +27,7 @@ interface PollEmitterOptions {
   storage: Storage
   event: WideEvent
   signal: AbortSignal
+  headers?: Headers
 }
 
 type FinalStatus = "completed" | "failed" | "timeout" | "cancelled"
@@ -37,7 +38,7 @@ type FinalStatus = "completed" | "failed" | "timeout" | "cancelled"
 export async function handlePollingJob(
   options: PollEmitterOptions,
 ): Promise<Response> {
-  const { jobId, backend, storage, event, signal } = options
+  const { jobId, backend, storage, event, signal, headers } = options
   const encoder = new TextEncoder()
   const streamStart = performance.now()
   let eventCount = 0
@@ -146,12 +147,13 @@ export async function handlePollingJob(
             // Emit TOC extraction progress
             sendEvent("progress", { stage: "Extracting table of contents", current: 0, total: 1 })
 
-            const { content, imageUrls, toc } = await processCompletedJob(
+            const { content, imageUrls, toc, documentId } = await processCompletedJob(
               jobId,
               resultToProcess,
               fileInfo,
               storage,
               event,
+              headers,
             )
 
             // For backends that don't support html_ready (like datalab), send early preview
@@ -173,6 +175,7 @@ export async function handlePollingJob(
               content,
               ...(imageUrls && { images: imageUrls }),
               ...(toc && { toc }),
+              ...(documentId && { documentId }),
               jobId,
               fileId: fileInfo?.fileId,
             })

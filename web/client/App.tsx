@@ -7,6 +7,7 @@ import { useAppConfig } from "./hooks/use-app-config"
 import { useColorAnimation } from "./hooks/use-color-animation"
 import { DocumentProvider } from "./context/DocumentContext"
 import { AudioProvider } from "./context/AudioContext"
+import { AuthDialog } from "./components/AuthDialog"
 import { LandingPage } from "./pages/LandingPage"
 import { resultPageImport } from "./utils/preload"
 
@@ -41,14 +42,13 @@ function App() {
       if (page) {
         conversion.setPage(page)
       } else {
-        // No state = landing page
         conversion.setPage("landing")
       }
     }
 
     window.addEventListener("popstate", handlePopState)
     return () => window.removeEventListener("popstate", handlePopState)
-  }, [conversion])
+  }, [conversion.setPage])
 
   // Push history state when page changes (but not on popstate)
   useEffect(() => {
@@ -91,6 +91,28 @@ function App() {
     await fetch(`/api/saved-documents/${documentId}`, { method: "DELETE" })
   }, [])
 
+  // Auth dialog for pending conversions - starts conversion on successful auth
+  const authDialog = (
+    <AuthDialog
+      open={conversion.pendingConversion}
+      onOpenChange={(open) => {
+        if (!open) {
+          conversion.setPendingConversion(false)
+        }
+      }}
+      onSuccess={() => {
+        conversion.setPendingConversion(false)
+        conversion.startConversion({ skipAuthCheck: true })
+      }}
+      showTrigger={false}
+    />
+  )
+
+  // Show loader while resuming OAuth flow
+  if (conversion.hasPendingOAuthResume) {
+    return <PageLoader />
+  }
+
   switch (conversion.page) {
     case "landing":
       return (
@@ -105,29 +127,32 @@ function App() {
     case "configure":
     case "processing":
       return (
-        <Suspense fallback={<PageLoader />}>
-          <ConfigureProcessingPage
-            fileName={conversion.fileName}
-            fileMimeType={conversion.fileMimeType}
-            pageCount={conversion.pageCount}
-            uploadProgress={conversion.uploadProgress}
-            uploadComplete={conversion.uploadComplete}
-            backendMode={backendMode}
-            processingMode={conversion.processingMode}
-            useLlm={conversion.useLlm}
-            pageRange={conversion.pageRange}
-            error={conversion.error}
-            isProcessing={conversion.page === "processing"}
-            isCancelling={conversion.isCancelling}
-            stages={conversion.stages}
-            onProcessingModeChange={conversion.setProcessingMode}
-            onUseLlmChange={conversion.setUseLlm}
-            onPageRangeChange={conversion.setPageRange}
-            onStartConversion={conversion.startConversion}
-            onCancel={conversion.cancelConversion}
-            onBack={conversion.reset}
-          />
-        </Suspense>
+        <>
+          {authDialog}
+          <Suspense fallback={<PageLoader />}>
+            <ConfigureProcessingPage
+              fileName={conversion.fileName}
+              fileMimeType={conversion.fileMimeType}
+              pageCount={conversion.pageCount}
+              uploadProgress={conversion.uploadProgress}
+              uploadComplete={conversion.uploadComplete}
+              backendMode={backendMode}
+              processingMode={conversion.processingMode}
+              useLlm={conversion.useLlm}
+              pageRange={conversion.pageRange}
+              error={conversion.error}
+              isProcessing={conversion.page === "processing"}
+              isCancelling={conversion.isCancelling}
+              stages={conversion.stages}
+              onProcessingModeChange={conversion.setProcessingMode}
+              onUseLlmChange={conversion.setUseLlm}
+              onPageRangeChange={conversion.setPageRange}
+              onStartConversion={conversion.startConversion}
+              onCancel={conversion.cancelConversion}
+              onBack={conversion.reset}
+            />
+          </Suspense>
+        </>
       )
 
     case "result":

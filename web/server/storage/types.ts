@@ -32,11 +32,19 @@ export interface Storage {
   /** Read a file as string */
   readFileAsString(key: string): Promise<string>
 
+  /** Check if a file exists */
+  exists(key: string): Promise<boolean>
+
   /** Delete a file */
   deleteFile(key: string): Promise<boolean>
 
   /** Delete all files with a given prefix (for folder cleanup) */
   deletePrefix(prefix: string): Promise<number>
+
+  /** Copy all files with srcPrefix to dstPrefix
+   * @returns Number of files copied
+   */
+  copyPrefix(srcPrefix: string, dstPrefix: string): Promise<number>
 
   /** Get a URL for accessing a file (presigned URL)
    * @param internal - If true, returns signed URL (for worker access)

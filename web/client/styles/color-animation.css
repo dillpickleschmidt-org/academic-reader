@@ -30,9 +30,15 @@
     --primary-animated-muted 2s ease-in-out;
 }
 
-/* Utility class for animated gradient */
+/* Base class for elements using animated color variables */
+.primary-animated {
+  transition: color 2s ease-in-out, border-color 2s ease-in-out, background-color 2s ease-in-out, background 2s ease-in-out;
+}
+
+/* Animated gradient background */
 .primary-animated-gradient {
   background: linear-gradient(to right, var(--primary-animated), var(--primary-animated-end));
+  transition: background 2s ease-in-out;
 }
 
 /* Animated gradient text */
@@ -41,4 +47,5 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  transition: background 2s ease-in-out;
 }

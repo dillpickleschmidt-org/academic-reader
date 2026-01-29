@@ -7,7 +7,14 @@ import type {
   TocResult,
 } from "../types/api"
 
-export type { ProcessingMode, ConversionProgress, ChunkBlock, ChunkOutput, TocSection, TocResult }
+export type {
+  ProcessingMode,
+  ConversionProgress,
+  ChunkBlock,
+  ChunkOutput,
+  TocSection,
+  TocResult,
+}
 
 export interface UploadResponse {
   file_id: string
@@ -29,8 +36,9 @@ export interface JobStatus {
   result?: {
     content: string
     metadata: Record<string, unknown>
-    jobId?: string // For persisting the result later
+    jobId?: string
     fileId?: string
+    documentId?: string // Convex document ID
     formats?: {
       html: string
       markdown: string
@@ -92,11 +100,12 @@ export async function startConversion(
 
   const res = await fetch(`/api/convert/${fileId}?${params}`, {
     method: "POST",
+    credentials: "include",
   })
 
   if (!res.ok) {
     const err = await res.json()
-    throw new Error(err.detail || "Failed to start conversion")
+    throw new Error(err.detail || err.error || "Failed to start conversion")
   }
 
   return res.json()
@@ -105,6 +114,7 @@ export async function startConversion(
 export async function cancelJob(jobId: string): Promise<{ status: string }> {
   const res = await fetch(`/api/jobs/${jobId}/cancel`, {
     method: "POST",
+    credentials: "include",
   })
 
   if (!res.ok) {
@@ -115,36 +125,18 @@ export async function cancelJob(jobId: string): Promise<{ status: string }> {
   return res.json()
 }
 
-/**
- * Persist a conversion result to permanent storage.
- * Call this after conversion completes if the user is authenticated.
- */
-export async function persistDocument(
-  jobId: string,
-): Promise<{ documentId: string }> {
-  const res = await fetch("/api/documents/persist", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ jobId }),
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || "Failed to persist document")
-  }
-
-  return res.json()
-}
-
 export function subscribeToJob(
   jobId: string,
   onProgress: (progress: ConversionProgress) => void,
   onHtmlReady: (content: string) => void,
-  onComplete: (result: NonNullable<JobStatus["result"]>) => void,
+  onComplete: (
+    result: NonNullable<JobStatus["result"]> & { documentId?: string },
+  ) => void,
   onError: (error: string) => void,
 ): () => void {
-  const eventSource = new EventSource(`/api/jobs/${jobId}/stream`)
+  const eventSource = new EventSource(`/api/jobs/${jobId}/stream`, {
+    withCredentials: true,
+  })
 
   eventSource.addEventListener("progress", (e: MessageEvent) => {
     const progress = JSON.parse(e.data)

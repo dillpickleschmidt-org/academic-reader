@@ -7,7 +7,6 @@
 import type { WideEvent } from "../../types"
 import type { Storage } from "../../storage/types"
 import { jobFileMap } from "../../storage/job-file-map"
-import { resultCache } from "../../storage/result-cache"
 import { cleanupJob } from "../../cleanup/job-cleanup"
 import {
   processHtml,
@@ -24,8 +23,9 @@ import {
   type TocResult,
 } from "../../services/toc-extraction"
 import { extractLinkMappings, injectLinks } from "../../services/link-extraction"
+import { persistDocument, type ChunkInput } from "../../services/document-persistence"
+import { createAuthenticatedConvexClient } from "../../services/convex"
 import { tryCatch, getErrorMessage } from "../../utils/try-catch"
-import type { NormalizedChunk } from "../../storage/result-cache"
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -75,12 +75,23 @@ export interface FileInfo {
   fileId: string
   documentPath: string
   worker?: WorkerName
+  userId?: string
 }
 
 export interface ProcessedJobResult {
   content: string
   imageUrls?: Record<string, string>
   toc?: TocResult
+  documentId?: string
+}
+
+interface NormalizedChunk {
+  id: string
+  blockType: string
+  html: string
+  page: number
+  bbox: number[]
+  sectionHierarchy?: Record<string, string>
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -119,26 +130,6 @@ export function handleCleanup(
   event.cleanup = { reason, ...result }
 }
 
-export function cacheJobResult(
-  jobId: string,
-  result: JobResultInput,
-  fileInfo: FileInfo,
-): void {
-  const normalizedChunks = (result.formats?.chunks?.blocks ?? []).map((block, index) =>
-    normalizeChunk(block, index),
-  )
-
-  resultCache.set(jobId, {
-    html: result.formats?.html ?? result.content ?? "",
-    markdown: result.formats?.markdown ?? "",
-    chunks: normalizedChunks,
-    metadata: { pages: result.metadata?.pages },
-    filename: fileInfo.filename,
-    fileId: fileInfo.fileId,
-    documentPath: fileInfo.documentPath,
-  })
-}
-
 function normalizeChunk(block: WorkerChunkBlock, index: number): NormalizedChunk {
   if ("id" in block) {
     return {
@@ -160,16 +151,30 @@ function normalizeChunk(block: WorkerChunkBlock, index: number): NormalizedChunk
   }
 }
 
+function transformChunks(chunks: NormalizedChunk[]): ChunkInput[] {
+  return chunks.map((chunk) => ({
+    blockId: chunk.id,
+    blockType: chunk.blockType,
+    html: chunk.html,
+    page: chunk.page,
+    section: chunk.sectionHierarchy
+      ? Object.values(chunk.sectionHierarchy).filter(Boolean).join(" > ")
+      : undefined,
+    bbox: chunk.bbox,
+  }))
+}
+
 /**
- * Process a completed job: upload images, rewrite URLs, save to S3, cache for persistence.
+ * Process a completed job: upload images, rewrite URLs, save to S3, persist to Convex.
  * Shared by both streaming and polling paths.
  */
 export async function processCompletedJob(
-  jobId: string,
+  _jobId: string,
   result: JobResultInput,
   fileInfo: FileInfo | undefined,
   storage: Storage,
   event: WideEvent,
+  headers?: Headers,
 ): Promise<ProcessedJobResult> {
   // Upload images and get public URLs
   let imageUrls: Record<string, string> | undefined
@@ -325,12 +330,42 @@ export async function processCompletedJob(
     }
   }
 
-  // Cache for persistence
-  if (fileInfo) {
-    cacheJobResult(jobId, { ...result, content: processedContent }, fileInfo)
+  // Inline persistence to Convex
+  let documentId: string | undefined
+  if (fileInfo && headers) {
+    const convex = await createAuthenticatedConvexClient(headers)
+    if (convex) {
+      const normalizedChunks = (result.formats?.chunks?.blocks ?? []).map((block, index) =>
+        normalizeChunk(block, index),
+      )
+      const chunksForPersistence = transformChunks(normalizedChunks)
+
+      const persistResult = await tryCatch(
+        persistDocument(convex, {
+          fileId: fileInfo.fileId,
+          filename: fileInfo.filename,
+          pageCount: result.metadata?.pages,
+          chunks: chunksForPersistence,
+        }),
+      )
+
+      if (persistResult.success) {
+        documentId = persistResult.data
+        event.documentId = documentId
+      } else {
+        console.warn("[jobs] Failed to persist document:", persistResult.error)
+        event.error = {
+          category: "storage",
+          message: getErrorMessage(persistResult.error),
+          code: "PERSIST_ERROR",
+        }
+      }
+    } else {
+      console.warn("[jobs] Failed to create authenticated Convex client")
+    }
   }
 
-  return { content: processedContent, imageUrls, toc: tocResult }
+  return { content: processedContent, imageUrls, toc: tocResult, documentId }
 }
 
 /**

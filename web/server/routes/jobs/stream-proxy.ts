@@ -26,6 +26,7 @@ interface StreamProxyOptions {
   streamUrl: string
   storage: Storage
   event: WideEvent
+  headers?: Headers
 }
 
 /** Format SSE event for sending */
@@ -40,7 +41,7 @@ function formatSSE(eventType: string, data: object): string {
 export async function handleStreamingJob(
   options: StreamProxyOptions,
 ): Promise<Response> {
-  const { jobId, streamUrl, storage, event } = options
+  const { jobId, streamUrl, storage, event, headers } = options
   const fileInfo = getJobFileInfo(jobId)
   const streamStart = performance.now()
   const encoder = new TextEncoder()
@@ -126,12 +127,13 @@ export async function handleStreamingJob(
             // Emit TOC extraction progress
             emitProgress({ stage: "Extracting table of contents", current: 0, total: 1 })
 
-            const { content, imageUrls, toc } = await processCompletedJob(
+            const { content, imageUrls, toc, documentId } = await processCompletedJob(
               jobId,
               parsed,
               fileInfo,
               storage,
               event,
+              headers,
             )
 
             parsed.content = content
@@ -139,6 +141,7 @@ export async function handleStreamingJob(
             parsed.fileId = fileInfo?.fileId
             if (imageUrls) parsed.images = imageUrls
             if (toc) parsed.toc = toc
+            if (documentId) parsed.documentId = documentId
 
             // Strip markdown from client payload (saved to S3, not needed by client)
             if (parsed.formats?.markdown) {

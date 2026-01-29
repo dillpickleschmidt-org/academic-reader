@@ -1,20 +1,47 @@
 import { Hono } from "hono"
 import type { BackendType, ProcessingMode, ConversionInput } from "../types"
 import type { Storage } from "../storage/types"
-import { getDocumentPath } from "../storage/types"
 import { jobFileMap } from "../storage/job-file-map"
 import { createBackend } from "../backends/factory"
-import { getAuth } from "../middleware/auth"
+import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { env } from "../env"
 
 type Variables = {
   storage: Storage
+  userId: string
 }
 
 export const convert = new Hono<{ Variables: Variables }>()
 
-convert.post("/convert/:fileId", async (c) => {
+/**
+ * Migrate file from temp storage to user storage if needed.
+ * Returns the final document path.
+ */
+async function migrateToUserStorage(
+  storage: Storage,
+  fileId: string,
+  userId: string,
+): Promise<string> {
+  const userPath = `documents/${userId}/${fileId}`
+  const tempPath = `temp_documents/${fileId}`
+
+  // Check if already in user storage
+  if (await storage.exists(`${userPath}/original.pdf`)) {
+    return userPath
+  }
+
+  // Check temp storage and migrate
+  if (await storage.exists(`${tempPath}/original.pdf`)) {
+    await storage.copyPrefix(tempPath, userPath)
+    await storage.deletePrefix(tempPath)
+    return userPath
+  }
+
+  throw new Error("File not found in storage")
+}
+
+convert.post("/convert/:fileId", requireAuth, async (c) => {
   const event = c.get("event")
   const fileId = c.req.param("fileId")
   const query = c.req.query()
@@ -25,12 +52,21 @@ convert.post("/convert/:fileId", async (c) => {
     return c.json({ error: "Missing filename parameter" }, { status: 400 })
   }
 
-  // Get optional auth to reconstruct document path
-  const auth = await getAuth(c)
-  const docPath = getDocumentPath(fileId, auth?.userId)
-  const originalFilePath = `${docPath}/original.pdf`
-
   const storage = c.get("storage")
+  const userId = c.get("userId")
+
+  // Migrate file from temp storage to user storage if needed
+  const migrateResult = await tryCatch(migrateToUserStorage(storage, fileId, userId))
+  if (!migrateResult.success) {
+    event.error = {
+      category: "storage",
+      message: getErrorMessage(migrateResult.error),
+      code: "FILE_MIGRATE_ERROR",
+    }
+    return c.json({ error: "File not found" }, { status: 404 })
+  }
+  const docPath = migrateResult.data
+  const originalFilePath = `${docPath}/original.pdf`
 
   event.fileId = fileId
   event.backend = backendType as BackendType
@@ -124,7 +160,7 @@ convert.post("/convert/:fileId", async (c) => {
   const worker = backendType === "local"
     ? (processingMode === "balanced" ? "lightonocr" : "marker")
     : undefined
-  jobFileMap.set(jobResult.data, docPath, fileId, filename, backendType as BackendType, worker)
+  jobFileMap.set(jobResult.data, docPath, fileId, filename, backendType as BackendType, worker, userId)
 
   return c.json({ job_id: jobResult.data })
 })

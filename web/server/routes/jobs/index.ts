@@ -11,6 +11,7 @@ import type { BackendType } from "../../types"
 import type { Storage } from "../../storage/types"
 import { createBackend } from "../../backends/factory"
 import { LocalBackend } from "../../backends/local"
+import { requireAuth } from "../../middleware/auth"
 import { tryCatch, getErrorMessage } from "../../utils/try-catch"
 import { emitStreamingEvent } from "../../middleware/wide-event-middleware"
 import { env } from "../../env"
@@ -20,6 +21,7 @@ import { handleCleanup } from "./processing"
 
 type Variables = {
   storage: Storage
+  userId: string
 }
 
 export const jobs = new Hono<{ Variables: Variables }>()
@@ -28,11 +30,12 @@ export const jobs = new Hono<{ Variables: Variables }>()
 // GET /jobs/:jobId/stream - Stream job progress and completion
 // ─────────────────────────────────────────────────────────────
 
-jobs.get("/:jobId/stream", async (c) => {
+jobs.get("/:jobId/stream", requireAuth, async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
   const backendType = env.BACKEND_MODE
   const storage = c.get("storage")
+  const headers = c.req.raw.headers
 
   event.jobId = jobId
   event.backend = backendType as BackendType
@@ -57,6 +60,7 @@ jobs.get("/:jobId/stream", async (c) => {
       streamUrl,
       storage,
       event,
+      headers,
     })
   }
 
@@ -67,6 +71,7 @@ jobs.get("/:jobId/stream", async (c) => {
     storage,
     event,
     signal: c.req.raw.signal,
+    headers,
   })
 })
 
@@ -74,7 +79,7 @@ jobs.get("/:jobId/stream", async (c) => {
 // POST /jobs/:jobId/cancel - Cancel a running job
 // ─────────────────────────────────────────────────────────────
 
-jobs.post("/:jobId/cancel", async (c) => {
+jobs.post("/:jobId/cancel", requireAuth, async (c) => {
   const event = c.get("event")
   const jobId = c.req.param("jobId")
   const backendType = env.BACKEND_MODE

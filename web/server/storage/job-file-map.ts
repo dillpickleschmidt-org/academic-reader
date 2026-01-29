@@ -10,6 +10,8 @@ interface JobFileEntry {
   backendType: BackendType
   /** Worker to use for this job (local mode only) */
   worker?: WorkerName
+  /** User ID for authenticated requests (used for inline persistence) */
+  userId?: string
   createdAt: number
 }
 
@@ -27,6 +29,7 @@ class JobFileMap {
    * @param documentPath Full document path (e.g., "documents/{userId}/{fileId}" or "temp_documents/{fileId}")
    * @param fileId The fileId for this document
    * @param worker Optional worker name for local mode model activation
+   * @param userId Optional user ID for authenticated requests (used for inline persistence)
    */
   set(
     jobId: string,
@@ -35,8 +38,9 @@ class JobFileMap {
     filename: string,
     backendType: BackendType,
     worker?: WorkerName,
+    userId?: string,
   ): void {
-    this.map.set(jobId, { documentPath, fileId, filename, backendType, worker, createdAt: Date.now() })
+    this.map.set(jobId, { documentPath, fileId, filename, backendType, worker, userId, createdAt: Date.now() })
   }
 
   /**

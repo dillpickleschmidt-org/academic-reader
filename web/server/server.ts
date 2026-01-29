@@ -10,7 +10,6 @@ import { upload } from "./routes/upload"
 import { convert } from "./routes/convert"
 import { jobs } from "./routes/jobs"
 import { download } from "./routes/download"
-import { persist } from "./routes/persist"
 import { documentEmbeddings } from "./routes/document-embeddings"
 import { savedDocuments } from "./routes/saved-documents"
 import { chat } from "./routes/chat"
@@ -85,7 +84,6 @@ api.route("/", upload)
 api.route("/", convert)
 api.route("/jobs", jobs)
 api.route("/", download)
-api.route("/", persist)
 api.route("/", documentEmbeddings)
 api.route("/", savedDocuments)
 api.route("/", chat)

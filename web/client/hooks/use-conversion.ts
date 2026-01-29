@@ -1,9 +1,8 @@
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import {
   uploadFile as apiUploadFile,
   startConversion as apiStartConversion,
   cancelJob as apiCancelJob,
-  persistDocument as apiPersistDocument,
   subscribeToJob,
   type ConversionProgress,
   type ProcessingMode,
@@ -11,8 +10,35 @@ import {
   type TocResult,
 } from "@repo/core/client/api-client"
 import { downloadFile } from "@repo/core/client/download"
+import { authClient } from "@repo/convex/auth-client"
 import { useAppConfig } from "./use-app-config"
 import { preloadResultPage } from "../utils/preload"
+
+const PENDING_CONVERSION_KEY = "pendingConversion"
+
+interface PendingConversionState {
+  fileId: string
+  fileName: string
+  fileMimeType: string
+  pageCount?: number
+  processingMode: ProcessingMode
+  useLlm: boolean
+  pageRange: string
+}
+
+function savePendingState(state: PendingConversionState): void {
+  sessionStorage.setItem(PENDING_CONVERSION_KEY, JSON.stringify(state))
+}
+
+function loadPendingState(): PendingConversionState | null {
+  const saved = sessionStorage.getItem(PENDING_CONVERSION_KEY)
+  if (!saved) return null
+  return JSON.parse(saved)
+}
+
+function clearPendingState(): void {
+  sessionStorage.removeItem(PENDING_CONVERSION_KEY)
+}
 
 export type Page = "landing" | "configure" | "processing" | "result"
 export type { ProcessingMode, ChunkBlock }
@@ -27,6 +53,7 @@ export interface StageInfo {
 export function useConversion() {
   // Auth state
   const { user } = useAppConfig()
+  const { data: session, isPending: isSessionPending } = authClient.useSession()
 
   // Navigation
   const [page, setPage] = useState<Page>("landing")
@@ -64,6 +91,17 @@ export function useConversion() {
 
   // Cancellation state
   const [isCancelling, setIsCancelling] = useState(false)
+
+  // Pending conversion state (for auth-required flow)
+  const [pendingConversion, setPendingConversion] = useState(false)
+
+  // Check for OAuth resume state on mount (only runs once)
+  const pendingStateRef = useRef<PendingConversionState | null | undefined>(
+    undefined,
+  )
+  if (pendingStateRef.current === undefined) {
+    pendingStateRef.current = loadPendingState()
+  }
 
   // Shared stage update logic for SSE and polling
   const updateStages = useCallback((progress: ConversionProgress) => {
@@ -108,6 +146,8 @@ export function useConversion() {
     setDocumentId(null)
     setChunks(undefined)
     setToc(undefined)
+    setPendingConversion(false)
+    clearPendingState()
   }
 
   const uploadFile = async (file: File) => {
@@ -137,7 +177,27 @@ export function useConversion() {
     }
   }
 
-  const startConversion = async () => {
+  const startConversion = async (options?: {
+    skipAuthCheck?: boolean
+    params?: PendingConversionState
+  }) => {
+    const params = options?.params ?? {
+      fileId,
+      fileName,
+      fileMimeType,
+      pageCount,
+      processingMode,
+      useLlm,
+      pageRange,
+    }
+
+    // Require authentication to convert (skip if just authenticated or resuming OAuth)
+    if (!options?.skipAuthCheck && !user) {
+      savePendingState(params)
+      setPendingConversion(true)
+      return
+    }
+
     // Clean up any existing SSE before starting new one
     if (sseCleanupRef.current) {
       sseCleanupRef.current()
@@ -152,13 +212,19 @@ export function useConversion() {
     setImagesReady(false)
     setStages([])
     htmlReadyFiredRef.current = false
+    setPendingConversion(false)
 
     try {
-      const { job_id } = await apiStartConversion(fileId, fileName, fileMimeType, {
-        processingMode,
-        useLlm,
-        pageRange,
-      })
+      const { job_id } = await apiStartConversion(
+        params.fileId,
+        params.fileName,
+        params.fileMimeType,
+        {
+          processingMode: params.processingMode,
+          useLlm: params.useLlm,
+          pageRange: params.pageRange,
+        },
+      )
       setJobId(job_id)
 
       const cleanup = subscribeToJob(
@@ -181,13 +247,9 @@ export function useConversion() {
           setToc(result.toc)
           sseCleanupRef.current = null
 
-          // Fire-and-forget persistence (doesn't block render)
-          if (user && result.jobId) {
-            apiPersistDocument(result.jobId)
-              .then(({ documentId }) => setDocumentId(documentId))
-              .catch((err) =>
-                console.warn("[persistence] Failed to persist document:", err),
-              )
+          // documentId is returned inline from SSE
+          if (result.documentId) {
+            setDocumentId(result.documentId)
           }
         },
         (errorMsg) => {
@@ -201,6 +263,33 @@ export function useConversion() {
       setError(err instanceof Error ? err.message : "Conversion failed")
     }
   }
+
+  // Resume conversion after OAuth redirect
+  useEffect(() => {
+    const saved = pendingStateRef.current
+    if (!saved || isSessionPending || !session?.user) return
+
+    // Clear sessionStorage to prevent double-resume on refresh
+    clearPendingState()
+
+    // Restore UI state for display
+    setFileId(saved.fileId)
+    setFileName(saved.fileName)
+    setFileMimeType(saved.fileMimeType)
+    setPageCount(saved.pageCount)
+    setProcessingMode(saved.processingMode)
+    setUseLlm(saved.useLlm)
+    setPageRange(saved.pageRange)
+    setUploadComplete(true)
+
+    // Start conversion with saved params
+    startConversion({ skipAuthCheck: true, params: saved })
+
+    // Clear ref after state updates are flushed
+    setTimeout(() => {
+      pendingStateRef.current = null
+    }, 0)
+  }, [session, isSessionPending])
 
   const handleDownload = async () => {
     try {
@@ -261,14 +350,21 @@ export function useConversion() {
       setImagesReady(true)
       // Transform Convex chunks to ChunkBlock format for TTS
       setChunks(
-        data.chunks?.map((c: { blockId: string; blockType: string; html: string; page: number }) => ({
-          id: c.blockId,
-          block_type: c.blockType,
-          html: c.html,
-          page: c.page,
-          polygon: [],
-          bbox: [],
-        })) ?? [],
+        data.chunks?.map(
+          (c: {
+            blockId: string
+            blockType: string
+            html: string
+            page: number
+          }) => ({
+            id: c.blockId,
+            block_type: c.blockType,
+            html: c.html,
+            page: c.page,
+            polygon: [],
+            bbox: [],
+          }),
+        ) ?? [],
       )
       setPage("result")
     } catch (err) {
@@ -298,12 +394,16 @@ export function useConversion() {
     chunks,
     // Table of contents
     toc,
+    // Pending conversion (auth required)
+    pendingConversion,
+    hasPendingOAuthResume: pendingStateRef.current != null,
 
     // Setters
     setPage,
     setProcessingMode,
     setUseLlm,
     setPageRange,
+    setPendingConversion,
 
     // Actions
     reset,

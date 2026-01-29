@@ -4,8 +4,7 @@ import * as cheerio from "cheerio"
 import type { CheerioAPI } from "cheerio"
 import { minify } from "html-minifier-terser"
 import type { Storage } from "../storage/types"
-import { getDocumentPath } from "../storage/types"
-import { getAuth } from "../middleware/auth"
+import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { enhanceHtmlForReader } from "../utils/html-processing"
 import { getImageMimeType } from "../utils/mime-types"
@@ -50,6 +49,7 @@ const katexCssRules = getKatexCssRules()
 
 type Variables = {
   storage: Storage
+  userId: string
 }
 
 export const download = new Hono<{ Variables: Variables }>()
@@ -166,18 +166,17 @@ async function embedImagesFromStorage(
 
 /**
  * Download by fileId - reads HTML from S3 storage.
- * Works for both signed-in and signed-out users.
+ * Requires authentication.
  */
-download.get("/files/:fileId/download", async (c) => {
+download.get("/files/:fileId/download", requireAuth, async (c) => {
   const event = c.get("event")
   const fileId = c.req.param("fileId")
   const title = sanitizeTitle(c.req.query("title") || "")
 
   event.fileId = fileId
 
-  // Get optional auth to reconstruct document path
-  const auth = await getAuth(c)
-  const docPath = getDocumentPath(fileId, auth?.userId)
+  const userId = c.get("userId")
+  const docPath = `documents/${userId}/${fileId}`
   const storage = c.get("storage")
 
   // Read HTML from S3

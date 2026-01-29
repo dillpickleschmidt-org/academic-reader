@@ -22,9 +22,24 @@ const passwordSchema = z
   .min(8, "Password must be at least 8 characters")
   .max(128, "Password must be less than 128 characters")
 
-export function AuthDialog() {
+interface AuthDialogProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  onSuccess?: () => void
+  showTrigger?: boolean
+}
+
+export function AuthDialog({ open: externalOpen, onOpenChange, onSuccess, showTrigger = true }: AuthDialogProps) {
   const { authProviders, isLoading } = useAppConfig()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+
+  const open = externalOpen ?? internalOpen
+  const setOpen = (value: boolean) => {
+    onOpenChange?.(value)
+    if (externalOpen === undefined) {
+      setInternalOpen(value)
+    }
+  }
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -63,6 +78,7 @@ export function AuthDialog() {
         if (result.error) {
           setError(result.error.message || "Sign up failed")
         } else {
+          onSuccess?.()
           setOpen(false)
         }
       } else {
@@ -73,6 +89,7 @@ export function AuthDialog() {
         if (result.error) {
           setError(result.error.message || "Sign in failed")
         } else {
+          onSuccess?.()
           setOpen(false)
         }
       }
@@ -115,9 +132,11 @@ export function AuthDialog() {
         if (!newOpen) resetForm()
       }}
     >
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>
-        Login
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger render={<Button variant="ghost" size="sm" />}>
+          Login
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>

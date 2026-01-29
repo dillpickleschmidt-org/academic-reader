@@ -97,7 +97,15 @@ export function LandingPage({
       <main className="flex-1 flex flex-col items-center pt-6 sm:pt-8 lg:pt-16 pb-16">
         <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
           {/* Hero */}
-          <h1 className="text-4xl sm:text-5xl font-bold primary-animated-text text-center leading-none">
+          <h1
+            className="text-4xl sm:text-5xl font-bold primary-animated-text text-center leading-none"
+            style={{
+              background: "linear-gradient(to right, var(--primary-animated), var(--primary-animated-end))",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
+          >
             Papers that read like articles.
           </h1>
           <p className="text-foreground/90 text-center mt-4 text-lg max-w-lg">
@@ -115,7 +123,7 @@ export function LandingPage({
             {FEATURES.map((feature) => (
               <div key={feature.title} className="flex items-start gap-3">
                 <feature.icon
-                  className="w-5 h-5 mt-0.5 shrink-0"
+                  className="w-5 h-5 mt-0.5 shrink-0 primary-animated"
                   style={{ color: "var(--primary-animated)" }}
                   strokeWidth={1.5}
                 />

@@ -98,14 +98,18 @@ export function UploadZone({ onFileSelect, className }: Props) {
         tabIndex={0}
         aria-label="Upload document"
         className={cn(
-          "bg-transparent border-[1.5px] border-dashed rounded-xl",
+          "bg-transparent rounded-xl primary-animated",
           "py-9 px-6 grid grid-cols-[1fr_auto] gap-6 items-center",
-          "cursor-pointer transition-[border-color,background] duration-150",
+          "cursor-pointer",
           "hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "max-sm:grid-cols-1 max-sm:text-center max-sm:py-9 max-sm:px-4",
           isDragging && "bg-primary/5 dark:bg-primary/10",
         )}
-        style={{ borderColor: "var(--primary-animated-muted)" }}
+        style={{
+          borderWidth: "1.5px",
+          borderStyle: "dashed",
+          borderColor: "var(--primary-animated-muted)",
+        }}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

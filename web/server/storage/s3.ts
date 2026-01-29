@@ -277,4 +277,65 @@ export class S3Storage implements Storage {
       return 0
     }
   }
+
+  /**
+   * Copy all files from srcPrefix to dstPrefix.
+   * Used for migrating files from temp storage to user storage.
+   * @returns Number of files copied
+   */
+  async copyPrefix(srcPrefix: string, dstPrefix: string): Promise<number> {
+    try {
+      // List objects with prefix
+      const listUrl = new URL(
+        `${this.config.endpoint}/${this.config.bucket}?list-type=2&prefix=${encodeURIComponent(srcPrefix)}`,
+      )
+
+      const listResponse = await this.client.fetch(listUrl.toString(), {
+        method: "GET",
+      })
+
+      if (!listResponse.ok) {
+        console.warn(`[S3] Failed to list files with prefix ${srcPrefix}`)
+        return 0
+      }
+
+      const xml = await listResponse.text()
+
+      // Parse keys from XML response
+      const keyMatches = xml.matchAll(/<Key>([^<]+)<\/Key>/g)
+      const keys: string[] = []
+      for (const match of keyMatches) {
+        keys.push(match[1])
+      }
+
+      if (keys.length === 0) {
+        return 0
+      }
+
+      // Copy each file using S3 copy operation
+      await Promise.all(
+        keys.map(async (srcKey) => {
+          const suffix = srcKey.slice(srcPrefix.length)
+          const dstKey = `${dstPrefix}${suffix}`
+          const dstUrl = this.getObjectUrl(dstKey)
+
+          const response = await this.client.fetch(dstUrl.toString(), {
+            method: "PUT",
+            headers: {
+              "x-amz-copy-source": `/${this.config.bucket}/${srcKey}`,
+            },
+          })
+
+          if (!response.ok) {
+            console.warn(`[S3] Failed to copy ${srcKey} to ${dstKey}`)
+          }
+        }),
+      )
+
+      return keys.length
+    } catch (error) {
+      console.warn(`[S3] Failed to copy prefix ${srcPrefix}:`, error)
+      return 0
+    }
+  }
 }

@@ -23,6 +23,7 @@ models_volume = modal.Volume.from_name("marker-models", create_if_missing=True)
     retries=3,
     timeout=1800,
     volumes={MODEL_CACHE_PATH: models_volume},
+    secrets=[modal.Secret.from_name("google-api-key")],
 )
 class Marker:
     """Marker worker with persistent models."""
@@ -71,7 +72,10 @@ class Marker:
 
         try:
             # Convert
+            import os
             config = {"output_format": "html", "use_llm": use_llm}
+            if use_llm:
+                config["gemini_api_key"] = os.getenv("GOOGLE_API_KEY")
             if page_range:
                 config["page_range"] = page_range
             parser = ConfigParser(config)

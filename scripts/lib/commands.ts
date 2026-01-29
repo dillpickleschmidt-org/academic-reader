@@ -170,16 +170,16 @@ const devCommand: Command = {
 const setupCommand: Command = {
   name: "setup",
   description: "Install and configure external dependencies",
-  async execute(): Promise<void> {
+  async execute(env: Env): Promise<void> {
     console.log(colors.bold("\nSetting up development environment...\n"))
 
-    await setupModal()
+    await setupModal(env)
 
     console.log(colors.green("\n✓ Setup complete!\n"))
   },
 }
 
-async function setupModal(): Promise<void> {
+async function setupModal(env: Env): Promise<void> {
   console.log(colors.cyan("Checking Modal CLI..."))
 
   // Check if modal is installed
@@ -207,6 +207,21 @@ async function setupModal(): Promise<void> {
     await setup.exited
   }
   console.log(colors.green("  ✓ Modal authenticated"))
+
+  // Create Modal secrets from .env.local
+  if (env.GOOGLE_API_KEY) {
+    console.log(colors.cyan("Creating Modal secrets..."))
+    runProcessSync([
+      "modal",
+      "secret",
+      "create",
+      "google-api-key",
+      `GOOGLE_API_KEY=${env.GOOGLE_API_KEY}`,
+    ])
+    console.log(colors.green("  ✓ Modal secret 'google-api-key' created"))
+  } else {
+    console.log(colors.yellow("  ⚠ GOOGLE_API_KEY not found in .env.local"))
+  }
 }
 
 // =============================================================================

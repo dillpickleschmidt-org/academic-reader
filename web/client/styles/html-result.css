@@ -500,16 +500,17 @@
 
 /* ========================================
    Page Markers
-   Floating page numbers for TOC navigation
+   Bottom-right page numbers for TOC navigation
    ======================================== */
 
 .page-marker {
-  float: right;
-  clear: right;
+  display: block;
+  text-align: right;
   font-size: 0.75rem;
   color: var(--reader-text-muted);
-  padding: 0.125rem 0.5rem;
-  margin-left: 1rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--reader-border);
   opacity: 0.6;
   scroll-margin-top: 5rem;
 }

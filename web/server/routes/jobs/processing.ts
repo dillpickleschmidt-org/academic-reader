@@ -10,11 +10,7 @@ import { jobFileMap } from "../../storage/job-file-map"
 import { cleanupJob } from "../../cleanup/job-cleanup"
 import {
   processHtml,
-  removeImgDescriptions,
-  wrapCitations,
-  processParagraphs,
-  convertMathToHtml,
-  wrapTablesInScrollContainers,
+  HTML_TRANSFORMS,
   rewriteImageSources,
   injectPageMarkers,
 } from "../../utils/html-processing"
@@ -118,14 +114,8 @@ export const SSE_HEADERS = {
   Connection: "keep-alive",
 } as const
 
-/** HTML transforms applied to all content */
-export const HTML_TRANSFORMS = [
-  removeImgDescriptions,
-  wrapCitations,
-  processParagraphs,
-  convertMathToHtml,
-  wrapTablesInScrollContainers,
-]
+// Re-export for consumers that import from here
+export { HTML_TRANSFORMS } from "../../utils/html-processing"
 
 // ─────────────────────────────────────────────────────────────
 // Helper Functions

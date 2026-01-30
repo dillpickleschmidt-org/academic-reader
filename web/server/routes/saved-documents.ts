@@ -9,14 +9,7 @@ import type { Storage } from "../storage/types"
 import { loadPersistedDocument } from "../services/document-persistence"
 import { createAuthenticatedConvexClient } from "../services/convex"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
-import {
-  processHtml,
-  removeImgDescriptions,
-  wrapCitations,
-  processParagraphs,
-  convertMathToHtml,
-  wrapTablesInScrollContainers,
-} from "../utils/html-processing"
+import { processHtml, HTML_TRANSFORMS } from "../utils/html-processing"
 import { env } from "../env"
 
 type Variables = {
@@ -95,13 +88,7 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
   const chunks = chunksResult.success ? chunksResult.data : []
 
   // Process HTML with single parse (block IDs already added by Marker)
-  const enhancedHtml = processHtml(html, [
-    removeImgDescriptions,
-    wrapCitations,
-    processParagraphs,
-    convertMathToHtml,
-    wrapTablesInScrollContainers,
-  ])
+  const enhancedHtml = processHtml(html, HTML_TRANSFORMS)
 
   return c.json({
     html: enhancedHtml,

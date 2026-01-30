@@ -9,6 +9,16 @@ import { escapeHtml } from "./sanitize"
 
 export type HtmlTransform = ($: CheerioAPI) => void
 
+/** HTML transforms applied to all content */
+export const HTML_TRANSFORMS: HtmlTransform[] = [
+  removeImgDescriptions,
+  demoteExtraH1s,
+  wrapCitations,
+  processParagraphs,
+  convertMathToHtml,
+  wrapTablesInScrollContainers,
+]
+
 /**
  * Process HTML with a single parse, applying multiple transforms.
  */
@@ -25,19 +35,30 @@ export function removeImgDescriptions($: CheerioAPI): void {
   $(".img-description").remove()
 }
 
+/** Convert all h1 tags to h2 except the first one */
+export function demoteExtraH1s($: CheerioAPI): void {
+  $("h1").each(function (index) {
+    if (index === 0) return
+    const $h1 = $(this)
+    const $h2 = $("<h2>")
+    $h2.html($h1.html() ?? "")
+    // Copy all attributes
+    const attrs = $h1.attr()
+    if (attrs) {
+      for (const [key, value] of Object.entries(attrs)) {
+        $h2.attr(key, value)
+      }
+    }
+    $h1.replaceWith($h2)
+  })
+}
+
 /**
  * Apply reader enhancements to HTML: citations, math, figure captions, etc.
  * Convenience wrapper for backward compatibility.
  */
 export function enhanceHtmlForReader(html: string): string {
-  return processHtml(html, [
-    removeImgDescriptions,
-    wrapCitations,
-    // addInferredCrossReferenceLinks, // Disabled: infers new links from text patterns (vs PDF extraction which preserves original links)
-    processParagraphs,
-    convertMathToHtml,
-    wrapTablesInScrollContainers,
-  ])
+  return processHtml(html, HTML_TRANSFORMS)
 }
 
 /** Wrap tables in scroll containers for horizontal overflow with shadow indicators */
@@ -267,7 +288,7 @@ export interface PageMarkerResult {
 }
 
 /**
- * Inject page markers into HTML before each page's first block.
+ * Inject page markers into HTML after each page's last block.
  * Parses page numbers directly from data-block-id attributes (format: /page/{num}/...).
  * Markers serve as scroll targets for TOC navigation and display page numbers.
  */
@@ -277,29 +298,28 @@ export function injectPageMarkers(
 ): PageMarkerResult {
   const $ = cheerio.load(html)
 
-  // Find first element of each page by parsing data-block-id attributes
-  const pageFirstBlockId = new Map<number, string>()
+  // Find last element of each page by parsing data-block-id attributes
+  const pageLastBlockId = new Map<number, string>()
   $("[data-block-id]").each((_, el) => {
     const blockId = $(el).attr("data-block-id")
     const match = blockId?.match(/^\/page\/(\d+)\//)
     if (match && blockId) {
       const page = parseInt(match[1], 10)
-      if (!pageFirstBlockId.has(page)) {
-        pageFirstBlockId.set(page, blockId)
-      }
+      // Always update to get the last block for each page
+      pageLastBlockId.set(page, blockId)
     }
   })
 
-  // Inject marker before each page's first element
-  for (const [physicalPage, blockId] of pageFirstBlockId) {
+  // Inject marker after each page's last element
+  for (const [physicalPage, blockId] of pageLastBlockId) {
     const displayPage = physicalPage - offset + 1
     const marker = `<span class="page-marker" id="page-marker-${physicalPage}">${displayPage}</span>`
-    $(`[data-block-id="${blockId}"]`).before(marker)
+    $(`[data-block-id="${blockId}"]`).after(marker)
   }
 
   return {
     html: $("body").html() ?? "",
-    stats: { expected: pageFirstBlockId.size, injected: pageFirstBlockId.size },
+    stats: { expected: pageLastBlockId.size, injected: pageLastBlockId.size },
   }
 }
 

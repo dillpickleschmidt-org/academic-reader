@@ -25,6 +25,8 @@ import {
 import {
   extractLinkMappings,
   injectLinks,
+  type BboxMap,
+  type PageDimensions,
 } from "../../services/link-extraction"
 import {
   persistDocument,
@@ -68,6 +70,7 @@ export interface JobResultFormats {
   markdown?: string
   chunks?: {
     blocks?: WorkerChunkBlock[]
+    page_info?: Record<string, { bbox: number[]; polygon: number[][] }>
   }
 }
 
@@ -248,15 +251,38 @@ export async function processCompletedJob(
         try {
           const mappings = extractLinkMappings(pdfBuffer)
           if (mappings.length) {
+            // Build bbox map and get page dimensions from Marker's page_info
+            const bboxMap: BboxMap = new Map()
+            const pageDims: PageDimensions = new Map()
+
+            for (const chunk of normalizedChunks) {
+              if (chunk.bbox.length === 4) {
+                bboxMap.set(chunk.id, chunk.bbox as [number, number, number, number])
+              }
+            }
+
+            // Get actual page dimensions from Marker's page_info (bbox is [0, 0, width, height])
+            const pageInfo = result.formats?.chunks?.page_info
+            if (pageInfo) {
+              for (const [pageStr, info] of Object.entries(pageInfo)) {
+                const pageNum = parseInt(pageStr, 10)
+                if (info.bbox?.length === 4) {
+                  pageDims.set(pageNum, [info.bbox[2], info.bbox[3]])
+                }
+              }
+            }
+
             const { html: linkedHtml, linkCount } = injectLinks(
               processedContent,
               mappings,
+              bboxMap,
+              pageDims,
             )
             processedContent = linkedHtml
             event.linkCount = linkCount
 
             if (result.formats?.html) {
-              result.formats.html = injectLinks(result.formats.html, mappings).html
+              result.formats.html = injectLinks(result.formats.html, mappings, bboxMap, pageDims).html
             }
           }
         } catch (err) {

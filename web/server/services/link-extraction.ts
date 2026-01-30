@@ -24,6 +24,7 @@ export interface LinkMapping {
   targetUrl: string | null // null for internal links
   sourcePage: number
   destPage: number // -1 for external links
+  sourceBbox: [number, number, number, number] // [x0, y0, x1, y1] normalized to 0-1 range
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -58,12 +59,22 @@ export function extractAndInjectLinks(
   return injectLinks(html, mappings)
 }
 
+/** Bbox lookup map: blockId -> [x0, y0, x1, y1] */
+export type BboxMap = Map<string, [number, number, number, number]>
+
+/** Page dimensions for Marker coordinate normalization: page -> [width, height] */
+export type PageDimensions = Map<number, [number, number]>
+
 /**
  * Inject link anchors and hrefs into HTML based on link mappings.
+ * @param bboxMap Optional map of block IDs to bounding boxes for spatial filtering
+ * @param pageDims Optional map of page dimensions for coordinate normalization
  */
 export function injectLinks(
   html: string,
   mappings: LinkMapping[],
+  bboxMap?: BboxMap,
+  pageDims?: PageDimensions,
 ): { html: string; linkCount: number } {
   const $ = load(html)
   const hasHtmlWrapper = /<html[\s>]/i.test(html) || /<body[\s>]/i.test(html)
@@ -113,7 +124,8 @@ export function injectLinks(
     const baseKey = sourceText.trim()
     const cursorKey = `${baseKey}:${destPage}:${targetText ?? targetUrl ?? ""}`
     const sourceIndex = pageCursor.get(cursorKey) ?? 0
-    const sourceMatch = findTextOnPage($, sourceText, sourcePage, sourceIndex)
+
+    const sourceMatch = findTextOnPage($, sourceText, sourcePage, sourceIndex, mapping.sourceBbox, bboxMap, pageDims)
     if (sourceMatch) {
       const isExternal = !!targetUrl
       const wrapped = wrapWithLink(
@@ -152,10 +164,22 @@ function extractLinkMappingsFromDoc(doc: mupdf.Document): LinkMapping[] {
   for (let pageNum = 0; pageNum < pageCount; pageNum++) {
     const page = doc.loadPage(pageNum)
     const stext = page.toStructuredText()
+    const pageBounds = page.getBounds()
+    const pageWidth = pageBounds[2] - pageBounds[0]
+    const pageHeight = pageBounds[3] - pageBounds[1]
 
     for (const link of page.getLinks()) {
       const sourceText = extractTextFromRect(stext, link.getBounds())
       if (!sourceText.trim()) continue
+
+      const bounds = link.getBounds()
+      // Normalize to 0-1 range (mupdf uses top-left origin, same as Marker)
+      const sourceBbox: [number, number, number, number] = [
+        bounds[0] / pageWidth,
+        bounds[1] / pageHeight,
+        bounds[2] / pageWidth,
+        bounds[3] / pageHeight,
+      ]
 
       if (link.isExternal()) {
         const url = link.getURI()
@@ -167,6 +191,7 @@ function extractLinkMappingsFromDoc(doc: mupdf.Document): LinkMapping[] {
           targetUrl: url,
           sourcePage: pageNum,
           destPage: -1,
+          sourceBbox,
         })
       } else {
         // Internal link - resolve destination and extract target text
@@ -185,6 +210,7 @@ function extractLinkMappingsFromDoc(doc: mupdf.Document): LinkMapping[] {
           targetUrl: null,
           sourcePage: pageNum,
           destPage: dest.page,
+          sourceBbox,
         })
       }
     }
@@ -332,9 +358,11 @@ function findTextOnPage(
   searchText: string,
   page: number,
   startIndex = 0,
+  sourceBbox?: [number, number, number, number],
+  bboxMap?: BboxMap,
+  pageDims?: PageDimensions,
 ): SourceMatch | null {
   const blockElements = getPageBlocks($, page)
-
   const normalizedSearch = normalizeText(searchText)
   if (!normalizedSearch.length) return null
   const isShortNumeric = isShortNumber(searchText)
@@ -344,24 +372,33 @@ function findTextOnPage(
 
   for (let i = clampedStart; i < elements.length; i++) {
     const el = elements[i]
+
+    // Filter by bbox overlap if available (both in normalized 0-1 coords)
+    if (sourceBbox && bboxMap && pageDims) {
+      const blockId = $(el).attr("data-block-id")
+      const dims = pageDims.get(page)
+      if (blockId && dims) {
+        const blockBbox = bboxMap.get(blockId)
+        if (blockBbox) {
+          // Normalize Marker bbox to 0-1 range
+          const [pageW, pageH] = dims
+          const normalizedBlock: [number, number, number, number] = [
+            blockBbox[0] / pageW,
+            blockBbox[1] / pageH,
+            blockBbox[2] / pageW,
+            blockBbox[3] / pageH,
+          ]
+          if (!bboxOverlaps(sourceBbox, normalizedBlock)) {
+            continue
+          }
+        }
+      }
+    }
+
     const text = normalizeText($(el).text())
 
     if (findWithBoundaryCheck(text, normalizedSearch, isShortNumeric) !== -1) {
       return { element: el, index: i }
-    }
-
-    if (isShortNumeric) {
-      const variants = getBracketedShortNumberVariants(searchText).map(
-        (variant) => normalizeText(variant),
-      )
-      if (
-        variants.some(
-          (variant) =>
-            variant && findWithBoundaryCheck(text, variant, true) !== -1,
-        )
-      ) {
-        return { element: el, index: i }
-      }
     }
   }
 
@@ -376,15 +413,20 @@ function findTargetMatchOnPage(
   const normalizedTarget = normalizeText(targetText)
   if (!normalizedTarget.length) return null
 
-  let best: { match: MatchCandidate; score: number; length: number } | null = null
+  const blocks = getPageBlocks($, page)
+  let best: { match: MatchCandidate; score: number; length: number } | null =
+    null
 
-  for (const el of getPageBlocks($, page).toArray()) {
+  for (const el of blocks.toArray()) {
     const lines = extractLineCandidates($(el).text())
     const candidate = findBestCandidateMatch(lines, normalizedTarget)
     if (!candidate) continue
 
-    const dominated = best && (candidate.score < best.score ||
-      (candidate.score === best.score && candidate.text.length >= best.length))
+    const dominated =
+      best &&
+      (candidate.score < best.score ||
+        (candidate.score === best.score &&
+          candidate.text.length >= best.length))
     if (dominated) continue
     best = {
       match: { element: el, matchedText: candidate.text },
@@ -394,6 +436,21 @@ function findTargetMatchOnPage(
   }
 
   return best?.match ?? null
+}
+
+function bboxOverlaps(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+): boolean {
+  // Check if two bounding boxes overlap (with 5% tolerance for page edge gaps)
+  // bbox format: [x0, y0, x1, y1] in normalized 0-1 coordinates
+  const tolerance = 0.05
+  return !(
+    a[2] + tolerance < b[0] ||
+    b[2] + tolerance < a[0] ||
+    a[3] + tolerance < b[1] ||
+    b[3] + tolerance < a[1]
+  )
 }
 
 function getPageBlocks($: CheerioAPI, page: number) {
@@ -442,7 +499,9 @@ function wrapWithLink(
   title?: string,
 ): boolean {
   const $el = $(element)
-  const externalAttrs = isExternal ? ' target="_blank" rel="noopener noreferrer"' : ""
+  const externalAttrs = isExternal
+    ? ' target="_blank" rel="noopener noreferrer"'
+    : ""
   const titleAttr = title ? ` title="${escapeAttr(title)}"` : ""
   return wrapTextInElement($, $el, text, (matchedText) => {
     return `<a href="${href}"${externalAttrs}${titleAttr} class="pdf-link">${matchedText}</a>`
@@ -450,7 +509,11 @@ function wrapWithLink(
 }
 
 function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
 }
 
 /**
@@ -466,22 +529,10 @@ function wrapTextInElement(
 ): boolean {
   const normalizedSearch = normalizeText(searchText)
   if (!normalizedSearch.length) return false
-  const isShortNumeric = isShortNumber(searchText)
-  if (
-    normalizedSearch.length < 2 &&
-    !isShortNumeric &&
-    !isBracketedShortNumber(searchText)
-  )
-    return false
 
-  const candidates = [normalizedSearch]
-  if (isShortNumeric && !isBracketedShortNumber(searchText)) {
-    candidates.unshift(
-      ...getBracketedShortNumberVariants(searchText).map((variant) =>
-        normalizeText(variant),
-      ),
-    )
-  }
+  const isShortNumeric = isShortNumber(searchText)
+  if (normalizedSearch.length < 2 && !isShortNumeric) return false
+
   const textNodes: Array<{
     node: CheerioElement
     text: string
@@ -517,35 +568,15 @@ function wrapTextInElement(
   const { normalized: normalizedCombined, map: combinedNormalizeMap } =
     normalizeWithMap(combinedText)
 
-  const needsBoundaryCheck =
-    isShortNumeric && !isBracketedShortNumber(searchText)
-  let matchIndex = -1
-  let matchedLength = 0
-  for (const candidate of candidates) {
-    if (!candidate.length) continue
-    const candidateIndex = findWithBoundaryCheck(
-      normalizedCombined,
-      candidate,
-      needsBoundaryCheck,
-    )
-    if (candidateIndex !== -1) {
-      matchIndex = candidateIndex
-      matchedLength = candidate.length
-      // If we matched a bracketed variant for a plain number, wrap only the inner number
-      if (
-        needsBoundaryCheck &&
-        (candidate.startsWith("(") || candidate.startsWith("["))
-      ) {
-        matchIndex += 1
-        matchedLength = normalizedSearch.length
-      }
-      break
-    }
-  }
+  const matchIndex = findWithBoundaryCheck(
+    normalizedCombined,
+    normalizedSearch,
+    isShortNumeric,
+  )
   if (matchIndex === -1) return false
 
   const startCombined = combinedNormalizeMap[matchIndex]
-  const endCombined = combinedNormalizeMap[matchIndex + matchedLength - 1] + 1
+  const endCombined = combinedNormalizeMap[matchIndex + normalizedSearch.length - 1] + 1
   if (startCombined === undefined || endCombined === undefined) return false
 
   const startInfo = combinedMap[startCombined]
@@ -584,18 +615,8 @@ function wrapTextInElement(
   return true
 }
 
-function isBracketedShortNumber(text: string): boolean {
-  return /^\s*[\[(]\s*\d{1,3}\s*[\])]\s*$/.test(text)
-}
-
 function isShortNumber(text: string): boolean {
   return /^\s*\d{1,3}\s*$/.test(text)
-}
-
-function getBracketedShortNumberVariants(text: string): string[] {
-  const trimmed = text.trim()
-  if (!/^\d{1,3}$/.test(trimmed)) return []
-  return [`(${trimmed})`, `[${trimmed}]`]
 }
 
 function isNumericBoundaryMatch(
@@ -698,7 +719,7 @@ function findBestCandidateMatch(
   candidates: string[],
   normalizedTarget: string,
 ): { text: string; score: number } | null {
-  const THRESHOLD = 0.85
+  const THRESHOLD = 0.3
   let best: { text: string; score: number } | null = null
   for (const candidate of candidates) {
     const normalizedCandidate = normalizeText(candidate)

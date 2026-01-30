@@ -256,44 +256,50 @@ export function rewriteImageSources(
   return $("body").html() ?? ""
 }
 
-interface ChunkPageInfo {
-  id: string
-  page: number
+export interface PageMarkerStats {
+  expected: number
+  injected: number
+}
+
+export interface PageMarkerResult {
+  html: string
+  stats: PageMarkerStats
 }
 
 /**
  * Inject page markers into HTML before each page's first block.
+ * Parses page numbers directly from data-block-id attributes (format: /page/{num}/...).
  * Markers serve as scroll targets for TOC navigation and display page numbers.
- *
- * @param html - The HTML content to process
- * @param chunks - Array of chunks with block IDs and page numbers
- * @param offset - Page offset (physical - display), defaults to 0
  */
 export function injectPageMarkers(
   html: string,
-  chunks: ChunkPageInfo[],
   offset: number = 0,
-): string {
+): PageMarkerResult {
   const $ = cheerio.load(html)
 
-  // Build page -> first block ID map
-  const pageFirstBlock = new Map<number, string>()
-  for (const chunk of chunks) {
-    if (!pageFirstBlock.has(chunk.page)) {
-      pageFirstBlock.set(chunk.page, chunk.id)
+  // Find first element of each page by parsing data-block-id attributes
+  const pageFirstBlockId = new Map<number, string>()
+  $("[data-block-id]").each((_, el) => {
+    const blockId = $(el).attr("data-block-id")
+    const match = blockId?.match(/^\/page\/(\d+)\//)
+    if (match && blockId) {
+      const page = parseInt(match[1], 10)
+      if (!pageFirstBlockId.has(page)) {
+        pageFirstBlockId.set(page, blockId)
+      }
     }
-  }
+  })
 
-  // Inject marker before each page's first block
-  for (const [physicalPage, blockId] of pageFirstBlock) {
-    const displayPage = physicalPage - offset
+  // Inject marker before each page's first element
+  for (const [physicalPage, blockId] of pageFirstBlockId) {
+    const displayPage = physicalPage - offset + 1
     const marker = `<span class="page-marker" id="page-marker-${physicalPage}">${displayPage}</span>`
-    const block = $(`[data-block-id="${blockId}"]`)
-    if (block.length) {
-      block.before(marker)
-    }
+    $(`[data-block-id="${blockId}"]`).before(marker)
   }
 
-  return $("body").html() ?? ""
+  return {
+    html: $("body").html() ?? "",
+    stats: { expected: pageFirstBlockId.size, injected: pageFirstBlockId.size },
+  }
 }
 

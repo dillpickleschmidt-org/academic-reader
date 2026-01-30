@@ -26,12 +26,6 @@ export interface LinkMapping {
   destPage: number // -1 for external links
 }
 
-/** Minimal chunk interface - only need id and page for page scoping */
-export interface ChunkPageInfo {
-  id: string
-  page: number
-}
-
 // ─────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────
@@ -58,11 +52,10 @@ export function extractLinkMappings(
 export function extractAndInjectLinks(
   pdfBuffer: Buffer | Uint8Array,
   html: string,
-  chunks: ChunkPageInfo[],
 ): { html: string; linkCount: number } {
   const mappings = extractLinkMappings(pdfBuffer)
   if (!mappings.length) return { html, linkCount: 0 }
-  return injectLinks(html, mappings, chunks)
+  return injectLinks(html, mappings)
 }
 
 /**
@@ -71,15 +64,9 @@ export function extractAndInjectLinks(
 export function injectLinks(
   html: string,
   mappings: LinkMapping[],
-  chunks: ChunkPageInfo[],
 ): { html: string; linkCount: number } {
   const $ = load(html)
   const hasHtmlWrapper = /<html[\s>]/i.test(html) || /<body[\s>]/i.test(html)
-
-  const blockPageMap = new Map<string, number>()
-  for (const chunk of chunks) {
-    blockPageMap.set(chunk.id, chunk.page)
-  }
 
   let anchorCounter = 0
   const targetAnchors = new Map<string, string>()
@@ -98,12 +85,7 @@ export function injectLinks(
 
       if (!targetAnchors.has(anchorKey)) {
         const anchorId = `pdf-link-${anchorCounter++}`
-        const targetMatch = findTargetMatchOnPage(
-          $,
-          targetText,
-          destPage,
-          blockPageMap,
-        )
+        const targetMatch = findTargetMatchOnPage($, targetText, destPage)
 
         if (targetMatch) {
           const wrapped = wrapWithAnchorId(
@@ -131,13 +113,7 @@ export function injectLinks(
     const baseKey = sourceText.trim()
     const cursorKey = `${baseKey}:${destPage}:${targetText ?? targetUrl ?? ""}`
     const sourceIndex = pageCursor.get(cursorKey) ?? 0
-    const sourceMatch = findTextOnPage(
-      $,
-      sourceText,
-      sourcePage,
-      blockPageMap,
-      sourceIndex,
-    )
+    const sourceMatch = findTextOnPage($, sourceText, sourcePage, sourceIndex)
     if (sourceMatch) {
       const isExternal = !!targetUrl
       const wrapped = wrapWithLink(
@@ -355,10 +331,9 @@ function findTextOnPage(
   $: CheerioAPI,
   searchText: string,
   page: number,
-  blockPageMap: Map<string, number>,
   startIndex = 0,
 ): SourceMatch | null {
-  const blockElements = getPageBlocks($, page, blockPageMap)
+  const blockElements = getPageBlocks($, page)
 
   const normalizedSearch = normalizeText(searchText)
   if (!normalizedSearch.length) return null
@@ -397,17 +372,17 @@ function findTargetMatchOnPage(
   $: CheerioAPI,
   targetText: string,
   page: number,
-  blockPageMap: Map<string, number>,
 ): MatchCandidate | null {
   const normalizedTarget = normalizeText(targetText)
   if (!normalizedTarget.length) return null
 
   let best: { match: MatchCandidate; score: number; length: number } | null = null
 
-  for (const el of getPageBlocks($, page, blockPageMap).toArray()) {
+  for (const el of getPageBlocks($, page).toArray()) {
     const lines = extractLineCandidates($(el).text())
     const candidate = findBestCandidateMatch(lines, normalizedTarget)
     if (!candidate) continue
+
     const dominated = best && (candidate.score < best.score ||
       (candidate.score === best.score && candidate.text.length >= best.length))
     if (dominated) continue
@@ -421,11 +396,7 @@ function findTargetMatchOnPage(
   return best?.match ?? null
 }
 
-function getPageBlocks(
-  $: CheerioAPI,
-  page: number,
-  blockPageMap: Map<string, number>,
-) {
+function getPageBlocks($: CheerioAPI, page: number) {
   return $("[data-block-id]").filter((_, el) => {
     const blockId = $(el).attr("data-block-id")
     if (blockId === undefined) return false
@@ -435,7 +406,8 @@ function getPageBlocks(
       blockId.includes("/Picture/")
     )
       return false
-    return blockPageMap.get(blockId) === page
+    const match = blockId.match(/^\/page\/(\d+)\//)
+    return match ? parseInt(match[1], 10) === page : false
   })
 }
 
@@ -739,21 +711,33 @@ function findBestCandidateMatch(
   return best
 }
 
-function similarity(a: string, b: string): number {
+function similarity(candidate: string, target: string): number {
+  if (!candidate.length || !target.length) return 0
+
+  // Find longest common subsequence length
+  const lcsLen = longestCommonSubsequenceLength(candidate, target)
+
+  // Score = how much of the target was found in the candidate
+  return lcsLen / target.length
+}
+
+function longestCommonSubsequenceLength(a: string, b: string): number {
   if (!a.length || !b.length) return 0
-  if (a.includes(b) || b.includes(a)) return 1.0
 
-  // Count character frequencies
-  const freqA = new Map<string, number>()
-  const freqB = new Map<string, number>()
-  for (const c of a) freqA.set(c, (freqA.get(c) || 0) + 1)
-  for (const c of b) freqB.set(c, (freqB.get(c) || 0) + 1)
+  // Use rolling array to save memory (only need previous row)
+  let prev = new Array(b.length + 1).fill(0)
+  let curr = new Array(b.length + 1).fill(0)
 
-  // Count matching characters (min frequency in both)
-  let matches = 0
-  for (const [c, countA] of freqA) {
-    matches += Math.min(countA, freqB.get(c) || 0)
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        curr[j] = prev[j - 1] + 1
+      } else {
+        curr[j] = Math.max(prev[j], curr[j - 1])
+      }
+    }
+    ;[prev, curr] = [curr, prev]
   }
 
-  return matches / Math.min(a.length, b.length)
+  return prev[b.length]
 }

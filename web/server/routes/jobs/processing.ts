@@ -22,8 +22,14 @@ import {
   extractTableOfContents,
   type TocResult,
 } from "../../services/toc-extraction"
-import { extractLinkMappings, injectLinks } from "../../services/link-extraction"
-import { persistDocument, type ChunkInput } from "../../services/document-persistence"
+import {
+  extractLinkMappings,
+  injectLinks,
+} from "../../services/link-extraction"
+import {
+  persistDocument,
+  type ChunkInput,
+} from "../../services/document-persistence"
 import { createAuthenticatedConvexClient } from "../../services/convex"
 import { tryCatch, getErrorMessage } from "../../utils/try-catch"
 
@@ -31,7 +37,11 @@ import { tryCatch, getErrorMessage } from "../../utils/try-catch"
 // Types
 // ─────────────────────────────────────────────────────────────
 
-export type CleanupReason = "cancelled" | "failed" | "timeout" | "client_disconnect"
+export type CleanupReason =
+  | "cancelled"
+  | "failed"
+  | "timeout"
+  | "client_disconnect"
 
 /** Marker chunk format */
 interface MarkerChunkBlock {
@@ -130,7 +140,10 @@ export function handleCleanup(
   event.cleanup = { reason, ...result }
 }
 
-function normalizeChunk(block: WorkerChunkBlock, index: number): NormalizedChunk {
+function normalizeChunk(
+  block: WorkerChunkBlock,
+  index: number,
+): NormalizedChunk {
   if ("id" in block) {
     return {
       id: block.id,
@@ -209,19 +222,19 @@ export async function processCompletedJob(
     processedContent = processHtml(processedContent, HTML_TRANSFORMS)
   }
 
+  const rawChunks = result.formats?.chunks?.blocks ?? []
+  const normalizedChunks = rawChunks.map((block, index) =>
+    normalizeChunk(block, index),
+  )
+  event.chunkCount = normalizedChunks.length
+
   // Extract and inject PDF links + TOC (all backends)
-  const chunks = result.formats?.chunks?.blocks
   let tocResult: TocResult | undefined
   let pageOffset = 0
 
-  if (!chunks?.length || !fileInfo?.documentPath) {
+  if (!normalizedChunks.length || !fileInfo?.documentPath) {
     event.tocStatus = "skipped"
-  } else if (chunks?.length && fileInfo?.documentPath) {
-    const chunkPageInfo = chunks.map((c, i) => ({
-      id: "id" in c ? c.id : `chandra-${i}`,
-      page: c.page,
-    }))
-
+  } else {
     // Try to read PDF for link extraction and TOC
     const pdfReadResult = await tryCatch(
       storage.readFile(`${fileInfo.documentPath}/original.pdf`),
@@ -230,30 +243,25 @@ export async function processCompletedJob(
     if (pdfReadResult.success) {
       const pdfBuffer = pdfReadResult.data
 
-      // Extract PDF links
-      try {
-        const mappings = extractLinkMappings(pdfBuffer)
-
-        if (mappings.length) {
-          const { html: linkedHtml, linkCount } = injectLinks(
-            processedContent,
-            mappings,
-            chunkPageInfo,
-          )
-          processedContent = linkedHtml
-          event.linkCount = linkCount
-
-          // Also inject into formats.html for storage/download
-          if (result.formats?.html) {
-            result.formats.html = injectLinks(
-              result.formats.html,
+      // Extract and inject PDF links (datalab only - for some reason it's broken so I handle it manually)
+      if (event.backend === "datalab") {
+        try {
+          const mappings = extractLinkMappings(pdfBuffer)
+          if (mappings.length) {
+            const { html: linkedHtml, linkCount } = injectLinks(
+              processedContent,
               mappings,
-              chunkPageInfo,
-            ).html
+            )
+            processedContent = linkedHtml
+            event.linkCount = linkCount
+
+            if (result.formats?.html) {
+              result.formats.html = injectLinks(result.formats.html, mappings).html
+            }
           }
+        } catch (err) {
+          event.linkExtractionError = getErrorMessage(err)
         }
-      } catch (err) {
-        console.warn("[jobs] Link extraction failed:", err)
       }
 
       // Extract table of contents
@@ -280,20 +288,29 @@ export async function processCompletedJob(
         event.tocStatus = "error"
       }
     } else {
-      console.warn("[jobs] Failed to read PDF for link extraction:", pdfReadResult.error)
+      console.warn(
+        "[jobs] Failed to read PDF for link extraction:",
+        pdfReadResult.error,
+      )
       event.tocStatus = "pdf_read_failed"
     }
+  }
 
-    // Inject page markers (always runs, uses offset=0 as fallback)
-    try {
-      processedContent = injectPageMarkers(processedContent, chunkPageInfo, pageOffset)
+  // Inject page markers (parses page numbers from data-block-id attributes)
+  try {
+    const pageMarkerResult = injectPageMarkers(processedContent, pageOffset)
+    processedContent = pageMarkerResult.html
+    event.pageMarkersExpected = pageMarkerResult.stats.expected
+    event.pageMarkersInjected = pageMarkerResult.stats.injected
 
-      if (result.formats?.html) {
-        result.formats.html = injectPageMarkers(result.formats.html, chunkPageInfo, pageOffset)
-      }
-    } catch (err) {
-      console.warn("[jobs] Page marker injection failed:", err)
+    if (result.formats?.html) {
+      result.formats.html = injectPageMarkers(
+        result.formats.html,
+        pageOffset,
+      ).html
     }
+  } catch (err) {
+    event.pageMarkerError = getErrorMessage(err)
   }
 
   // Rewrite image sources in formats.html for storage
@@ -335,9 +352,6 @@ export async function processCompletedJob(
   if (fileInfo && headers) {
     const convex = await createAuthenticatedConvexClient(headers)
     if (convex) {
-      const normalizedChunks = (result.formats?.chunks?.blocks ?? []).map((block, index) =>
-        normalizeChunk(block, index),
-      )
       const chunksForPersistence = transformChunks(normalizedChunks)
 
       const persistResult = await tryCatch(

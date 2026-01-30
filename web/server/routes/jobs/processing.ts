@@ -385,6 +385,7 @@ export async function processCompletedJob(
           fileId: fileInfo.fileId,
           filename: fileInfo.filename,
           pageCount: result.metadata?.pages,
+          toc: tocResult ?? { sections: [], offset: 0 },
           chunks: chunksForPersistence,
         }),
       )

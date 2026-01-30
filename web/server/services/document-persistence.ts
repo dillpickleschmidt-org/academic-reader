@@ -21,6 +21,8 @@ export function getStoragePaths(userId: string, documentId: string) {
   }
 }
 
+import type { TocResult } from "@repo/core/types/api"
+
 /** Chunk input for document creation */
 export interface ChunkInput {
   blockId: string
@@ -37,6 +39,7 @@ export interface PersistDocumentInput {
   fileId: string
   filename: string
   pageCount?: number
+  toc: TocResult
   chunks: ChunkInput[]
 }
 
@@ -57,6 +60,7 @@ export async function persistDocument(
     filename: input.filename,
     storageId: input.fileId,
     pageCount: input.pageCount,
+    toc: input.toc,
   })
 
   // Add chunks in batches to avoid Convex limits (1MB arg size, 8192 writes/tx)

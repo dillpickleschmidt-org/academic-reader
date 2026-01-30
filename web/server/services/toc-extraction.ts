@@ -19,9 +19,9 @@ export type TocStatus =
   | "no_toc_text"
   | "ai_failed"
   | "empty_sections"
-  | "skipped"        // No chunks or documentPath available
+  | "skipped" // No chunks or documentPath available
   | "pdf_read_failed" // Could not read PDF from storage
-  | "error"          // Uncaught exception
+  | "error" // Uncaught exception
 
 export interface TocExtractionMeta {
   status: TocStatus
@@ -81,12 +81,26 @@ export interface TocExtractionResult {
 
 /**
  * Main entry point - extracts structured TOC from converted text with page offset detection.
+ * Tries PDF's built-in outline first, then falls back to AI-based extraction.
  */
 export async function extractTableOfContents(
   convertedText: string,
   pdfBuffer: Buffer | Uint8Array,
 ): Promise<TocExtractionResult> {
-  // Search for "table of contents" and extract surrounding text
+  // Try PDF's built-in outline first (already has correct physical page numbers)
+  const outlineSections = extractPdfOutline(pdfBuffer)
+  if (outlineSections.length > 0) {
+    return {
+      toc: {
+        sections: outlineSections,
+        offset: 0,
+        hasRomanNumerals: false,
+      },
+      meta: { status: "success", offsetDetected: true },
+    }
+  }
+
+  // Fall back to AI-based extraction from converted text
   const tocText = findTocText(convertedText)
   if (!tocText) {
     return {
@@ -96,7 +110,8 @@ export async function extractTableOfContents(
   }
 
   // Generate structured TOC using AI
-  const { sections: rawSections, failed: aiFailed } = await generateTocWithAI(tocText)
+  const { sections: rawSections, failed: aiFailed } =
+    await generateTocWithAI(tocText)
   if (aiFailed) {
     return {
       toc: null,
@@ -112,11 +127,15 @@ export async function extractTableOfContents(
 
   // Detect if there are roman numerals (front matter)
   const hasRomanNumerals = rawSections.some(
-    (s) => isRomanNumeral(s.page) || s.children?.some((c) => isRomanNumeral(c.page)),
+    (s) =>
+      isRomanNumeral(s.page) || s.children?.some((c) => isRomanNumeral(c.page)),
   )
 
   // Calculate page offset from first Arabic numeral entry
-  const { offset, detected: offsetDetected } = calculatePageOffset(rawSections, pdfBuffer)
+  const { offset, detected: offsetDetected } = calculatePageOffset(
+    rawSections,
+    pdfBuffer,
+  )
 
   // Convert raw sections to final format with physical page numbers
   const sections = convertToTocSections(rawSections, offset)
@@ -128,6 +147,63 @@ export async function extractTableOfContents(
       hasRomanNumerals,
     },
     meta: { status: "success", offsetDetected },
+  }
+}
+
+interface PdfOutlineItem {
+  title: string
+  page?: number
+  down?: PdfOutlineItem[]
+}
+
+/**
+ * Extract TOC from PDF's built-in outline/bookmarks.
+ * Returns sections with physical page numbers (1-indexed).
+ */
+function extractPdfOutline(pdfBuffer: Buffer | Uint8Array): TocSection[] {
+  const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf")
+  try {
+    const outline = doc.loadOutline() as PdfOutlineItem[] | null
+    if (!outline || outline.length === 0) {
+      return []
+    }
+
+    const sections: TocSection[] = []
+    for (const item of outline) {
+      // Skip items without page numbers
+      if (item.page === undefined) continue
+
+      // Convert 0-indexed to 1-indexed physical page
+      const physicalPage = item.page + 1
+
+      const section: TocSection = {
+        id: `page-marker-${physicalPage}`,
+        title: item.title,
+        page: physicalPage,
+      }
+
+      // Process children (one level deep)
+      if (item.down && item.down.length > 0) {
+        section.children = item.down
+          .filter((child) => child.page !== undefined)
+          .map((child) => {
+            const childPage = child.page! + 1
+            return {
+              id: `page-marker-${childPage}`,
+              title: child.title,
+              page: childPage,
+            }
+          })
+      }
+
+      sections.push(section)
+    }
+
+    return sections
+  } catch {
+    return []
+  } finally {
+    doc.destroy()
   }
 }
 
@@ -217,62 +293,42 @@ interface OffsetResult {
 }
 
 /**
- * Calculate page offset by comparing TOC page number with PDF footer.
+ * Calculate page offset by scanning PDF footers for a number matching a TOC entry.
  *
- * 1. Find first entry with Arabic numeral
- * 2. Go to that physical page in the PDF
- * 3. Extract footer text (bottom 10% of page)
- * 4. Parse page number from footer
- * 5. Calculate: offset = physicalPage - footerPageNumber
+ * Scans through the PDF looking for footer page numbers that match TOC entries.
+ * This handles PDFs with significant front matter (e.g., 38 pages before "page 1").
  */
 function calculatePageOffset(
   sections: RawTocEntry[],
   pdfBuffer: Buffer | Uint8Array,
 ): OffsetResult {
-  // Find first Arabic numeral page in TOC
-  let firstArabicPage: number | null = null
+  // Build set of all valid Arabic page numbers from TOC
+  const tocPages = new Set<number>()
   for (const section of sections) {
     const page = parsePageNumber(section.page)
-    if (page !== null) {
-      firstArabicPage = page
-      break
-    }
-    // Check children
-    if (section.children) {
-      for (const child of section.children) {
-        const childPage = parsePageNumber(child.page)
-        if (childPage !== null) {
-          firstArabicPage = childPage
-          break
-        }
-      }
-      if (firstArabicPage !== null) break
+    if (page !== null) tocPages.add(page)
+    for (const child of section.children ?? []) {
+      const childPage = parsePageNumber(child.page)
+      if (childPage !== null) tocPages.add(childPage)
     }
   }
 
-  if (firstArabicPage === null) {
+  if (tocPages.size === 0) {
     return { offset: 0, detected: false }
   }
 
-  // Open PDF and extract footer from the physical page
   const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf")
   try {
     const pageCount = doc.countPages()
+    const maxSearch = Math.min(150, pageCount)
 
-    // Try the physical page and a few pages around it
-    const pagesToTry = [
-      firstArabicPage - 1, // 0-indexed
-      firstArabicPage,
-      firstArabicPage + 1,
-      firstArabicPage + 2,
-    ].filter((p) => p >= 0 && p < pageCount)
-
-    for (const physicalPage of pagesToTry) {
-      const footerPageNum = extractFooterPageNumber(doc, physicalPage)
-      if (footerPageNum !== null) {
-        // Calculate offset: if TOC says page 15 but footer shows 5, offset = 10
-        // So physicalPage 15 = displayPage 5, offset = 15 - 5 = 10
-        const offset = physicalPage - footerPageNum + 1 // +1 because physicalPage is 0-indexed
+    // Scan forward looking for a footer number that matches a TOC entry
+    for (let physicalPage = 0; physicalPage < maxSearch; physicalPage++) {
+      const footerNum = extractFooterPageNumber(doc, physicalPage)
+      if (footerNum !== null && tocPages.has(footerNum)) {
+        // offset = physicalPage (0-indexed) - footerNum + 1
+        // e.g., physical page 39 (0-indexed) with footer "2" → offset = 39 - 2 + 1 = 38
+        const offset = physicalPage - footerNum + 1
         if (offset >= 0) {
           return { offset, detected: true }
         }
@@ -316,12 +372,13 @@ function extractFooterPageNumber(
   const footerText = footerChars.join("").trim()
 
   // Look for standalone numbers in footer (common page number patterns)
+  // Order: explicit patterns first, then position-based (start before end to avoid "Chapter 1")
   const pagePatterns = [
     /^(\d+)$/, // Just a number
-    /\b(\d+)\s*$/, // Number at end
-    /^\s*(\d+)\b/, // Number at start
     /page\s*(\d+)/i, // "Page X"
     /\b(\d+)\s*of\s*\d+/i, // "X of Y"
+    /^\s*(\d+)\b/, // Number at start
+    /\b(\d+)\s*$/, // Number at end
   ]
 
   for (const pattern of pagePatterns) {

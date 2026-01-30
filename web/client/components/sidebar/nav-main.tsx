@@ -78,6 +78,7 @@ function NavItem({ item }: { item: NavItem }) {
                     render={
                       <a
                         href={subItem.url}
+                        title={subItem.title}
                         onClick={(e) => {
                           if (subItem.onClick) {
                             e.preventDefault()

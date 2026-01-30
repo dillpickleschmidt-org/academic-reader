@@ -87,6 +87,15 @@ export interface UploadResult {
   size: number
 }
 
+export interface LoadedDocument {
+  html: string
+  markdown: string
+  chunks: ChunkBlock[]
+  toc: TocResult
+  documentId: string
+  storageId: string
+}
+
 export interface PresignedUrlResult {
   uploadUrl: string
   expiresAt: string

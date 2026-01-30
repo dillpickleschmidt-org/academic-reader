@@ -70,6 +70,7 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
 
   // Use storageId for S3 path
   const storageId = docResult.data.storageId
+  const toc = docResult.data.toc
 
   // Fetch HTML/markdown and chunks in parallel
   const [loadResult, chunksResult] = await Promise.all([
@@ -107,6 +108,8 @@ savedDocuments.get("/saved-documents/:documentId", requireAuth, async (c) => {
     markdown,
     storageId,
     chunks,
+    toc,
+    documentId,
   })
 })
 

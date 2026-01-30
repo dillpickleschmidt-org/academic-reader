@@ -12,6 +12,27 @@ import {
 } from "../_generated/server"
 import * as Documents from "../model/documents"
 
+const tocSectionValidator = v.object({
+  id: v.string(),
+  title: v.string(),
+  page: v.number(),
+  children: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        title: v.string(),
+        page: v.number(),
+      }),
+    ),
+  ),
+})
+
+const tocValidator = v.object({
+  sections: v.array(tocSectionValidator),
+  offset: v.number(),
+  hasRomanNumerals: v.optional(v.boolean()),
+})
+
 // ===== Mutations =====
 
 /**
@@ -23,6 +44,7 @@ export const create = mutation({
     filename: v.string(),
     storageId: v.string(),
     pageCount: v.optional(v.number()),
+    toc: tocValidator,
   },
   handler: (ctx, args) => Documents.createDocument(ctx, args),
 })

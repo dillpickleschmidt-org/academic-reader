@@ -348,6 +348,7 @@ export function useConversion() {
       setDocumentId(docId)
       setFileId(data.storageId)
       setImagesReady(true)
+      setToc(data.toc)
       // Transform Convex chunks to ChunkBlock format for TTS
       setChunks(
         data.chunks?.map(

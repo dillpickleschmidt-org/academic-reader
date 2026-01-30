@@ -1,6 +1,27 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
+const tocSectionValidator = v.object({
+  id: v.string(),
+  title: v.string(),
+  page: v.number(),
+  children: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        title: v.string(),
+        page: v.number(),
+      }),
+    ),
+  ),
+})
+
+const tocValidator = v.object({
+  sections: v.array(tocSectionValidator),
+  offset: v.number(),
+  hasRomanNumerals: v.optional(v.boolean()),
+})
+
 export default defineSchema({
   // Documents table - represents a converted PDF stored for RAG
   documents: defineTable({
@@ -9,6 +30,7 @@ export default defineSchema({
     /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
     storageId: v.string(),
     pageCount: v.optional(v.number()),
+    toc: tocValidator,
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])

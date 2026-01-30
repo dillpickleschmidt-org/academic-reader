@@ -17,11 +17,25 @@ export interface ChunkInput {
   bbox: number[] // [x1, y1, x2, y2] bounding box
 }
 
+export interface TocSectionInput {
+  id: string
+  title: string
+  page: number
+  children?: { id: string; title: string; page: number }[]
+}
+
+export interface TocInput {
+  sections: TocSectionInput[]
+  offset: number
+  hasRomanNumerals?: boolean
+}
+
 export interface CreateDocumentInput {
   filename: string
   /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
   storageId: string
   pageCount?: number
+  toc: TocInput
   chunks: ChunkInput[] // Without embeddings
 }
 
@@ -42,6 +56,7 @@ export async function createDocument(
     filename: input.filename,
     storageId: input.storageId,
     pageCount: input.pageCount,
+    toc: input.toc,
     createdAt: Date.now(),
   })
 

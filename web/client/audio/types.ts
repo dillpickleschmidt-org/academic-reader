@@ -45,6 +45,8 @@ export type WordTimestamp = {
   endMs: number
 }
 
+export type PlaybackMode = "idle" | "loading" | "streaming" | "ready"
+
 // Unified Audio State
 export type AudioState = {
   // Narrator settings
@@ -54,17 +56,18 @@ export type AudioState = {
     volume: number // 0 - 1
   }
 
-  // TTS playback state (simplified - single audio per block)
+  // TTS playback state
   playback: {
-    isLoading: boolean
-    currentBlockId: string | null
+    mode: PlaybackMode
+    blockId: string | null
     error: string | null
-    audioUrl: string | null
     text: string | null
     durationMs: number
-    wordTimestamps: WordTimestamp[]
-    isPlaying: boolean
     currentTime: number
+    isPlaying: boolean
+    canPause: boolean
+    canSeek: boolean
+    wordTimestamps: WordTimestamp[]
   }
 
   // Music settings

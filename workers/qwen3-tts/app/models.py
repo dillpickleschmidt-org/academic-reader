@@ -13,13 +13,6 @@ _model_cache: "Qwen3TTSModel | None" = None
 _model_lock = threading.Lock()
 
 
-def get_device() -> str:
-    """Get the best available device."""
-    if torch.cuda.is_available():
-        return "cuda"
-    return "cpu"
-
-
 def get_or_create_model() -> "Qwen3TTSModel":
     """Get cached TTS model or create it.
 
@@ -29,22 +22,24 @@ def get_or_create_model() -> "Qwen3TTSModel":
     global _model_cache
     with _model_lock:
         if _model_cache is None:
-            device = get_device()
-            print(f"[models] Loading Qwen3TTSModel on {device}...", flush=True)
+            print("[models] Loading qwen-tts model...", flush=True)
             start = time.time()
 
             from qwen_tts import Qwen3TTSModel
 
             _model_cache = Qwen3TTSModel.from_pretrained(
                 "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-                device_map=device,
-                dtype=torch.bfloat16,
-                attn_implementation="flash_attention_2",
+                device_map="cuda:0",
             )
             print(f"[models] Model loaded in {time.time() - start:.1f}s", flush=True)
         else:
             print("[models] Using cached model", flush=True)
         return _model_cache
+
+
+def is_model_loaded() -> bool:
+    """Check if model is currently loaded."""
+    return _model_cache is not None
 
 
 def unload_model() -> bool:
@@ -59,7 +54,7 @@ def unload_model() -> bool:
             print("[models] Model already unloaded", flush=True)
             return False
 
-        print("[models] Unloading Qwen3-TTS model...", flush=True)
+        print("[models] Unloading qwen-tts model...", flush=True)
         del _model_cache
         _model_cache = None
 

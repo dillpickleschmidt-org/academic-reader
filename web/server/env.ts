@@ -31,8 +31,7 @@ const baseSchema = z.object({
   // Backend mode
   BACKEND_MODE: backendModeSchema,
 
-  // Local TTS worker URLs (Docker)
-  CHATTERBOX_TTS_WORKER_URL: z.string().url().default("http://chatterbox-tts:8001"),
+  // Local TTS worker URL (Docker)
   QWEN3_TTS_WORKER_URL: z.string().url().default("http://qwen3-tts:8002"),
 
   // DataLab backend
@@ -43,8 +42,7 @@ const baseSchema = z.object({
   MODAL_LIGHTONOCR_URL: z.string().url().optional(),
   MODAL_CHANDRA_URL: z.string().url().optional(),
 
-  // Modal backend - TTS workers
-  MODAL_CHATTERBOX_TTS_URL: z.string().url().optional(),
+  // Modal backend - TTS worker
   MODAL_QWEN3_TTS_URL: z.string().url().optional(),
 
   // Observability
@@ -73,12 +71,12 @@ const envSchema = baseSchema.superRefine((data, ctx) => {
         path: ["MODAL_MARKER_URL"],
       })
     }
-    // TTS on Modal requires at least one TTS endpoint
-    if (!data.MODAL_CHATTERBOX_TTS_URL && !data.MODAL_QWEN3_TTS_URL) {
+    // TTS on Modal requires qwen3 endpoint
+    if (!data.MODAL_QWEN3_TTS_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "At least one Modal TTS endpoint required when BACKEND_MODE=modal",
-        path: ["MODAL_CHATTERBOX_TTS_URL"],
+        message: "MODAL_QWEN3_TTS_URL required when BACKEND_MODE=modal",
+        path: ["MODAL_QWEN3_TTS_URL"],
       })
     }
   }

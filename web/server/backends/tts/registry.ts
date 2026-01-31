@@ -1,13 +1,6 @@
-/**
- * TTS Voice and Engine Registry
- *
- * To add a new voice: Add entry to VOICE_REGISTRY
- * To add a new engine: Add entry to ENGINE_REGISTRY + create worker
- */
-
 import { env } from "../../env"
 
-export type TTSEngine = "chatterbox" | "qwen3"
+export type TTSEngine = "qwen3"
 
 export interface VoiceDefinition {
   id: string
@@ -20,35 +13,15 @@ export interface EngineConfig {
   getModalUrl: () => string | undefined
 }
 
-// ═══════════════════════════════════════════════════════════════
-// VOICE REGISTRY - Add new voices here
-// ═══════════════════════════════════════════════════════════════
 export const VOICE_REGISTRY: Record<string, VoiceDefinition> = {
   male_1: {
     id: "male_1",
     displayName: "Male 1",
     engine: "qwen3",
   },
-  male_2: {
-    id: "male_2",
-    displayName: "Male 2",
-    engine: "chatterbox",
-  },
-  female_1: {
-    id: "female_1",
-    displayName: "Female 1",
-    engine: "chatterbox",
-  },
 }
 
-// ═══════════════════════════════════════════════════════════════
-// ENGINE REGISTRY - Add new TTS engines here
-// ═══════════════════════════════════════════════════════════════
 export const ENGINE_REGISTRY: Record<TTSEngine, EngineConfig> = {
-  chatterbox: {
-    getLocalUrl: () => env.CHATTERBOX_TTS_WORKER_URL,
-    getModalUrl: () => env.MODAL_CHATTERBOX_TTS_URL,
-  },
   qwen3: {
     getLocalUrl: () => env.QWEN3_TTS_WORKER_URL,
     getModalUrl: () => env.MODAL_QWEN3_TTS_URL,

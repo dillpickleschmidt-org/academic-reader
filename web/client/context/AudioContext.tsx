@@ -13,9 +13,9 @@ import type {
   VoiceId,
   MusicTrack,
   AmbientSoundId,
-  WordTimestamp,
 } from "@/audio/types"
 import { AMBIENT_SOUNDS } from "@/audio/constants"
+import { UnifiedAudioPlayer } from "@/audio/UnifiedAudioPlayer"
 
 // ============================================================================
 // CrossfadeLooper: Encapsulates seamless audio looping with crossfade
@@ -249,7 +249,6 @@ type AudioActions = {
 const AudioContext = createContext<{
   store: AudioStore
   actions: AudioActions
-  audioRef: React.RefObject<HTMLAudioElement | null>
 } | null>(null)
 
 function createInitialState(): AudioState {
@@ -260,15 +259,16 @@ function createInitialState(): AudioState {
       volume: 1.0,
     },
     playback: {
-      isLoading: false,
-      currentBlockId: null,
+      mode: "idle",
+      blockId: null,
       error: null,
-      audioUrl: null,
       text: null,
       durationMs: 0,
-      wordTimestamps: [],
-      isPlaying: false,
       currentTime: 0,
+      isPlaying: false,
+      canPause: false,
+      canSeek: false,
+      wordTimestamps: [],
     },
     music: {
       playlist: [],
@@ -302,7 +302,6 @@ export function AudioProvider({
   children: ReactNode
 }) {
   const storeRef = useRef<AudioStore>(null!)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const musicAudioRef = useRef<HTMLAudioElement | null>(null)
   // Web Audio API context for smooth crossfades
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -314,6 +313,8 @@ export function AudioProvider({
   const pendingAmbienceInits = useRef(new Set<string>())
   // AbortController for canceling SSE stream
   const sseAbortRef = useRef<AbortController | null>(null)
+  // Unified audio player for TTS
+  const playerRef = useRef<UnifiedAudioPlayer | null>(null)
 
   if (!storeRef.current) {
     storeRef.current = createStore(createInitialState())
@@ -340,6 +341,14 @@ export function AudioProvider({
     return ctx
   }, [])
 
+  // Clean up TTS player
+  const cleanupPlayer = useCallback(() => {
+    if (playerRef.current) {
+      playerRef.current.dispose()
+      playerRef.current = null
+    }
+  }, [])
+
   // === Narrator Actions ===
   const setVoice = useCallback(
     (voiceId: VoiceId) => {
@@ -353,25 +362,24 @@ export function AudioProvider({
       }
 
       // Stop current playback
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ""
-      }
+      cleanupPlayer()
 
       // Clear audio but keep block context for re-synthesis
       store.setState({
         narrator: { ...state.narrator, voice: voiceId },
         playback: {
           ...state.playback,
-          audioUrl: null,
+          mode: "idle",
           durationMs: 0,
           wordTimestamps: [],
           isPlaying: false,
+          canPause: false,
+          canSeek: false,
           currentTime: 0,
         },
       })
     },
-    [store],
+    [store, cleanupPlayer],
   )
 
   const setNarratorSpeed = useCallback(
@@ -390,13 +398,51 @@ export function AudioProvider({
       store.setState({
         narrator: { ...state.narrator, volume },
       })
-      // Apply volume to audio element
-      if (audioRef.current) {
-        audioRef.current.volume = volume * state.master.volume
+      // Apply volume to player
+      if (playerRef.current) {
+        playerRef.current.setVolume(volume * state.master.volume)
       }
     },
     [store],
   )
+
+  // Create player callbacks that update store state
+  const createPlayerCallbacks = useCallback(() => ({
+    onModeChange: (mode: "idle" | "streaming" | "ready") => {
+      const playback = store.getState().playback
+      store.setState({
+        playback: {
+          ...playback,
+          mode: mode === "idle" ? "idle" : mode,
+          canPause: mode === "ready",
+          canSeek: mode === "ready",
+        },
+      })
+    },
+    onPlayingChange: (isPlaying: boolean) => {
+      store.setState({
+        playback: { ...store.getState().playback, isPlaying },
+      })
+    },
+    onTimeUpdate: (currentTime: number, duration: number) => {
+      store.setState({
+        playback: {
+          ...store.getState().playback,
+          currentTime,
+          durationMs: Math.round(duration * 1000),
+        },
+      })
+    },
+    onEnded: () => {
+      store.setState({
+        playback: {
+          ...store.getState().playback,
+          isPlaying: false,
+          currentTime: 0,
+        },
+      })
+    },
+  }), [store])
 
   // === TTS Playback Actions ===
   const loadBlockTTS = useCallback(
@@ -423,19 +469,18 @@ export function AudioProvider({
 
       // Stop current playback if switching blocks
       const currentState = store.getState()
-      if (currentState.playback.currentBlockId !== blockId) {
-        if (audioRef.current) {
-          audioRef.current.pause()
-          audioRef.current.src = ""
-        }
+      if (currentState.playback.blockId !== blockId) {
+        cleanupPlayer()
         store.setState({
           playback: {
             ...currentState.playback,
-            audioUrl: null,
+            mode: "idle",
             text: null,
             durationMs: 0,
             wordTimestamps: [],
             isPlaying: false,
+            canPause: false,
+            canSeek: false,
             currentTime: 0,
           },
         })
@@ -444,9 +489,9 @@ export function AudioProvider({
       store.setState({
         playback: {
           ...store.getState().playback,
-          isLoading: true,
+          mode: "loading",
           error: null,
-          currentBlockId: blockId,
+          blockId,
         },
       })
       const toastId = toast.loading("Preparing speech...")
@@ -475,18 +520,62 @@ export function AudioProvider({
 
         const contentType = response.headers.get("content-type") || ""
 
-        // Cached response - direct JSON
+        // Cached response - direct JSON with audio URL
         if (contentType.includes("application/json")) {
           const data = await response.json()
-          handleSynthesisComplete(data, wordIndex)
+
+          // Create player and load from URL
+          const ctx = await getAudioContext()
+          const state = store.getState()
+          cleanupPlayer()
+          playerRef.current = new UnifiedAudioPlayer(
+            ctx,
+            state.narrator.volume * state.master.volume,
+            createPlayerCallbacks(),
+          )
+
+          await playerRef.current.loadFromUrl(data.audioUrl)
+
+          store.setState({
+            playback: {
+              ...store.getState().playback,
+              mode: "ready",
+              text: data.text,
+              durationMs: data.durationMs,
+              wordTimestamps: data.wordTimestamps || [],
+              canPause: true,
+              canSeek: true,
+            },
+          })
+
+          // If wordIndex provided, seek to that word's timestamp
+          if (wordIndex !== undefined && wordIndex >= 0 && data.wordTimestamps?.length) {
+            const timestamp = data.wordTimestamps[Math.min(wordIndex, data.wordTimestamps.length - 1)]
+            if (timestamp) {
+              playerRef.current.seek(timestamp.startMs / 1000)
+            }
+          }
+
+          playerRef.current.play()
           toast.success("Speech ready", { id: toastId })
           return
         }
 
-        // SSE stream for non-cached synthesis
+        // SSE stream for non-cached synthesis with streaming audio
+        const ctx = await getAudioContext()
+        const state = store.getState()
+        cleanupPlayer()
+        playerRef.current = new UnifiedAudioPlayer(
+          ctx,
+          state.narrator.volume * state.master.volume,
+          createPlayerCallbacks(),
+        )
+        playerRef.current.startStreaming()
+
         const reader = response.body!.getReader()
         const decoder = new TextDecoder()
         let buffer = ""
+        let firstChunk = true
 
         while (true) {
           const { done, value } = await reader.read()
@@ -505,9 +594,15 @@ export function AudioProvider({
                 event.stage === "rewriting" ? "Preparing text..." : "Generating speech...",
                 { id: toastId },
               )
+            } else if (event.type === "audio-chunk") {
+              if (firstChunk) {
+                toast.success("Speech ready", { id: toastId })
+                firstChunk = false
+              }
+              playerRef.current?.addPcmChunk(event.data)
             } else if (event.type === "complete") {
-              handleSynthesisComplete(event, wordIndex)
-              toast.success("Speech ready", { id: toastId })
+              // Stream finished - consolidate buffer for full controls
+              playerRef.current?.finishStreaming()
             } else if (event.type === "error") {
               throw new Error(event.error)
             }
@@ -521,85 +616,32 @@ export function AudioProvider({
           return
         }
 
+        console.error("[TTS] Streaming error:", err)
+        cleanupPlayer()
         const errorMsg = err instanceof Error ? err.message : "TTS processing failed"
         store.setState({
           playback: {
             ...store.getState().playback,
             error: errorMsg,
-            isLoading: false,
+            mode: "idle",
+            isPlaying: false,
+            canPause: false,
+            canSeek: false,
           },
         })
         toast.error(errorMsg, { id: toastId })
       }
     },
-    [store, documentId],
-  )
-
-  const handleSynthesisComplete = useCallback(
-    (
-      data: {
-        audioUrl: string
-        text: string
-        durationMs: number
-        sampleRate: number
-        wordTimestamps: WordTimestamp[]
-      },
-      wordIndex?: number,
-    ) => {
-      const state = store.getState()
-
-      store.setState({
-        playback: {
-          ...state.playback,
-          isLoading: false,
-          audioUrl: data.audioUrl,
-          text: data.text,
-          durationMs: data.durationMs,
-          wordTimestamps: data.wordTimestamps || [],
-        },
-      })
-
-      if (audioRef.current) {
-        audioRef.current.src = data.audioUrl
-
-        // If wordIndex provided, seek to that word's timestamp
-        if (wordIndex !== undefined && wordIndex >= 0 && data.wordTimestamps?.length) {
-          const timestamp = data.wordTimestamps[Math.min(wordIndex, data.wordTimestamps.length - 1)]
-          if (timestamp) {
-            audioRef.current.currentTime = timestamp.startMs / 1000
-          }
-        }
-
-        safePlay(audioRef.current)
-        store.setState({
-          playback: { ...store.getState().playback, isPlaying: true },
-        })
-      }
-    },
-    [store, safePlay],
+    [store, documentId, getAudioContext, cleanupPlayer, createPlayerCallbacks],
   )
 
   const play = useCallback(() => {
-    const state = store.getState()
-    if (audioRef.current && state.playback.audioUrl) {
-      if (audioRef.current.src !== state.playback.audioUrl) {
-        audioRef.current.src = state.playback.audioUrl
-      }
-      safePlay(audioRef.current)
-      store.setState({
-        playback: { ...state.playback, isPlaying: true },
-      })
-    }
-  }, [store, safePlay])
+    playerRef.current?.play()
+  }, [])
 
   const pause = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      store.setState({
-        playback: { ...store.getState().playback, isPlaying: false },
-      })
-    }
-  }, [store])
+    playerRef.current?.pause()
+  }, [])
 
   const togglePlayPause = useCallback(() => {
     if (store.getState().playback.isPlaying) {
@@ -611,26 +653,23 @@ export function AudioProvider({
 
   const skip = useCallback(
     (seconds: number) => {
-      const state = store.getState()
-      if (!audioRef.current || !state.playback.audioUrl) return
-
-      const targetTime = Math.max(
-        0,
-        Math.min(state.playback.durationMs / 1000, audioRef.current.currentTime + seconds),
-      )
-      audioRef.current.currentTime = targetTime
+      if (!playerRef.current?.canSeek) return
+      const currentTime = playerRef.current.getCurrentTime()
+      const duration = playerRef.current.getDuration()
+      const targetTime = Math.max(0, Math.min(duration, currentTime + seconds))
+      playerRef.current.seek(targetTime)
     },
-    [store],
+    [],
   )
 
   const seekToWord = useCallback(
     (wordIndex: number) => {
       const state = store.getState()
-      if (!audioRef.current || !state.playback.wordTimestamps.length) return
+      if (!playerRef.current?.canSeek || !state.playback.wordTimestamps.length) return
 
       const timestamp = state.playback.wordTimestamps[Math.min(wordIndex, state.playback.wordTimestamps.length - 1)]
       if (timestamp) {
-        audioRef.current.currentTime = timestamp.startMs / 1000
+        playerRef.current.seek(timestamp.startMs / 1000)
       }
     },
     [store],
@@ -861,10 +900,11 @@ export function AudioProvider({
       store.setState({
         master: { ...state.master, volume },
       })
-      // Apply master volume to all audio elements
-      if (audioRef.current) {
-        audioRef.current.volume = state.narrator.volume * volume
+      // Apply master volume to TTS player
+      if (playerRef.current) {
+        playerRef.current.setVolume(state.narrator.volume * volume)
       }
+      // Apply to music
       if (musicAudioRef.current) {
         musicAudioRef.current.volume = state.music.volume * volume
       }
@@ -991,6 +1031,11 @@ export function AudioProvider({
         sseAbortRef.current.abort()
       }
 
+      // Clean up TTS player
+      if (playerRef.current) {
+        playerRef.current.dispose()
+      }
+
       for (const looper of ambienceAudioRefs.current.values()) {
         looper.dispose()
       }
@@ -1003,66 +1048,18 @@ export function AudioProvider({
     }
   }, [])
 
-  // Set up TTS audio event listeners
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const handleEnded = () => {
-      store.setState({
-        playback: {
-          ...store.getState().playback,
-          isPlaying: false,
-          currentTime: 0,
-        },
-      })
-    }
-
-    const handleTimeUpdate = () => {
-      store.setState({
-        playback: {
-          ...store.getState().playback,
-          currentTime: audio.currentTime,
-        },
-      })
-    }
-
-    const handlePlay = () => {
-      store.setState({
-        playback: { ...store.getState().playback, isPlaying: true },
-      })
-    }
-
-    const handlePause = () => {
-      store.setState({
-        playback: { ...store.getState().playback, isPlaying: false },
-      })
-    }
-
-    audio.addEventListener("ended", handleEnded)
-    audio.addEventListener("timeupdate", handleTimeUpdate)
-    audio.addEventListener("play", handlePlay)
-    audio.addEventListener("pause", handlePause)
-
-    return () => {
-      audio.removeEventListener("ended", handleEnded)
-      audio.removeEventListener("timeupdate", handleTimeUpdate)
-      audio.removeEventListener("play", handlePlay)
-      audio.removeEventListener("pause", handlePause)
-    }
-  }, [store])
-
   // Auto-unload TTS models when synthesis completes
-  const prevLoadingRef = useRef<boolean | null>(null)
+  const prevModeRef = useRef<string | null>(null)
   useEffect(() => {
     const state = store.getState()
-    const { isLoading, audioUrl } = state.playback
+    const { mode, isPlaying } = state.playback
 
-    // Only act on transition from loading to not loading with audio ready
-    const wasLoading = prevLoadingRef.current
-    prevLoadingRef.current = isLoading
+    // Only act on transition from loading to streaming/ready
+    const wasLoading = prevModeRef.current === "loading"
+    prevModeRef.current = mode
 
-    if (wasLoading === true && isLoading === false && audioUrl) {
+    // Unload when synthesis is complete (streaming or ready mode)
+    if (wasLoading && (mode === "streaming" || mode === "ready") && isPlaying) {
       // Synthesis complete - unload models to free GPU memory
       fetch("/api/tts/unload", { method: "POST" }).catch(() => {})
     }
@@ -1071,14 +1068,12 @@ export function AudioProvider({
   const valueRef = useRef<{
     store: AudioStore
     actions: AudioActions
-    audioRef: React.RefObject<HTMLAudioElement | null>
   }>(null!)
 
   if (!valueRef.current) {
     valueRef.current = {
       store,
       actions: {} as AudioActions, // Populated below
-      audioRef,
     }
   }
 
@@ -1112,8 +1107,7 @@ export function AudioProvider({
 
   return (
     <AudioContext.Provider value={valueRef.current}>
-      {/* Hidden audio elements */}
-      <audio ref={audioRef} />
+      {/* Hidden audio element for music playback */}
       <audio ref={musicAudioRef} />
       {children}
     </AudioContext.Provider>
@@ -1152,8 +1146,4 @@ export function useAudioSelector<T>(selector: (state: AudioState) => T): T {
 
 export function useAudioActions(): AudioActions {
   return useAudioContext().actions
-}
-
-export function useAudioRef(): React.RefObject<HTMLAudioElement | null> {
-  return useAudioContext().audioRef
 }

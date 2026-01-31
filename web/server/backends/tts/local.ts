@@ -1,15 +1,9 @@
-import type { TTSBackend, SynthesisResult, VoiceInfo } from "./interface"
-
-const TIMEOUT_MS = 180_000
+import type { TTSBackend, VoiceInfo } from "./interface"
 
 interface LocalTTSConfig {
   baseUrl: string
 }
 
-/**
- * Local TTS backend - passes through to FastAPI TTS worker running locally.
- * Used for development when running docker compose.
- */
 export class LocalTTSBackend implements TTSBackend {
   readonly name = "local-tts"
   private baseUrl: string
@@ -18,39 +12,31 @@ export class LocalTTSBackend implements TTSBackend {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "")
   }
 
-  async synthesize(text: string, voiceId: string): Promise<SynthesisResult> {
+  async *synthesizeStream(text: string, voiceId: string): AsyncGenerator<Uint8Array> {
     if (!text.trim()) {
-      return { error: "Empty text" }
+      throw new Error("Empty text")
     }
 
-    try {
-      const response = await fetch(`${this.baseUrl}/synthesize`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voiceId }),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      })
+    const res = await fetch(`${this.baseUrl}/synthesize/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice_id: voiceId }),
+    })
 
-      if (!response.ok) {
-        const error = await response.text()
-        return { error: `Synthesis failed: ${error}` }
-      }
+    if (!res.ok) {
+      const error = await res.text()
+      throw new Error(`Stream failed: ${error}`)
+    }
 
-      const data = (await response.json()) as {
-        audio: string
-        sampleRate: number
-        durationMs: number
-        wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>
-      }
+    if (!res.body) {
+      throw new Error("No response body")
+    }
 
-      return {
-        audio: data.audio,
-        sampleRate: data.sampleRate,
-        durationMs: data.durationMs,
-        wordTimestamps: data.wordTimestamps,
-      }
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : "Synthesis failed" }
+    const reader = res.body.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      yield value
     }
   }
 
@@ -78,9 +64,6 @@ export class LocalTTSBackend implements TTSBackend {
   }
 }
 
-/**
- * Create Local TTS backend from environment.
- */
 export function createLocalTTSBackend(env: {
   TTS_WORKER_URL?: string
 }): LocalTTSBackend {

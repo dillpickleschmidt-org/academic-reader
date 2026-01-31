@@ -71,8 +71,7 @@ tts.use("/tts/*", requireAuth)
 
 /**
  * Synthesize audio for a chunk via SSE.
- * Combines rewrite + synthesis into a single endpoint.
- * Caches both variation text (reused across voices) and audio (per voice).
+ * Streams PCM audio chunks as they're generated.
  */
 tts.post("/tts/synthesize", async (c) => {
   const event = c.get("event")
@@ -244,75 +243,78 @@ tts.post("/tts/synthesize", async (c) => {
           return
         }
 
-        const synthesisResult = await tryCatch(backend.synthesize(variationText!, voiceId))
+        // Collect all PCM chunks for caching
+        const pcmChunks: Uint8Array[] = []
+        let pendingByte: number | null = null
 
-        if (!synthesisResult.success || synthesisResult.data.error) {
-          const errorMsg = synthesisResult.success
-            ? synthesisResult.data.error
-            : getErrorMessage(synthesisResult.error)
-          event.error = {
-            category: "backend",
-            message: errorMsg!,
-            code: "TTS_SYNTHESIS_ERROR",
+        // Stream audio chunks to client (ensuring even byte counts for int16)
+        for await (const chunk of backend.synthesizeStream(variationText!, voiceId)) {
+          let data = chunk
+          if (pendingByte !== null) {
+            data = new Uint8Array([pendingByte, ...chunk])
+            pendingByte = null
           }
-          sendEvent({ type: "error", error: errorMsg })
-          controller.close()
-          return
+          if (data.length % 2 !== 0) {
+            pendingByte = data[data.length - 1]
+            data = data.slice(0, -1)
+          }
+          if (data.length > 0) {
+            pcmChunks.push(data)
+            sendEvent({
+              type: "audio-chunk",
+              data: Buffer.from(data).toString("base64"),
+            })
+          }
         }
 
-        const result = synthesisResult.data
+        // Send completion event
+        sendEvent({ type: "complete" })
+
+        // Save combined audio to storage (non-blocking)
+        const totalLength = pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+        const combinedPcm = new Uint8Array(totalLength)
+        let offset = 0
+        for (const chunk of pcmChunks) {
+          combinedPcm.set(chunk, offset)
+          offset += chunk.length
+        }
+
+        const sampleRate = 24000
+        const durationMs = Math.round((totalLength / 2 / sampleRate) * 1000)
+        const wavBuffer = pcmToWav(combinedPcm, sampleRate)
 
         const storagePath = `documents/${userId}/${doc.storageId}/audio/${voiceId}/${blockId.replace(/\//g, "_")}.wav`
-        const audioBuffer = Buffer.from(result.audio!, "base64")
 
-        const saveResult = await tryCatch(
-          storage.saveFile(storagePath, audioBuffer, {
+        storage
+          .saveFile(storagePath, wavBuffer, {
             contentType: "audio/wav",
             cacheControl: "public, max-age=31536000, immutable",
-          }),
-        )
-
-        if (!saveResult.success) {
-          event.error = {
-            category: "storage",
-            message: getErrorMessage(saveResult.error),
-            code: "STORAGE_SAVE_ERROR",
-          }
-          sendEvent({ type: "error", error: "Failed to save audio" })
-          controller.close()
-          return
-        }
-
-        if (result.wordTimestamps) {
-          convex
-            .mutation(api.api.ttsAudio.createAudio, {
-              documentId: documentId as Id<"documents">,
-              blockId,
-              voiceId,
-              text: variationText!,
-              storagePath,
-              durationMs: result.durationMs!,
-              sampleRate: result.sampleRate!,
-              wordTimestamps: result.wordTimestamps,
-            })
-            .catch((e) => {
-              event.warning = {
-                message: getErrorMessage(e),
-                code: "TTS_AUDIO_CACHE_FAILED",
-              }
-            })
-        }
-
-        const audioUrl = await storage.getFileUrl(storagePath)
-        sendEvent({
-          type: "complete",
-          audioUrl,
-          text: variationText,
-          durationMs: result.durationMs,
-          sampleRate: result.sampleRate,
-          wordTimestamps: result.wordTimestamps,
-          cached: false,
-        })
+          })
+          .then(() => {
+            convex
+              .mutation(api.api.ttsAudio.createAudio, {
+                documentId: documentId as Id<"documents">,
+                blockId,
+                voiceId,
+                text: variationText!,
+                storagePath,
+                durationMs,
+                sampleRate,
+                wordTimestamps: [],
+              })
+              .catch((e) => {
+                event.warning = {
+                  message: getErrorMessage(e),
+                  code: "TTS_AUDIO_CACHE_FAILED",
+                }
+              })
+          })
+          .catch((e) => {
+            event.warning = {
+              message: getErrorMessage(e),
+              code: "STORAGE_SAVE_ERROR",
+            }
+          })
       } catch (e) {
         const errorMessage = getErrorMessage(e)
         event.error = {
@@ -364,3 +366,32 @@ tts.post("/tts/unload", async (c) => {
 
   return c.json({ unloaded: results })
 })
+
+function pcmToWav(pcmData: Uint8Array, sampleRate: number): Buffer {
+  const numChannels = 1
+  const bitsPerSample = 16
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8
+  const blockAlign = (numChannels * bitsPerSample) / 8
+  const dataSize = pcmData.length
+  const headerSize = 44
+  const fileSize = headerSize + dataSize - 8
+
+  const buffer = Buffer.alloc(headerSize + dataSize)
+
+  buffer.write("RIFF", 0)
+  buffer.writeUInt32LE(fileSize, 4)
+  buffer.write("WAVE", 8)
+  buffer.write("fmt ", 12)
+  buffer.writeUInt32LE(16, 16)
+  buffer.writeUInt16LE(1, 20)
+  buffer.writeUInt16LE(numChannels, 22)
+  buffer.writeUInt32LE(sampleRate, 24)
+  buffer.writeUInt32LE(byteRate, 28)
+  buffer.writeUInt16LE(blockAlign, 32)
+  buffer.writeUInt16LE(bitsPerSample, 34)
+  buffer.write("data", 36)
+  buffer.writeUInt32LE(dataSize, 40)
+  buffer.set(pcmData, 44)
+
+  return buffer
+}

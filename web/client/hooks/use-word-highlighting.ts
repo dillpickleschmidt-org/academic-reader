@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { useAudioSelector, useAudioRef } from "@/context/AudioContext"
+import { useAudioSelector } from "@/context/AudioContext"
 import { originalHtmlMap, wrapWordsInSpans } from "@/utils/tts-word-wrapping"
 
 /**
@@ -8,11 +8,11 @@ import { originalHtmlMap, wrapWordsInSpans } from "@/utils/tts-word-wrapping"
  * to avoid React re-renders.
  */
 export function useWordHighlighting() {
-  const currentBlockId = useAudioSelector((s) => s.playback.currentBlockId)
+  const blockId = useAudioSelector((s) => s.playback.blockId)
   const text = useAudioSelector((s) => s.playback.text)
   const wordTimestamps = useAudioSelector((s) => s.playback.wordTimestamps)
   const isPlaying = useAudioSelector((s) => s.playback.isPlaying)
-  const audioRef = useAudioRef()
+  const currentTime = useAudioSelector((s) => s.playback.currentTime)
 
   const blockElementRef = useRef<HTMLElement | null>(null)
   const originalHtmlRef = useRef<string>("")
@@ -41,13 +41,13 @@ export function useWordHighlighting() {
       currentRangeRef.current = null
     }
 
-    if (!currentBlockId || !isPlaying || !wordTimestamps?.length || !text) {
+    if (!blockId || !isPlaying || !wordTimestamps?.length || !text) {
       cleanup()
       return
     }
 
     const blockEl = document.querySelector(
-      `[data-block-id="${currentBlockId}"]`,
+      `[data-block-id="${blockId}"]`,
     )
     if (!blockEl) return
 
@@ -76,11 +76,8 @@ export function useWordHighlighting() {
       gapRangesRef.current = gapRanges
     }
 
-    const audio = audioRef.current
-    if (!audio) return
-
     const animate = () => {
-      const currentMs = audio.currentTime * 1000
+      const currentMs = currentTime * 1000
 
       // Start 50ms early for better perceived sync
       const spokenIndex = wordTimestamps.findIndex(
@@ -139,7 +136,7 @@ export function useWordHighlighting() {
         originalHtmlMap.delete(blockElementRef.current)
       }
     }
-  }, [currentBlockId, text, wordTimestamps, isPlaying, audioRef])
+  }, [blockId, text, wordTimestamps, isPlaying, currentTime])
 }
 
 const NEARBY_THRESHOLD = 3 // Single word OK if within this distance

@@ -10,10 +10,11 @@ image = (
         "nvidia/cuda:12.8.0-devel-ubuntu22.04", add_python="3.12"
     )
     .apt_install("build-essential", "ffmpeg", "libsndfile1", "sox", "git")
+    .run_commands(
+        "pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126",
+    )
     .pip_install(
         "qwen-tts",
-        "torch",
-        "torchaudio",
         "librosa",
         "scipy",
         "soundfile",
@@ -24,7 +25,9 @@ image = (
         'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\')"',
         'python -c "from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()"',
     )
-    .env({"TORCHINDUCTOR_COMPILE_THREADS": "1"})
+    .env({
+        "TORCHINDUCTOR_COMPILE_THREADS": "1",
+    })
     .add_local_dir(VOICES_DIR, remote_path="/voices")
     .add_local_dir(Path(__file__).parent / "core", remote_path="/root/core")
 )
@@ -32,7 +35,7 @@ image = (
 app = modal.App("qwen3-tts", image=image)
 
 # Change this to invalidate the snapshot cache
-snapshot_key = "v18"
+snapshot_key = "v43"
 
 # Imports deferred to inside Modal image context
 with image.imports():
@@ -63,8 +66,26 @@ class Qwen3TTS:
         self.tts_model = Qwen3TTSModel.from_pretrained(
             "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
             device_map="cuda:0",
+            dtype=torch.bfloat16,
+            attn_implementation="sdpa",
         )
         print("[qwen3-tts] qwen-tts model loaded", flush=True)
+
+        # Compile only the internal transformer (talker.model) to avoid torch.cond
+        # in code_predictor.generate() which uses transformers' GenerationMixin
+        print("[qwen3-tts] Compiling talker.model with torch.compile...", flush=True)
+        self.tts_model.model.talker.model = torch.compile(
+            self.tts_model.model.talker.model,
+            mode="default",
+        )
+        print("[qwen3-tts] Compilation registered (will compile on first run)", flush=True)
+
+        # Enable cuDNN benchmarking for optimal convolution algorithms
+        torch.backends.cudnn.benchmark = True
+
+        # Enable TF32 for faster matmul on Ampere+ GPUs (A10G is Ampere)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
         print("[qwen3-tts] Loading MMS alignment model...", flush=True)
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -87,11 +108,14 @@ class Qwen3TTS:
 
     def _warmup(self):
         """Warmup to capture compiled kernels in snapshot."""
+        import time
         print("[qwen3-tts] Running warmup inference...", flush=True)
 
         warmup_text = "Hello, this is a warmup."
         voice_id = list(self.voice_prompts.keys())[0]
 
+        step = 0
+        t0 = time.perf_counter()
         for _ in generate_streaming(
             self.tts_model,
             text=warmup_text,
@@ -99,7 +123,9 @@ class Qwen3TTS:
             language="english",
             chunk_size=25,
         ):
-            pass
+            step += 1
+            elapsed = time.perf_counter() - t0
+            print(f"[qwen3-tts] Warmup step {step} completed, elapsed: {elapsed:.1f}s", flush=True)
 
         print("[qwen3-tts] Warmup complete", flush=True)
 

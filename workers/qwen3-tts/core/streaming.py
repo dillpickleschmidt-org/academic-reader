@@ -1,7 +1,32 @@
 """Streaming generation for Qwen3-TTS."""
 
+import time
 import torch
 import torch.nn.functional as F
+
+
+
+class Profiler:
+    def __init__(self):
+        self.times = {}
+        self.counts = {}
+
+    def record(self, name, duration):
+        if name not in self.times:
+            self.times[name] = 0.0
+            self.counts[name] = 0
+        self.times[name] += duration
+        self.counts[name] += 1
+
+    def summary(self):
+        print("\n=== PROFILING SUMMARY ===", flush=True)
+        total = sum(self.times.values())
+        for name, t in sorted(self.times.items(), key=lambda x: -x[1]):
+            avg = t / self.counts[name] if self.counts[name] > 0 else 0
+            pct = (t / total * 100) if total > 0 else 0
+            print(f"{name}: {t*1000:.1f}ms total ({pct:.1f}%), {avg*1000:.2f}ms avg, {self.counts[name]} calls", flush=True)
+        print(f"TOTAL: {total*1000:.1f}ms", flush=True)
+        print("=========================\n", flush=True)
 
 
 def sample_token(logits, temperature, top_p, top_k):
@@ -26,7 +51,10 @@ def sample_token(logits, temperature, top_p, top_k):
         logits = logits.masked_fill(indices_to_remove, float("-inf"))
 
     probs = F.softmax(logits, dim=-1)
-    return torch.multinomial(probs, num_samples=1)
+
+    # Sync-free sampling via exponential trick (equivalent to multinomial)
+    q = torch.empty_like(probs).exponential_(1)
+    return torch.argmax(probs / q, dim=-1, keepdim=True)
 
 
 def generate_streaming(
@@ -61,17 +89,26 @@ def generate_streaming(
     talker = model.talker
     config = model.config
 
+    preprocess_profiler = Profiler()
+
+    t0 = time.perf_counter()
     voice_clone_prompt_dict = tts_model._prompt_items_to_voice_clone_prompt(
         voice_clone_prompt
     )
+    preprocess_profiler.record("prompt_to_dict", time.perf_counter() - t0)
 
+    t0 = time.perf_counter()
     input_text = f"<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n"
     input_ids = tts_model.processor.tokenizer(
         input_text, return_tensors="pt"
     ).input_ids.to("cuda")
+    preprocess_profiler.record("tokenize", time.perf_counter() - t0)
 
     # === PREPROCESSING ===
+    t0 = time.perf_counter()
     voice_clone_spk_embeds = model.generate_speaker_prompt(voice_clone_prompt_dict)
+    torch.cuda.synchronize()
+    preprocess_profiler.record("generate_speaker_prompt", time.perf_counter() - t0)
 
     if (
         voice_clone_prompt_dict["x_vector_only_mode"][0]
@@ -168,6 +205,7 @@ def generate_streaming(
                 ref_input_text, return_tensors="pt"
             ).input_ids.to("cuda")
 
+            t0 = time.perf_counter()
             icl_input_embed, trailing_text_hidden = model.generate_icl_prompt(
                 text_id=input_ids[:, 3:-5],
                 ref_id=ref_ids[:, 3:-2],
@@ -176,6 +214,8 @@ def generate_streaming(
                 tts_eos_embed=tts_eos_embed,
                 non_streaming_mode=False,
             )
+            torch.cuda.synchronize()
+            preprocess_profiler.record("generate_icl_prompt", time.perf_counter() - t0)
             talker_input_embed = torch.cat(
                 [talker_input_embed, icl_input_embed], dim=1
             )
@@ -228,11 +268,18 @@ def generate_streaming(
     )
     trailing_text_hiddens = trailing_text_hidden
 
+    print("\n=== PREPROCESSING PROFILING ===", flush=True)
+    preprocess_profiler.summary()
+
     # === GENERATION LOOP ===
     eos_token_id = config.talker_config.codec_eos_token_id
     accumulated_codes = []
     yielded_audio_samples = 0
+    profiler = Profiler()
+    generation_start = time.perf_counter()
 
+    print("[streaming] Starting initial forward (torch.compile happens here)...", flush=True)
+    t0 = time.perf_counter()
     with torch.inference_mode():
         outputs = talker(
             inputs_embeds=talker_input_embeds,
@@ -244,14 +291,22 @@ def generate_streaming(
             tts_pad_embed=tts_pad_embed,
             generation_step=-1,
         )
+    torch.cuda.synchronize()
+    initial_forward_time = time.perf_counter() - t0
+    print(f"[streaming] Initial forward completed in {initial_forward_time:.1f}s", flush=True)
+    profiler.record("initial_forward", initial_forward_time)
 
     logits = outputs.logits[:, -1, :]
     next_token = sample_token(logits, temperature, top_p, top_k)
+
     past_key_values = outputs.past_key_values
     past_hidden = outputs.past_hidden
     generation_step = outputs.generation_step
 
     for step in range(max_new_tokens):
+        if step == 0:
+            print("[streaming] Starting first generation step...", flush=True)
+        t0 = time.perf_counter()
         with torch.inference_mode():
             outputs = talker(
                 input_ids=next_token,
@@ -264,36 +319,54 @@ def generate_streaming(
                 tts_pad_embed=tts_pad_embed,
                 generation_step=generation_step,
             )
+        # Sync to ensure codec_ids is valid before we use it
+        torch.cuda.synchronize()
+        profiler.record("forward_pass", time.perf_counter() - t0)
+        if step == 0:
+            print(f"[streaming] First generation step completed in {time.perf_counter() - t0:.1f}s", flush=True)
 
         codec_ids = outputs.hidden_states[-1]
 
-        # Check for EOS before appending - don't include EOS in codes to decode
+        # Check for EOS before appending
         if codec_ids is not None and codec_ids[0, 0].item() == eos_token_id:
             break
 
         if codec_ids is not None:
             accumulated_codes.append(codec_ids)
 
-        if len(accumulated_codes) >= chunk_size and len(accumulated_codes) % chunk_size == 0:
-            # Decode ALL accumulated codes for proper context
-            codes_tensor = torch.stack(accumulated_codes, dim=0).squeeze(1)
-            wavs, sr = model.speech_tokenizer.decode([{"audio_codes": codes_tensor}])
-            full_audio = wavs[0]
-            # Yield only the new portion we haven't sent yet
-            if len(full_audio) > yielded_audio_samples:
-                yield full_audio[yielded_audio_samples:]
-                yielded_audio_samples = len(full_audio)
-
+        # Sample next token - no sync needed, GPU can pipeline
         logits = outputs.logits[:, -1, :]
         next_token = sample_token(logits, temperature, top_p, top_k)
+
         past_key_values = outputs.past_key_values
         past_hidden = outputs.past_hidden
         generation_step = outputs.generation_step
 
-    # Decode remaining codes (same context-aware approach)
+        # Decode and yield at chunk boundaries
+        if len(accumulated_codes) >= chunk_size and len(accumulated_codes) % chunk_size == 0:
+            t0 = time.perf_counter()
+            codes_tensor = torch.stack(accumulated_codes, dim=0).squeeze(1)
+            wavs, sr = model.speech_tokenizer.decode([{"audio_codes": codes_tensor}])
+            profiler.record("vocoder_decode", time.perf_counter() - t0)
+
+            full_audio = wavs[0]
+            if len(full_audio) > yielded_audio_samples:
+                yield full_audio[yielded_audio_samples:]
+                yielded_audio_samples = len(full_audio)
+
+    # Decode remaining codes
     if accumulated_codes:
+        t0 = time.perf_counter()
         codes_tensor = torch.stack(accumulated_codes, dim=0).squeeze(1)
         wavs, sr = model.speech_tokenizer.decode([{"audio_codes": codes_tensor}])
+        profiler.record("vocoder_decode", time.perf_counter() - t0)
+
         full_audio = wavs[0]
         if len(full_audio) > yielded_audio_samples:
             yield full_audio[yielded_audio_samples:]
+
+    total_time = time.perf_counter() - generation_start
+    print(f"\nTotal generation time: {total_time*1000:.1f}ms", flush=True)
+    print(f"Total codes generated: {len(accumulated_codes)}", flush=True)
+    print(f"Avg time per code: {total_time/len(accumulated_codes)*1000:.2f}ms" if accumulated_codes else "", flush=True)
+    profiler.summary()

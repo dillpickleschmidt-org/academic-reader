@@ -24,6 +24,7 @@ image = (
         'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\')"',
         'python -c "from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()"',
     )
+    .env({"TORCHINDUCTOR_COMPILE_THREADS": "1"})
     .add_local_dir(VOICES_DIR, remote_path="/voices")
     .add_local_dir(Path(__file__).parent / "core", remote_path="/root/core")
 )
@@ -31,7 +32,7 @@ image = (
 app = modal.App("qwen3-tts", image=image)
 
 # Change this to invalidate the snapshot cache
-snapshot_key = "v17"
+snapshot_key = "v18"
 
 # Imports deferred to inside Modal image context
 with image.imports():
@@ -80,7 +81,27 @@ class Qwen3TTS:
             self.voice_prompts[voice_id] = load_voice_prompt(prompt_path, "cuda")
         print(f"[qwen3-tts] Loaded {len(self.voice_prompts)} voice(s)", flush=True)
 
+        torch.set_float32_matmul_precision("high")
+        self._warmup()
         print(f"[qwen3-tts] Ready, snapshotting {snapshot_key}", flush=True)
+
+    def _warmup(self):
+        """Warmup to capture compiled kernels in snapshot."""
+        print("[qwen3-tts] Running warmup inference...", flush=True)
+
+        warmup_text = "Hello, this is a warmup."
+        voice_id = list(self.voice_prompts.keys())[0]
+
+        for _ in generate_streaming(
+            self.tts_model,
+            text=warmup_text,
+            voice_clone_prompt=self.voice_prompts[voice_id],
+            language="english",
+            chunk_size=25,
+        ):
+            pass
+
+        print("[qwen3-tts] Warmup complete", flush=True)
 
     @modal.method()
     def synthesize_streaming(self, text: str, voice_id: str):

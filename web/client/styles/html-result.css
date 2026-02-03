@@ -514,6 +514,12 @@
   scroll-margin-top: 5rem;
   line-height: 1;
   text-align: center;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.page-marker:hover {
+  opacity: 1;
 }
 
 .page-marker::after {

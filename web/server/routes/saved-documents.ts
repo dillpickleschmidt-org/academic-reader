@@ -2,6 +2,7 @@
  * Routes for viewing and deleting saved/persisted documents.
  */
 import { Hono } from "hono"
+import * as mupdf from "mupdf"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { api } from "@repo/convex/convex/_generated/api"
 import { requireAuth } from "../middleware/auth"
@@ -167,5 +168,96 @@ savedDocuments.delete(
     await storage.deletePrefix(folderPrefix).catch(() => {})
 
     return c.json({ success: true })
+  },
+)
+
+/**
+ * Get a single PDF page as a PDF document.
+ * Used for PDF page preview in the reader.
+ */
+savedDocuments.get(
+  "/saved-documents/:documentId/page/:pageNum",
+  requireAuth,
+  async (c) => {
+    const event = c.get("event")
+    const documentId = c.req.param("documentId")
+    const pageNum = parseInt(c.req.param("pageNum"), 10)
+    const userId = c.get("userId")
+    const storage = c.get("storage")
+
+    if (isNaN(pageNum) || pageNum < 0) {
+      return c.json({ error: "Invalid page number" }, 400)
+    }
+
+    const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
+    if (!convex) {
+      event.error = {
+        category: "auth",
+        message: "Failed to authenticate with Convex",
+        code: "CONVEX_AUTH_ERROR",
+      }
+      return c.json({ error: "Authentication failed" }, 401)
+    }
+
+    const typedDocumentId = documentId as Id<"documents">
+    const docResult = await tryCatch(
+      convex.query(api.api.documents.get, { documentId: typedDocumentId }),
+    )
+
+    if (!docResult.success || !docResult.data) {
+      event.error = {
+        category: "storage",
+        message: !docResult.success
+          ? getErrorMessage(docResult.error)
+          : "Document not found",
+        code: "DOCUMENT_NOT_FOUND",
+      }
+      return c.json({ error: "Document not found" }, 404)
+    }
+
+    const storageId = docResult.data.storageId
+    const pdfPath = `documents/${userId}/${storageId}/original.pdf`
+
+    const pdfResult = await tryCatch(storage.readFile(pdfPath))
+    if (!pdfResult.success) {
+      event.error = {
+        category: "storage",
+        message: getErrorMessage(pdfResult.error),
+        code: "PDF_READ_ERROR",
+      }
+      return c.json({ error: "PDF not found" }, 404)
+    }
+
+    const srcDoc = mupdf.Document.openDocument(
+      pdfResult.data,
+      "application/pdf",
+    )
+    try {
+      const pageCount = srcDoc.countPages()
+      if (pageNum >= pageCount) {
+        return c.json({ error: "Page number out of range" }, 400)
+      }
+
+      // Create new PDF with single page
+      const destDoc = new mupdf.PDFDocument()
+      const srcPdf = srcDoc.asPDF()
+      if (!srcPdf) {
+        return c.json({ error: "Not a valid PDF" }, 400)
+      }
+
+      // pageNum from marker IDs is already 0-indexed (from Marker's block IDs)
+      destDoc.graftPage(0, srcPdf, pageNum)
+      const pdfBuffer = destDoc.saveToBuffer()
+      destDoc.destroy()
+
+      return new Response(pdfBuffer.asUint8Array(), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Cache-Control": "private, max-age=3600",
+        },
+      })
+    } finally {
+      srcDoc.destroy()
+    }
   },
 )

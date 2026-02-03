@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useRef, useCallback } from "react"
+import { useMemo, useEffect, useRef, useCallback, useState } from "react"
 import "../styles/base-result.css"
 import "../styles/html-result.css"
 import "katex/dist/katex.min.css"
@@ -8,6 +8,7 @@ import { useDocumentContext } from "@/context/DocumentContext"
 import { useTTSChunkDetection } from "@/hooks/use-tts-chunk-detection"
 import { useWordHighlighting } from "@/hooks/use-word-highlighting"
 import { TTSContextMenu } from "@/components/TTSContextMenu"
+import { PdfPageDialog } from "@/components/PdfPageDialog"
 
 interface Props {
   content: string
@@ -24,21 +25,42 @@ export function ResultPage({
 }: Props) {
   const documentContext = useDocumentContext()
   const chunks = documentContext?.chunks ?? []
+  const documentId = documentContext?.documentId ?? null
+  const pageOffset = documentContext?.toc?.offset ?? 0
   const { menuState, setMenuOpen, handleContentClick } =
     useTTSChunkDetection(chunks)
 
   // Enable word-level highlighting during TTS playback
   useWordHighlighting()
 
+  // PDF page preview state
+  const [pdfPageDialogOpen, setPdfPageDialogOpen] = useState(false)
+  const [pdfPageNum, setPdfPageNum] = useState<number | null>(null)
+  const [pdfDisplayPage, setPdfDisplayPage] = useState<number | null>(null)
+
   const htmlContent = useMemo(() => ({ __html: content }), [content])
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Combined click handler: internal links first, then TTS chunk detection
+  // Combined click handler: page markers, internal links, then TTS chunk detection
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement
-      const anchor = target.closest("a[href^='#']") as HTMLAnchorElement | null
 
+      // Page marker click - open PDF page preview
+      const pageMarker = target.closest(".page-marker") as HTMLElement | null
+      if (pageMarker && documentId) {
+        const match = pageMarker.id.match(/^page-marker-(\d+)$/)
+        if (match) {
+          const physicalPage = parseInt(match[1], 10)
+          setPdfPageNum(physicalPage)
+          setPdfDisplayPage(physicalPage - pageOffset + 1)
+          setPdfPageDialogOpen(true)
+          return
+        }
+      }
+
+      // Internal anchor links
+      const anchor = target.closest("a[href^='#']") as HTMLAnchorElement | null
       if (anchor) {
         e.preventDefault()
         const targetId = anchor.getAttribute("href")!.slice(1)
@@ -55,7 +77,7 @@ export function ResultPage({
       // Delegate to TTS chunk detection
       handleContentClick(e)
     },
-    [handleContentClick],
+    [handleContentClick, documentId],
   )
 
   // Detect table overflow and update shadow classes based on scroll position
@@ -109,6 +131,13 @@ export function ResultPage({
         chunkContent={menuState.chunkContent}
         isOpen={menuState.isOpen}
         onOpenChange={setMenuOpen}
+      />
+      <PdfPageDialog
+        pageNum={pdfPageNum}
+        displayPage={pdfDisplayPage}
+        documentId={documentId}
+        open={pdfPageDialogOpen}
+        onOpenChange={setPdfPageDialogOpen}
       />
     </ReaderLayout>
   )

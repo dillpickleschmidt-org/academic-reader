@@ -1,14 +1,14 @@
 """LightOnOCR conversion logic."""
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PIL import Image
 
 from .markdown_utils import (
+    crop_bbox_regions,
     pil_to_base64,
     resize_image_for_inference,
-    render_pdf_page,
-    get_pdf_page_count,
     parse_bbox_from_markdown,
     extract_images_from_pdf,
     markdown_to_html,
@@ -21,32 +21,18 @@ if TYPE_CHECKING:
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff", ".tif", ".bmp"}
 
+BATCH_CONCURRENCY = 8
+
 
 def convert_file(file_path: Path, page_range: str | None = None) -> dict:
-    """
-    Convert PDF or image file using LightOnOCR via HTTP API.
-
-    Args:
-        file_path: Path to PDF or image file
-        page_range: Optional page range string like "1-5" or "1,3,5"
-
-    Returns:
-        dict with structure:
-        {
-            "content": html_content,
-            "metadata": {"page_count": N, "processor": "lightonocr"},
-            "formats": {
-                "html": html_content,
-                "markdown": markdown_content,
-                "chunks": None,  # Not implemented yet
-            },
-            "images": {"image_N.png": "base64...", ...}
-        }
-    """
-    # Import here to avoid import errors when using convert_file_with_llm
+    """Convert PDF or image file using LightOnOCR via HTTP API."""
     from .vllm_client import run_inference
 
-    return _convert_file_internal(file_path, page_range, run_inference)
+    def batch_fn(images: list[str]) -> list[str]:
+        with ThreadPoolExecutor(max_workers=BATCH_CONCURRENCY) as pool:
+            return list(pool.map(run_inference, images))
+
+    return _convert_file_internal(file_path, page_range, batch_fn)
 
 
 def convert_image(file_path: Path) -> dict:
@@ -66,76 +52,84 @@ def convert_file_with_llm(
 
     Used by Modal worker where LLM is loaded as a class attribute.
     """
-    def inference_fn(image_base64: str) -> str:
-        return _run_inference_with_llm(llm, image_base64)
+    def batch_fn(images: list[str]) -> list[str]:
+        return _run_batch_inference_with_llm(llm, images)
 
-    return _convert_file_internal(file_path, page_range, inference_fn)
+    return _convert_file_internal(file_path, page_range, batch_fn)
 
 
-def _run_inference_with_llm(llm: "LLM", image_base64: str) -> str:
-    """Run inference using direct vLLM LLM instance."""
+def _run_batch_inference_with_llm(llm: "LLM", images_base64: list[str]) -> list[str]:
+    """Run batched inference using direct vLLM LLM instance."""
     from vllm import SamplingParams
 
-    messages = [{
-        "role": "user",
-        "content": [{
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{image_base64}"}
+    conversations = [
+        [{
+            "role": "user",
+            "content": [{
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{img}"}
+            }]
         }]
-    }]
+        for img in images_base64
+    ]
 
     outputs = llm.chat(
-        messages=[messages],
+        messages=conversations,
         sampling_params=SamplingParams(
             max_tokens=4096,
             temperature=0.2,
             top_p=0.9,
         ),
     )
-    return outputs[0].outputs[0].text
+    return [out.outputs[0].text for out in outputs]
 
 
 def _convert_file_internal(
     file_path: Path,
     page_range: str | None,
-    inference_fn,
+    batch_inference_fn,
 ) -> dict:
-    """
-    Internal conversion function that accepts an inference function.
-
-    Args:
-        file_path: Path to PDF or image file
-        page_range: Optional page range string like "1-5" or "1,3,5"
-        inference_fn: Function that takes base64 image and returns markdown text
-    """
+    """Internal conversion function that accepts a batch inference function."""
     suffix = file_path.suffix.lower()
 
     if suffix == ".pdf":
-        return _convert_pdf(file_path, page_range, inference_fn)
+        return _convert_pdf(file_path, page_range, batch_inference_fn)
     elif suffix in IMAGE_EXTENSIONS:
+        inference_fn = lambda img: batch_inference_fn([img])[0]
         return _convert_image(file_path, inference_fn)
     else:
         raise ValueError(f"Unsupported file type: {suffix}")
 
 
-def _convert_pdf(pdf_path: Path, page_range: str | None, inference_fn) -> dict:
-    """Convert a PDF file."""
-    total_pages = get_pdf_page_count(pdf_path)
+def _convert_pdf(pdf_path: Path, page_range: str | None, batch_inference_fn) -> dict:
+    """Convert a PDF file with batched inference."""
+    import pypdfium2 as pdfium
+
+    pdf = pdfium.PdfDocument(str(pdf_path))
+    total_pages = len(pdf)
     pages = parse_page_range(page_range, total_pages)
 
+    # Render all pages once (reused for both inference and image extraction)
+    rendered_pages: dict[int, Image.Image] = {}
+    page_images_b64: list[str] = []
+    for page_idx in pages:
+        bitmap = pdf[page_idx].render(scale=2.0)
+        rendered = bitmap.to_pil()
+        rendered_pages[page_idx] = rendered
+        resized = resize_image_for_inference(rendered)
+        page_images_b64.append(pil_to_base64(resized))
+
+    pdf.close()
+
+    # Batch inference — all pages at once
+    raw_markdowns = batch_inference_fn(page_images_b64)
+
+    # Post-process sequentially (image renumbering needs global counter)
     markdown_parts: list[str] = []
     all_images: dict[str, str] = {}
     image_counter = 0
 
-    for page_idx in pages:
-        # Render page to image
-        page_image = render_pdf_page(pdf_path, page_idx)
-        page_image = resize_image_for_inference(page_image)
-
-        # Run OCR inference
-        image_b64 = pil_to_base64(page_image)
-        raw_markdown = inference_fn(image_b64)
-
+    for page_idx, raw_markdown in zip(pages, raw_markdowns):
         # Parse bbox annotations and extract images
         cleaned_md, bboxes = parse_bbox_from_markdown(raw_markdown)
 
@@ -155,11 +149,17 @@ def _convert_pdf(pdf_path: Path, page_range: str | None, inference_fn) -> dict:
 
             cleaned_md = md_with_renumbered
 
-            # Extract actual images from PDF
-            extracted = extract_images_from_pdf(pdf_path, page_idx, renumbered_bboxes)
+            # Extract actual images using already-rendered page
+            extracted = extract_images_from_pdf(
+                pdf_path, page_idx, renumbered_bboxes,
+                rendered_page=rendered_pages[page_idx],
+            )
             all_images.update(extracted)
 
         markdown_parts.append(cleaned_md)
+
+    # Free rendered pages after extraction
+    rendered_pages.clear()
 
     # Combine all pages
     markdown_content = "\n\n---\n\n".join(markdown_parts)
@@ -192,32 +192,21 @@ def _convert_image(image_path: Path, inference_fn) -> dict:
     # The bboxes would point to regions in the original image
     cleaned_md, bboxes = parse_bbox_from_markdown(raw_markdown)
 
-    # For images, we could optionally crop from the source image
-    # but for now we'll just include the cleaned markdown
     all_images: dict[str, str] = {}
     if bboxes:
         # Renumber and extract from the source image
+        renumbered_bboxes: dict[str, list[int]] = {}
         image_counter = 0
         for old_name, coords in bboxes.items():
             image_counter += 1
             new_name = f"image_{image_counter}.png"
+            renumbered_bboxes[new_name] = coords
             cleaned_md = cleaned_md.replace(
                 f"![image]({old_name})",
                 f"![image]({new_name})"
             )
 
-            # Extract region from source image
-            x1 = int(coords[0] / 1000 * img.width)
-            y1 = int(coords[1] / 1000 * img.height)
-            x2 = int(coords[2] / 1000 * img.width)
-            y2 = int(coords[3] / 1000 * img.height)
-
-            x1, x2 = min(x1, x2), max(x1, x2)
-            y1, y2 = min(y1, y2), max(y1, y2)
-
-            if x2 - x1 > 0 and y2 - y1 > 0:
-                crop = img.crop((x1, y1, x2, y2))
-                all_images[new_name] = pil_to_base64(crop)
+        all_images = crop_bbox_regions(img, renumbered_bboxes)
 
     html_content = markdown_to_html(cleaned_md)
 

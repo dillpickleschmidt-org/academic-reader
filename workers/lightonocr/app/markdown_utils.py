@@ -12,6 +12,11 @@ import markdown as md
 # Maximum longest edge for input images (per LightOnOCR paper)
 MAX_RESOLUTION = 1540
 
+# Pre-compiled regex patterns
+BBOX_PATTERN = re.compile(r'!\[image\]\((image_\d+\.png)\)\s*(\d+),(\d+),(\d+),(\d+)')
+DISPLAY_MATH_PATTERN = re.compile(r'\$\$(.+?)\$\$', re.DOTALL)
+INLINE_MATH_PATTERN = re.compile(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)')
+
 
 def pil_to_base64(img: Image.Image, format: str = "PNG") -> str:
     """Convert PIL Image to base64 string."""
@@ -64,9 +69,6 @@ def parse_bbox_from_markdown(markdown_text: str) -> tuple[str, dict[str, list[in
         - cleaned_markdown: markdown with bbox coords removed
         - bboxes_dict: {"image_1.png": [x1, y1, x2, y2], ...}
     """
-    # Pattern: ![image](image_N.png)x1,y1,x2,y2
-    # Note: there may or may not be a space between the image syntax and coords
-    pattern = r'!\[image\]\((image_\d+\.png)\)\s*(\d+),(\d+),(\d+),(\d+)'
     bboxes: dict[str, list[int]] = {}
 
     def replace_match(m: re.Match) -> str:
@@ -74,22 +76,22 @@ def parse_bbox_from_markdown(markdown_text: str) -> tuple[str, dict[str, list[in
         bboxes[name] = [int(m.group(i)) for i in range(2, 6)]
         return f'![image]({name})'  # Clean version without coords
 
-    cleaned = re.sub(pattern, replace_match, markdown_text)
+    cleaned = BBOX_PATTERN.sub(replace_match, markdown_text)
     return cleaned, bboxes
 
 
-def extract_images_from_pdf(
-    pdf_path: str | Path,
-    page_idx: int,
+def crop_bbox_regions(
+    image: Image.Image,
     bboxes: dict[str, list[int]],
+    padding: dict[str, int] | None = None,
 ) -> dict[str, str]:
     """
-    Extract image regions from PDF page using normalized [0,1000] coordinates.
+    Crop image regions using normalized [0,1000] coordinates.
 
     Args:
-        pdf_path: Path to PDF file
-        page_idx: 0-indexed page number
+        image: Source image to crop from
         bboxes: {"image_1.png": [x1, y1, x2, y2], ...} with coords in [0,1000]
+        padding: {"top": N, "bottom": N, "left": N, "right": N} in normalized [0,1000] space
 
     Returns:
         {"image_1.png": "base64_encoded_png", ...}
@@ -97,41 +99,83 @@ def extract_images_from_pdf(
     if not bboxes:
         return {}
 
-    # Render page at high quality for cropping
-    pil_image = render_pdf_page(pdf_path, page_idx, scale=2.0)
+    default_padding = {"top": 10, "bottom": 0, "left": 0, "right": 10}
+    p = {**default_padding, **(padding or {})}
 
     images: dict[str, str] = {}
     for name, coords in bboxes.items():
-        # Convert from [0,1000] to pixel coordinates
-        x1 = int(coords[0] / 1000 * pil_image.width)
-        y1 = int(coords[1] / 1000 * pil_image.height)
-        x2 = int(coords[2] / 1000 * pil_image.width)
-        y2 = int(coords[3] / 1000 * pil_image.height)
+        # Apply padding in normalized space, clamped to [0, 1000]
+        nx1 = max(0, min(coords[0], coords[2]) - p["left"])
+        ny1 = max(0, min(coords[1], coords[3]) - p["top"])
+        nx2 = min(1000, max(coords[0], coords[2]) + p["right"])
+        ny2 = min(1000, max(coords[1], coords[3]) + p["bottom"])
 
-        # Ensure valid crop region
-        x1, x2 = min(x1, x2), max(x1, x2)
-        y1, y2 = min(y1, y2), max(y1, y2)
+        # Convert from [0,1000] to pixel coordinates
+        x1 = int(nx1 / 1000 * image.width)
+        y1 = int(ny1 / 1000 * image.height)
+        x2 = int(nx2 / 1000 * image.width)
+        y2 = int(ny2 / 1000 * image.height)
 
         if x2 - x1 > 0 and y2 - y1 > 0:
-            crop = pil_image.crop((x1, y1, x2, y2))
+            crop = image.crop((x1, y1, x2, y2))
             images[name] = pil_to_base64(crop)
 
     return images
+
+
+def extract_images_from_pdf(
+    pdf_path: str | Path,
+    page_idx: int,
+    bboxes: dict[str, list[int]],
+    rendered_page: Image.Image | None = None,
+) -> dict[str, str]:
+    """Extract image regions from a PDF page."""
+    if not bboxes:
+        return {}
+
+    pil_image = rendered_page if rendered_page is not None else render_pdf_page(pdf_path, page_idx, scale=2.0)
+    return crop_bbox_regions(pil_image, bboxes)
 
 
 def markdown_to_html(md_text: str) -> str:
     """
     Convert markdown to HTML, preserving LaTeX for KaTeX rendering.
 
-    LaTeX delimiters ($...$, $$...$$) are passed through as-is
-    for frontend rendering with KaTeX/MathJax.
+    LaTeX delimiters ($...$, $$...$$) are extracted before markdown
+    parsing to prevent mangling, then restored as <math> tags for
+    server-side KaTeX rendering.
     """
-    # Configure markdown with common extensions
+    # Protect LaTeX from markdown parser by replacing with placeholders
+    placeholders: dict[str, tuple[str, bool]] = {}
+    counter = 0
+
+    def make_replacer(is_display: bool):
+        def replace_math(m: re.Match) -> str:
+            nonlocal counter
+            key = f"\x00MATH{counter}\x00"
+            counter += 1
+            placeholders[key] = (m.group(1), is_display)
+            return key
+        return replace_math
+
+    # Extract $$...$$ (display) before $...$ (inline) to avoid partial matches
+    protected = DISPLAY_MATH_PATTERN.sub(make_replacer(True), md_text)
+    protected = INLINE_MATH_PATTERN.sub(make_replacer(False), protected)
+
     converter = md.Markdown(extensions=[
         'tables',
         'fenced_code',
     ])
-    return converter.convert(md_text)
+    html = converter.convert(protected)
+
+    # Restore LaTeX as <math> tags for server-side KaTeX rendering
+    for key, (content, is_display) in placeholders.items():
+        if is_display:
+            html = html.replace(key, f'<math display="block">{content}</math>')
+        else:
+            html = html.replace(key, f'<math>{content}</math>')
+
+    return html
 
 
 def parse_page_range(page_range: str | None, total_pages: int) -> list[int]:

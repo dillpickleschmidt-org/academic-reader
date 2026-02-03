@@ -246,10 +246,11 @@ export function convertMathToHtml($: CheerioAPI): void {
     const latex = $(this).text().trim()
     if (!latex) return
 
+    const isDisplay = $(this).attr("display") === "block"
     try {
       const html = katex.renderToString(latex, {
         throwOnError: false,
-        displayMode: false,
+        displayMode: isDisplay,
         output: "htmlAndMathml",
       })
       $(this).replaceWith(html)

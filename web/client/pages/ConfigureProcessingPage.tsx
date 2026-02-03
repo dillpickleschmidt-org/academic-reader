@@ -48,19 +48,19 @@ const MODE_OPTIONS: {
     value: "fast",
     label: "Fast (preferred)",
     description:
-      "Works well with books and handles multi-span tables well with llm support.",
+      "Has good spacial understanding - results in better image crops and multi-span table columns.",
   },
   {
     value: "balanced",
     label: "Balanced",
     description:
-      "Slightly slower and more agressive at converting diagrms to plain text instead of images. Your mileage may vary.",
+      "Better text capture, but not great spacial understanding (images not perfectly cropped). Your mileage may vary.",
   },
   {
     value: "aggressive",
     label: "Aggressive",
     description:
-      "Even slower and more agressive at converting diagrams to plain text instead of images. Your mileage may vary.",
+      "Slower and more agressive at converting diagrams to plain text instead of images. Your mileage may vary.",
   },
 ]
 
@@ -559,8 +559,8 @@ export function ConfigureProcessingPage({
                 <div className="flex flex-col gap-3 mt-2 items-end">
                   {!user && (
                     <p className="text-xs text-muted-foreground">
-                      We require a free account to prevent abuse by bots.
-                      You'll be prompted to sign in / sign up.
+                      We require a free account to prevent abuse by bots. You'll
+                      be prompted to sign in / sign up.
                     </p>
                   )}
                   <div className="flex gap-3 w-full">

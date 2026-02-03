@@ -33,6 +33,7 @@ def start_vllm(timeout: int = 300) -> bool:
                 "--limit-mm-per-prompt", '{"image": 1}',
                 "--gpu-memory-utilization", "0.9",
                 "--served-model-name", "lightonocr",
+                "--max-num-batched-tokens", "32768",
                 "--mm-processor-cache-gb", "0",
                 "--port", "8000",
             ],

@@ -47,6 +47,7 @@ class LightOnOCR:
             "lightonai/LightOnOCR-2-1B-bbox-soup",
             dtype="bfloat16",
             max_model_len=8192,
+            max_num_batched_tokens=32768,
             limit_mm_per_prompt={"image": 1},
             gpu_memory_utilization=0.9,
         )

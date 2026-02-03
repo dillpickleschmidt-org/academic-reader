@@ -198,6 +198,7 @@ body {
     transform: translateY(-150%);
     opacity: 0;
   }
+
 }
 
 /* Theme toggle - fixed top right */
@@ -241,6 +242,12 @@ body {
 .reader-theme-toggle button[data-active="true"] {
   background: var(--reader-bg);
   color: var(--reader-text);
+}
+
+@media (max-width: 1535px) {
+  .reader-theme-toggle {
+    top: 0.5rem;
+  }
 }
 
 /* Shared pre/code styles for markdown and json views */

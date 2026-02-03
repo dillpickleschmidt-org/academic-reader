@@ -1,4 +1,4 @@
-import type { TTSBackend, VoiceInfo } from "./interface"
+import type { TTSBackend, VoiceInfo, SynthesizeResult } from "./interface"
 
 interface LocalTTSConfig {
   baseUrl: string
@@ -10,6 +10,25 @@ export class LocalTTSBackend implements TTSBackend {
 
   constructor(config: LocalTTSConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "")
+  }
+
+  async synthesize(text: string, voiceId: string): Promise<SynthesizeResult> {
+    if (!text.trim()) {
+      throw new Error("Empty text")
+    }
+
+    const res = await fetch(`${this.baseUrl}/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceId }),
+    })
+
+    if (!res.ok) {
+      const error = await res.text()
+      throw new Error(`Synthesis failed: ${error}`)
+    }
+
+    return res.json() as Promise<SynthesizeResult>
   }
 
   async *synthesizeStream(text: string, voiceId: string): AsyncGenerator<Uint8Array> {

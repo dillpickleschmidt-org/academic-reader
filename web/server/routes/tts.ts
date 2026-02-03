@@ -7,7 +7,10 @@ import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { createTTSBackend } from "../backends/tts/factory"
-import { listAvailableVoiceSummaries, getEngineForVoice } from "../backends/tts/registry"
+import {
+  listAvailableVoiceSummaries,
+  getEngineForVoice,
+} from "../backends/tts/registry"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 import { createChatModel } from "../providers/models"
 import { stripHtmlForEmbedding } from "../services/embeddings"
@@ -26,7 +29,7 @@ No summaries, no comments.
 Convert LaTeX into plain English spoken equivalents. **Leave out no important variables and leave out no details that would change the meaning of the math**. Additionally, clarify the difference between uppercase and lowercase variables of the same letter if both are present in the same paragraph. To do this, use a "type descriptor" (such as "the set," "the graph," or "the matrix") and the word "capital" immediately before the variable name for uppercase versions. Use a type descriptor for the lowercase version as well.
 Example 1: We provide a set of module prototypes $S=\{G_1, G_2, \\dots, G_{|S|}\}$ -> We provide a set of module prototypes, S, which contains elements G sub-one, G sub-two, and so on, up to the total number of items in the set.
 *note that no descriptors are added because there are no lowercase s or g variables present.
-Example 2: Each edge $e\\in E$ connects two nodes $n_1, n_2 \\in N$ and represents an individual branch segment $e=(n_1, n_2)$ -> Each edge e, which is an element of the edge set capital E, connects two nodes n sub-one and n sub-two, which are elements of the node set capital N, and represents an individual branch segment e equals the pair n sub-one and n sub-two.
+Example 2: Each edge $e\\in E$ connects two nodes $n_1, n_2 \\in N$ and represents an individual branch segment $e=(n_1, n_2)$ -> Each edge e, which is in the edge set capital E, connects two nodes n sub-one and n sub-two, which are elements of the node set capital N, and represents an individual branch segment e equals the pair n sub-one and n sub-two.
 *note that "edge e" and "edge set capital E" are used to clearly contrast the specific items against the collections.
 
 **Pass 3 – Sentence Slicing**
@@ -150,6 +153,9 @@ tts.post("/tts/synthesize", async (c) => {
     })
   }
 
+  const engine = getEngineForVoice(voiceId)
+  const workerActivation = activateWorker(engine)
+
   const streamStart = performance.now()
   const stream = new ReadableStream({
     async start(controller) {
@@ -216,7 +222,10 @@ tts.post("/tts/synthesize", async (c) => {
               message: getErrorMessage(generateResult.error),
               code: "AI_GENERATE_ERROR",
             }
-            sendEvent({ type: "error", error: "Failed to prepare text for speech" })
+            sendEvent({
+              type: "error",
+              error: "Failed to prepare text for speech",
+            })
             controller.close()
             return
           }
@@ -226,8 +235,7 @@ tts.post("/tts/synthesize", async (c) => {
 
         sendEvent({ type: "progress", stage: "synthesizing" })
 
-        const engine = getEngineForVoice(voiceId)
-        await activateWorker(engine)
+        await workerActivation
 
         let backend
         try {
@@ -243,35 +251,54 @@ tts.post("/tts/synthesize", async (c) => {
           return
         }
 
-        // Collect all PCM chunks for caching
-        const pcmChunks: Uint8Array[] = []
-        let pendingByte: number | null = null
+        // Non-streaming synthesis for testing (swap back to streaming when done)
+        const USE_STREAMING = true
 
-        // Stream audio chunks to client (ensuring even byte counts for int16)
-        for await (const chunk of backend.synthesizeStream(variationText!, voiceId)) {
-          let data = chunk
-          if (pendingByte !== null) {
-            data = new Uint8Array([pendingByte, ...chunk])
-            pendingByte = null
+        const pcmChunks: Uint8Array[] = []
+
+        if (USE_STREAMING) {
+          let pendingByte: number | null = null
+          for await (const chunk of backend.synthesizeStream(
+            variationText!,
+            voiceId,
+          )) {
+            let data = chunk
+            if (pendingByte !== null) {
+              data = new Uint8Array([pendingByte, ...chunk])
+              pendingByte = null
+            }
+            if (data.length % 2 !== 0) {
+              pendingByte = data[data.length - 1]
+              data = data.slice(0, -1)
+            }
+            if (data.length > 0) {
+              pcmChunks.push(data)
+              sendEvent({
+                type: "audio-chunk",
+                data: Buffer.from(data).toString("base64"),
+              })
+            }
           }
-          if (data.length % 2 !== 0) {
-            pendingByte = data[data.length - 1]
-            data = data.slice(0, -1)
-          }
-          if (data.length > 0) {
-            pcmChunks.push(data)
-            sendEvent({
-              type: "audio-chunk",
-              data: Buffer.from(data).toString("base64"),
-            })
-          }
+        } else {
+          const result = await backend.synthesize(variationText!, voiceId)
+          // Decode base64 WAV and extract PCM (skip 44-byte WAV header)
+          const wavBuffer = Buffer.from(result.audio, "base64")
+          const pcmData = new Uint8Array(wavBuffer.subarray(44))
+          pcmChunks.push(pcmData)
+          sendEvent({
+            type: "audio-chunk",
+            data: Buffer.from(pcmData).toString("base64"),
+          })
         }
 
         // Send completion event
         sendEvent({ type: "complete" })
 
         // Save combined audio to storage (non-blocking)
-        const totalLength = pcmChunks.reduce((sum, chunk) => sum + chunk.length, 0)
+        const totalLength = pcmChunks.reduce(
+          (sum, chunk) => sum + chunk.length,
+          0,
+        )
         const combinedPcm = new Uint8Array(totalLength)
         let offset = 0
         for (const chunk of pcmChunks) {
@@ -354,7 +381,9 @@ tts.post("/tts/unload", async (c) => {
     return c.json({ unloaded: false, reason: "not local mode" })
   }
 
-  const ttsWorkers = Object.entries(WORKERS).filter(([, w]) => w.category === "tts")
+  const ttsWorkers = Object.entries(WORKERS).filter(
+    ([, w]) => w.category === "tts",
+  )
   const results: Record<string, boolean> = {}
 
   await Promise.all(

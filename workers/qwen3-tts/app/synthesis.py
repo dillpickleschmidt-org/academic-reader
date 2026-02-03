@@ -63,7 +63,7 @@ def synthesize(text: str, voice_id: str) -> tuple[str, int, float]:
     return audio_base64, sr, duration_ms
 
 
-def synthesize_streaming(text: str, voice_id: str, chunk_size: int = 25) -> Generator[bytes, None, None]:
+def synthesize_streaming(text: str, voice_id: str, chunk_size: int = 50) -> Generator[bytes, None, None]:
     """Synthesize speech with streaming output.
 
     Args:

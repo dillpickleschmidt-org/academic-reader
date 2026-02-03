@@ -210,11 +210,6 @@ export async function processCompletedJob(
     processedContent = rewriteImageSources(processedContent, imageUrls)
   }
 
-  // Apply HTML enhancements
-  if (processedContent) {
-    processedContent = processHtml(processedContent, HTML_TRANSFORMS)
-  }
-
   const rawChunks = result.formats?.chunks?.blocks ?? []
   const normalizedChunks = rawChunks.map((block, index) =>
     normalizeChunk(block, index),
@@ -327,6 +322,11 @@ export async function processCompletedJob(
     }
   } catch (err) {
     event.pageMarkerError = getErrorMessage(err)
+  }
+
+  // Apply HTML enhancements (after page markers so tables wrap correctly)
+  if (processedContent) {
+    processedContent = processHtml(processedContent, HTML_TRANSFORMS)
   }
 
   // Rewrite image sources in formats.html for storage

@@ -3,8 +3,19 @@ export interface VoiceInfo {
   displayName: string
 }
 
+export interface SynthesizeResult {
+  audio: string // base64-encoded WAV
+  sampleRate: number
+  durationMs: number
+}
+
 export interface TTSBackend {
   readonly name: string
+
+  /**
+   * Synthesize audio and return complete result (non-streaming).
+   */
+  synthesize(text: string, voiceId: string): Promise<SynthesizeResult>
 
   /**
    * Stream audio chunks as raw PCM s16le at 24kHz.

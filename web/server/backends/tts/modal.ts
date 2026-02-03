@@ -1,4 +1,4 @@
-import type { TTSBackend, VoiceInfo } from "./interface"
+import type { TTSBackend, VoiceInfo, SynthesizeResult } from "./interface"
 
 interface ModalTTSConfig {
   qwen3Url?: string
@@ -10,6 +10,29 @@ export class ModalTTSBackend implements TTSBackend {
 
   constructor(config: ModalTTSConfig) {
     this.config = config
+  }
+
+  async synthesize(text: string, voiceId: string): Promise<SynthesizeResult> {
+    if (!text.trim()) {
+      throw new Error("Empty text")
+    }
+
+    if (!this.config.qwen3Url) {
+      throw new Error("No endpoint configured for TTS")
+    }
+
+    const res = await fetch(`${this.config.qwen3Url}/synthesize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voiceId }),
+    })
+
+    if (!res.ok) {
+      const error = await res.text()
+      throw new Error(`Synthesis failed: ${error}`)
+    }
+
+    return res.json() as Promise<SynthesizeResult>
   }
 
   async *synthesizeStream(text: string, voiceId: string): AsyncGenerator<Uint8Array> {

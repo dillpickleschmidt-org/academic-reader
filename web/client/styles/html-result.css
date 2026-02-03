@@ -22,6 +22,11 @@
   --reader-link: oklch(0.7 0.15 162);
 }
 
+/* Brighter links for rose-quartz dark mode */
+[data-color-theme="rose-quartz"].dark .reader-output {
+  --reader-link: oklch(0.58 0.16 5);
+}
+
 :is([data-reader-mode="comfort"], #theme-comfort:checked ~ .reader-output) {
   --reader-text-heading: #2a2520;
 }
@@ -68,8 +73,6 @@
   font-size: 1.875rem;
   margin-top: 0;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--reader-border);
-  padding-bottom: 0.5rem;
 }
 
 /* h2 */
@@ -77,8 +80,6 @@
   font-size: 1.3rem;
   margin-top: 2.5rem;
   margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--reader-border);
   color: var(--reader-text-heading-h2);
 }
 
@@ -500,17 +501,40 @@
 
 /* ========================================
    Page Markers
-   Bottom-right page numbers for TOC navigation
+   Top-right page numbers for TOC navigation
    ======================================== */
 
 .page-marker {
-  display: block;
-  text-align: right;
-  font-size: 0.75rem;
+  float: right;
+  font-size: 0.875rem;
   color: var(--reader-text-muted);
-  padding-bottom: 0.5rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--reader-border);
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
   opacity: 0.6;
   scroll-margin-top: 5rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.page-marker::after {
+  content: "▾";
+  font-size: 0.625rem;
+  display: block;
+}
+
+/* Don't float when followed by table or image */
+.page-marker:has(+ table),
+.page-marker:has(+ .table-container),
+.page-marker:has(+ img) {
+  float: none;
+  display: block;
+  text-align: right;
+  margin-left: 0;
+}
+
+.page-divider {
+  clear: both;
+  border: none;
+  border-top: 1px solid var(--reader-border);
+  margin: 2rem 0;
 }

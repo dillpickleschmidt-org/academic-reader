@@ -65,7 +65,9 @@ export function enhanceHtmlForReader(html: string): string {
 export function wrapTablesInScrollContainers($: CheerioAPI): void {
   $("table").each(function () {
     // Two wrappers: outer holds shadows (position: relative), inner handles scroll (overflow-x: auto)
-    $(this).wrap('<div class="table-container"><div class="table-scroll"></div></div>')
+    $(this).wrap(
+      '<div class="table-container"><div class="table-scroll"></div></div>',
+    )
   })
 }
 
@@ -288,7 +290,7 @@ export interface PageMarkerResult {
 }
 
 /**
- * Inject page markers into HTML after each page's last block.
+ * Inject page markers into HTML with dividers and page numbers at the top of each page.
  * Parses page numbers directly from data-block-id attributes (format: /page/{num}/...).
  * Markers serve as scroll targets for TOC navigation and display page numbers.
  */
@@ -298,28 +300,30 @@ export function injectPageMarkers(
 ): PageMarkerResult {
   const $ = cheerio.load(html)
 
-  // Find last element of each page by parsing data-block-id attributes
-  const pageLastBlockId = new Map<number, string>()
+  // Find first element of each page by parsing data-block-id attributes
+  const pageFirstBlockId = new Map<number, string>()
   $("[data-block-id]").each((_, el) => {
     const blockId = $(el).attr("data-block-id")
     const match = blockId?.match(/^\/page\/(\d+)\//)
     if (match && blockId) {
       const page = parseInt(match[1], 10)
-      // Always update to get the last block for each page
-      pageLastBlockId.set(page, blockId)
+      if (!pageFirstBlockId.has(page)) {
+        pageFirstBlockId.set(page, blockId)
+      }
     }
   })
 
-  // Inject marker after each page's last element
-  for (const [physicalPage, blockId] of pageLastBlockId) {
+  // Inject divider + page number before each page's first element
+  const minPage = Math.min(...pageFirstBlockId.keys())
+  for (const [physicalPage, blockId] of pageFirstBlockId) {
     const displayPage = physicalPage - offset + 1
-    const marker = `<span class="page-marker" id="page-marker-${physicalPage}">${displayPage}</span>`
-    $(`[data-block-id="${blockId}"]`).after(marker)
+    const divider = physicalPage > minPage ? `<hr class="page-divider" />` : ""
+    const marker = `${divider}<span class="page-marker" id="page-marker-${physicalPage}">${displayPage}</span>`
+    $(`[data-block-id="${blockId}"]`).before(marker)
   }
 
   return {
     html: $("body").html() ?? "",
-    stats: { expected: pageLastBlockId.size, injected: pageLastBlockId.size },
+    stats: { expected: pageFirstBlockId.size, injected: pageFirstBlockId.size },
   }
 }
-

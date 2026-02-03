@@ -30,7 +30,7 @@ image = (
 
 app = modal.App("qwen3-tts", image=image)
 
-snapshot_key = "v95"
+snapshot_key = "v98"
 
 with image.imports():
     import sys
@@ -158,7 +158,7 @@ class Qwen3TTS:
 
         voice_prompt = self.voice_prompts[voice_id]
         voice = VOICES[voice_id]
-        chunk_size = 25
+        chunk_size = 50
 
         accumulated_codes = []
         yielded_audio_samples = 0
@@ -253,23 +253,18 @@ def api():
     worker = Qwen3TTS()
 
     class SynthesizeRequest(BaseModel):
-        segments: list[dict]
+        text: str
+        voiceId: str = "male_1"
 
     class StreamRequest(BaseModel):
         text: str
         voice_id: str = "male_1"
 
     @web.post("/synthesize")
-    async def synthesize(req: SynthesizeRequest):
-        """Spawn all segments in parallel (non-streaming)."""
-        calls = []
-        for seg in req.segments:
-            call = await worker.synthesize.spawn.aio(
-                seg.get("text", ""),
-                seg.get("voice_id", "male_1"),
-            )
-            calls.append(call.object_id)
-        return {"call_ids": calls}
+    async def synthesize_sync(req: SynthesizeRequest):
+        """Synthesize speech synchronously (non-streaming)."""
+        result = await worker.synthesize.remote.aio(req.text, req.voiceId)
+        return result
 
     @web.post("/synthesize/stream")
     async def synthesize_stream(req: StreamRequest):
@@ -303,15 +298,6 @@ def api():
                 "X-Audio-Format": "s16le",
             },
         )
-
-    @web.get("/result/{call_id}")
-    async def result(call_id: str):
-        fc = modal.FunctionCall.from_id(call_id)
-        try:
-            out = await fc.get.aio(timeout=0)
-            return {"status": "completed", **out}
-        except TimeoutError:
-            return {"status": "pending"}
 
     @web.get("/voices")
     async def voices():

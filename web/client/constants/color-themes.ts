@@ -1,7 +1,7 @@
 export const COLOR_THEMES = [
   { id: "basic", name: "Basic" },
   { id: "amethyst-haze", name: "Amethyst Haze" },
-  { id: "caffeine", name: "Caffeine" },
+  { id: "bifurcate", name: "Bifurcate" },
   { id: "perpetuity", name: "Perpetuity" },
   { id: "notebook", name: "Notebook" },
   { id: "rose-quartz", name: "Rose Quartz" },

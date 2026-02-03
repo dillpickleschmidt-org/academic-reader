@@ -220,11 +220,11 @@
 }
 
 /* ========================================
-   Color Theme: Caffeine
-   Warm coffee/brown theme
+   Color Theme: Bifurcate
+   Neutral grayscale theme with monospace font
    ======================================== */
 
-[data-color-theme="caffeine"] {
+[data-color-theme="bifurcate"] {
   /* Light mode palette */
   --theme-light-background: oklch(0.9821 0 0);
   --theme-light-foreground: oklch(0.2435 0 0);
@@ -246,11 +246,11 @@
   --theme-light-ring: oklch(0.4341 0.0392 41.9938);
 
   /* Dark mode palette */
-  --theme-dark-background: oklch(0.1776 0 0);
+  --theme-dark-background: oklch(0.2 0 0);
   --theme-dark-foreground: oklch(0.9491 0 0);
-  --theme-dark-card: oklch(0.2134 0 0);
+  --theme-dark-card: oklch(0.235 0 0);
   --theme-dark-card-foreground: oklch(0.9491 0 0);
-  --theme-dark-popover: oklch(0.2134 0 0);
+  --theme-dark-popover: oklch(0.235 0 0);
   --theme-dark-popover-foreground: oklch(0.9491 0 0);
   --theme-dark-primary: oklch(0.9247 0.0524 66.1732);
   --theme-dark-primary-foreground: oklch(0.2029 0.024 200.1962);
@@ -261,7 +261,7 @@
   --theme-dark-accent: oklch(0.285 0 0);
   --theme-dark-accent-foreground: oklch(0.9491 0 0);
   --theme-dark-destructive: oklch(0.6271 0.1936 33.339);
-  --theme-dark-border: oklch(0.2351 0.0115 91.7467);
+  --theme-dark-border: oklch(0.2351 0 0);
   --theme-dark-input: oklch(0.4017 0 0);
   --theme-dark-ring: oklch(0.9247 0.0524 66.1732);
 
@@ -272,7 +272,7 @@
   --chart-3: oklch(0.931 0 0);
   --chart-4: oklch(0.9367 0.0523 75.5009);
   --chart-5: oklch(0.4338 0.0437 41.6746);
-  --radius: 0.5rem;
+  --radius: 0.125rem;
 
   /* Sidebar (light) */
   --sidebar: oklch(0.9881 0 0);
@@ -285,13 +285,9 @@
   --sidebar-ring: oklch(0.92 0.0651 74.3695);
 
   /* Fonts */
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
+  --font-sans: "Courier New", monospace;
+  --font-serif: "Courier New", monospace;
+  --font-mono: "Courier New", monospace;
 
   /* Shadows */
   --shadow-x: 0;
@@ -314,22 +310,27 @@
   --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
 }
 
-/* Caffeine: dark mode overrides */
-[data-color-theme="caffeine"].dark {
+/* Bifurcate: dark mode overrides */
+[data-color-theme="bifurcate"].dark {
   --destructive-foreground: oklch(1 0 0);
   --chart-1: oklch(0.9247 0.0524 66.1732);
   --chart-2: oklch(0.3163 0.019 63.6992);
   --chart-3: oklch(0.285 0 0);
   --chart-4: oklch(0.3481 0.0219 67.0001);
   --chart-5: oklch(0.9245 0.0533 67.0855);
-  --sidebar: oklch(0.1776 0 0);
+  --sidebar: oklch(0.2 0 0);
   --sidebar-foreground: oklch(0.9491 0 0);
   --sidebar-primary: oklch(0.3163 0.019 63.6992);
   --sidebar-primary-foreground: oklch(0.9247 0.0524 66.1732);
   --sidebar-accent: oklch(0.285 0 0);
   --sidebar-accent-foreground: oklch(0.9491 0 0);
-  --sidebar-border: oklch(0.2351 0.0115 91.7467);
+  --sidebar-border: oklch(0.2351 0 0);
   --sidebar-ring: oklch(0.3163 0.019 63.6992);
+
+  /* Fonts (dark mode uses Source Code Pro) */
+  --font-sans: "Source Code Pro Variable", monospace;
+  --font-serif: "Source Code Pro Variable", monospace;
+  --font-mono: "Source Code Pro Variable", monospace;
 }
 
 /* ========================================

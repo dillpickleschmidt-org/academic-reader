@@ -28,7 +28,7 @@ export function useColorTheme() {
     if (theme === "amethyst-haze") {
       import("@fontsource-variable/geist")
       import("@fontsource-variable/lora")
-    } else if (theme === "perpetuity") {
+    } else if (theme === "perpetuity" || theme === "bifurcate") {
       import("@fontsource-variable/source-code-pro")
     } else if (theme === "notebook") {
       import("@fontsource/architects-daughter")

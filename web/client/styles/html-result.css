@@ -164,7 +164,7 @@
 
 /* Citations */
 .reader-content .citation {
-  background: var(--reader-code-bg);
+  background: var(--card);
   padding: 0.1em 0.3em;
   border-radius: 3px;
   font-size: 0.85rem;
@@ -207,14 +207,14 @@
 .reader-content code {
   font-family: var(--font-mono, "SF Mono", "Fira Code", Consolas, monospace);
   font-size: 0.875rem;
-  background: var(--reader-code-bg);
+  background: var(--card);
   padding: 0.2rem 0.3rem;
   border-radius: 0.25rem;
 }
 
 /* Code blocks */
 .reader-content pre {
-  background: var(--reader-code-bg);
+  background: var(--card);
   padding: 1rem;
   border-radius: 6px;
   overflow-x: auto;
@@ -304,12 +304,9 @@
 }
 
 .reader-content tr:nth-child(even) {
-  background: var(--reader-code-bg);
-}
-
-[data-reader-mode="dark"] .reader-content tr:nth-child(even) {
   background: var(--card);
 }
+
 
 .reader-content th,
 .reader-content td {
@@ -371,9 +368,9 @@
 .reader-content img:not([src^="data:"]) {
   background: linear-gradient(
     90deg,
-    var(--reader-code-bg) 25%,
+    var(--card) 25%,
     var(--reader-border) 50%,
-    var(--reader-code-bg) 75%
+    var(--card) 75%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;

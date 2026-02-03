@@ -68,7 +68,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   --reader-border: #eee;
   --reader-border-strong: #e0e0e0;
   --reader-link: oklch(0.6 0.13 163);
-  --reader-code-bg: #f5f5f5;
+  --reader-card: #f5f5f5;
 }
 
 /* Theme Variables - Comfort */
@@ -79,7 +79,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   --reader-border: #e0d9cc;
   --reader-border-strong: #d4cbbf;
   --reader-link: #1a5f8a;
-  --reader-code-bg: #ebe6db;
+  --reader-card: #ebe6db;
 }
 
 /* Theme Variables - Dark */
@@ -90,7 +90,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   --reader-border: oklch(1 0 0 / 10%);
   --reader-border-strong: oklch(0.371 0 0);
   --reader-link: oklch(0.7 0.15 162);
-  --reader-code-bg: oklch(0.269 0 0);
+  --reader-card: oklch(0.269 0 0);
 }
 
 .reader-output {
@@ -119,7 +119,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   right: 1rem;
   display: flex;
   gap: 2px;
-  background: var(--reader-code-bg);
+  background: var(--reader-card);
   padding: 4px;
   border-radius: 8px;
   z-index: 1000;
@@ -171,7 +171,7 @@ html:has(#theme-dark:checked)::-webkit-scrollbar-thumb:hover {
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 0.875rem;
   line-height: 1.6;
-  background: var(--reader-code-bg);
+  background: var(--reader-card);
   padding: 1.5rem;
   border-radius: 8px;
   overflow-x: auto;

@@ -34,7 +34,7 @@ export function TTSPlaybackBar() {
   const progressPercent = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
 
   return (
-    <div className="shrink-0 bg-(--reader-code-bg) border-t border-(--reader-border)">
+    <div className="shrink-0 bg-(--card) border-t border-(--reader-border)">
       {/* Progress bar */}
       <div className="relative h-1 bg-(--reader-border)">
         <div

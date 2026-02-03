@@ -1,13 +1,9 @@
-# qwen-tts for TTS inference
-qwen-tts
-onnxruntime-gpu
-librosa
-
 # Audio processing
-soundfile
+librosa
 scipy
 
 # Web framework
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
 pydantic>=2.0.0
+
+# Progress bars
+tqdm

@@ -1,1 +1,1 @@
-"""Qwen3-TTS worker package."""
+"""Qwen3-TTS local FastAPI application."""

@@ -1,29 +1,27 @@
-"""FastAPI application for Qwen3-TTS synthesis."""
+"""FastAPI application for Qwen3-TTS synthesis using nano_qwen3tts."""
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.voices import VOICES, list_voices
-
 from .synthesis import synthesize, synthesize_streaming
 
-app = FastAPI(title="Qwen3-TTS Worker", version="1.0.0")
+app = FastAPI(title="Qwen3-TTS Worker", version="2.0.0")
 
 
 class SynthesizeRequest(BaseModel):
     """Request body for synthesis endpoint."""
 
     text: str
+    voiceId: str = "male_1"
+
+
+class StreamRequest(BaseModel):
+    """Request body for streaming synthesis."""
+
+    text: str
     voice_id: str = "male_1"
-
-
-class WordTimestamp(BaseModel):
-    """Word-level timestamp for text highlighting."""
-
-    word: str
-    startMs: float
-    endMs: float
 
 
 class SynthesizeResponse(BaseModel):
@@ -32,7 +30,6 @@ class SynthesizeResponse(BaseModel):
     audio: str
     sampleRate: int
     durationMs: float
-    wordTimestamps: list[WordTimestamp]
 
 
 class VoiceInfo(BaseModel):
@@ -56,25 +53,24 @@ async def get_voices():
 
 @app.post("/synthesize", response_model=SynthesizeResponse)
 async def synthesize_endpoint(request: SynthesizeRequest):
-    """Synthesize speech from text (non-streaming with word timestamps)."""
+    """Synthesize speech from text."""
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    if request.voice_id not in VOICES:
+    if request.voiceId not in VOICES:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown voice: {request.voice_id}. Available: {list(VOICES.keys())}",
+            detail=f"Unknown voice: {request.voiceId}. Available: {list(VOICES.keys())}",
         )
 
     try:
-        audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
-            request.text, request.voice_id
+        audio_base64, sample_rate, duration_ms = synthesize(
+            request.text, request.voiceId
         )
         return SynthesizeResponse(
             audio=audio_base64,
             sampleRate=sample_rate,
             durationMs=duration_ms,
-            wordTimestamps=[WordTimestamp(**wt) for wt in word_timestamps],
         )
     except Exception as e:
         print(f"[error] Synthesis failed: {e}", flush=True)
@@ -82,9 +78,9 @@ async def synthesize_endpoint(request: SynthesizeRequest):
 
 
 @app.post("/synthesize/stream")
-async def synthesize_stream_endpoint(request: SynthesizeRequest):
-    """
-    Stream audio as it's generated.
+async def synthesize_stream(request: StreamRequest):
+    """Stream audio as it's generated.
+
     Returns raw PCM s16le audio at 24kHz mono.
     Client plays with: ffplay -f s16le -ar 24000 -ac 1 -
     """
@@ -116,9 +112,9 @@ async def synthesize_stream_endpoint(request: SynthesizeRequest):
 @app.post("/load")
 async def load():
     """Load TTS model. Idempotent - instant if already loaded."""
-    from .models import get_or_create_model, is_model_loaded
+    from .models import get_or_create_model, _model_cache
 
-    if is_model_loaded():
+    if _model_cache is not None:
         return {"status": "already_loaded"}
     get_or_create_model()
     return {"status": "ok"}

@@ -1,52 +1,45 @@
-"""Modal worker for Qwen3-TTS with true streaming support."""
+"""Modal worker for Qwen3-TTS."""
 
 import modal
 from pathlib import Path
 
 VOICES_DIR = Path(__file__).parent / "voices"
 
+flash_attn_wheel = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiFALSE-cp312-cp312-linux_x86_64.whl"
+
 image = (
-    modal.Image.from_registry(
-        "nvidia/cuda:12.8.0-devel-ubuntu22.04", add_python="3.12"
-    )
-    .apt_install("build-essential", "ffmpeg", "libsndfile1", "sox", "git")
-    .run_commands(
-        "pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126",
-    )
-    .pip_install(
-        "qwen-tts",
-        "librosa",
-        "scipy",
-        "soundfile",
-        "pydantic",
-        "fastapi[standard]",
-    )
-    .run_commands(
-        'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\')"',
-        'python -c "from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()"',
-    )
+    modal.Image.debian_slim(python_version="3.12")
+    .apt_install("ffmpeg", "libsndfile1", "sox", "git")
     .env({
         "TORCHINDUCTOR_COMPILE_THREADS": "1",
+        "CUDA_MODULE_LOADING": "LAZY",
     })
+    .pip_install(
+        "torch==2.8.0",
+        "torchaudio==2.8.0",
+        flash_attn_wheel,
+        extra_index_url="https://download.pytorch.org/whl/cu126",
+    )
+    .run_commands("pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git@50a9415 xxhash")
+    .run_commands(
+        'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\'); snapshot_download(\'Qwen/Qwen3-TTS-Tokenizer-12Hz\')"',
+    )
     .add_local_dir(VOICES_DIR, remote_path="/voices")
     .add_local_dir(Path(__file__).parent / "core", remote_path="/root/core")
 )
 
 app = modal.App("qwen3-tts", image=image)
 
-# Change this to invalidate the snapshot cache
-snapshot_key = "v43"
+snapshot_key = "v95"
 
-# Imports deferred to inside Modal image context
 with image.imports():
+    import sys
+    sys.path.insert(0, "/root")
+
     import torch
     import numpy as np
-    from qwen_tts import Qwen3TTSModel
-    from torchaudio.pipelines import MMS_FA
 
-    from core.voices import VoiceConfig, VOICES, load_voice_prompt, list_voices
-    from core.alignment import compute_word_timestamps
-    from core.streaming import generate_streaming
+    from core.voices import VoiceConfig, VOICES, list_voices
 
 
 @app.cls(
@@ -58,43 +51,57 @@ with image.imports():
     experimental_options={"enable_gpu_snapshot": True},
 )
 class Qwen3TTS:
-    """Qwen3-TTS worker with true streaming support."""
+    """Qwen3-TTS worker - testing GPU snapshots."""
 
     @modal.enter(snap=True)
-    def load_model(self):
-        print("[qwen3-tts] Loading qwen-tts model...", flush=True)
-        self.tts_model = Qwen3TTSModel.from_pretrained(
-            "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-            device_map="cuda:0",
-            dtype=torch.bfloat16,
-            attn_implementation="sdpa",
-        )
-        print("[qwen3-tts] qwen-tts model loaded", flush=True)
+    def load_snap(self):
+        """Full initialization in snap=True for GPU snapshot."""
+        import os
+        import time
 
-        # Compile only the internal transformer (talker.model) to avoid torch.cond
-        # in code_predictor.generate() which uses transformers' GenerationMixin
-        print("[qwen3-tts] Compiling talker.model with torch.compile...", flush=True)
-        self.tts_model.model.talker.model = torch.compile(
-            self.tts_model.model.talker.model,
-            mode="default",
-        )
-        print("[qwen3-tts] Compilation registered (will compile on first run)", flush=True)
+        print("[qwen3-tts] Starting full initialization...", flush=True)
 
-        # Enable cuDNN benchmarking for optimal convolution algorithms
+        # Set up CUDA
         torch.backends.cudnn.benchmark = True
-
-        # Enable TF32 for faster matmul on Ampere+ GPUs (A10G is Ampere)
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
+        torch.set_default_device("cuda")
+        torch.set_default_dtype(torch.bfloat16)
+        torch.set_float32_matmul_precision("high")
 
-        print("[qwen3-tts] Loading MMS alignment model...", flush=True)
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.align_model = MMS_FA.get_model().to(device)
-        self.align_tokenizer = MMS_FA.get_tokenizer()
-        self.align_aligner = MMS_FA.get_aligner()
-        self.align_sample_rate = MMS_FA.sample_rate
-        self.device = device
+        # Get model paths
+        model_path = os.path.expanduser("~/.cache/huggingface/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-Base/snapshots")
+        snapshots = os.listdir(model_path)
+        self._model_path = os.path.join(model_path, snapshots[0])
 
+        tokenizer_path = os.path.expanduser("~/.cache/huggingface/hub/models--Qwen--Qwen3-TTS-Tokenizer-12Hz/snapshots")
+        tokenizer_snapshots = os.listdir(tokenizer_path)
+        self._tokenizer_path = os.path.join(tokenizer_path, tokenizer_snapshots[0])
+
+        # Import
+        from nano_qwen3tts_vllm.interface import Qwen3TTSInterface
+        from nano_qwen3tts_vllm.utils.voice_clone import load_voice_prompt
+        from nano_qwen3tts_vllm.utils.speech_tokenizer_cudagraph import SpeechTokenizerCUDAGraph
+
+        # Create interface
+        print(f"[qwen3-tts] Creating interface...", flush=True)
+        t0 = time.perf_counter()
+        self.interface = Qwen3TTSInterface(
+            model_path=self._model_path,
+            enforce_eager=False,  # Enable CUDA graphs
+        )
+        print(f"[qwen3-tts] Interface created ({time.perf_counter()-t0:.1f}s)", flush=True)
+
+        # Load speech tokenizer with CUDA graphs
+        print("[qwen3-tts] Loading speech tokenizer...", flush=True)
+        self.speech_tokenizer = SpeechTokenizerCUDAGraph(
+            model_path=self._tokenizer_path,
+            device="cuda:0",
+            num_graph_lengths=0,
+        )
+        print("[qwen3-tts] Speech tokenizer loaded", flush=True)
+
+        # Load voice prompts
         print("[qwen3-tts] Loading voice prompts...", flush=True)
         self.voice_prompts = {}
         for voice_id, voice in VOICES.items():
@@ -102,30 +109,41 @@ class Qwen3TTS:
             self.voice_prompts[voice_id] = load_voice_prompt(prompt_path, "cuda")
         print(f"[qwen3-tts] Loaded {len(self.voice_prompts)} voice(s)", flush=True)
 
-        torch.set_float32_matmul_precision("high")
+        # Warmup
+        print("[qwen3-tts] Running warmup...", flush=True)
         self._warmup()
-        print(f"[qwen3-tts] Ready, snapshotting {snapshot_key}", flush=True)
+        print("[qwen3-tts] Warmup complete", flush=True)
+
+        torch.cuda.empty_cache()
+        print(f"[qwen3-tts] snap=True complete, ready for snapshot {snapshot_key}", flush=True)
+
+    @modal.enter(snap=False)
+    def post_restore(self):
+        """After restore - verify everything survived."""
+        print(f"[qwen3-tts] snap=False: Restored from snapshot {snapshot_key}", flush=True)
+        print(f"[qwen3-tts] CUDA available: {torch.cuda.is_available()}", flush=True)
+        print(f"[qwen3-tts] Interface: {self.interface is not None}", flush=True)
+        print(f"[qwen3-tts] Speech tokenizer: {self.speech_tokenizer is not None}", flush=True)
+        print(f"[qwen3-tts] Voice prompts: {len(self.voice_prompts)}", flush=True)
+        print("[qwen3-tts] Ready!", flush=True)
 
     def _warmup(self):
-        """Warmup to capture compiled kernels in snapshot."""
-        import time
-        print("[qwen3-tts] Running warmup inference...", flush=True)
-
+        """Warmup inference to compile kernels before CUDA graph capture."""
         warmup_text = "Hello, this is a warmup."
         voice_id = list(self.voice_prompts.keys())[0]
+        voice_prompt = self.voice_prompts[voice_id]
 
-        step = 0
-        t0 = time.perf_counter()
-        for _ in generate_streaming(
-            self.tts_model,
+        audio_codes = []
+        for codebook_ids in self.interface.generate_voice_clone(
             text=warmup_text,
-            voice_clone_prompt=self.voice_prompts[voice_id],
+            voice_clone_prompt=voice_prompt,
             language="english",
-            chunk_size=25,
         ):
-            step += 1
-            elapsed = time.perf_counter() - t0
-            print(f"[qwen3-tts] Warmup step {step} completed, elapsed: {elapsed:.1f}s", flush=True)
+            audio_codes.append(codebook_ids)
+
+        if audio_codes:
+            codes_tensor = torch.tensor(audio_codes, device="cuda")
+            _, _ = self.speech_tokenizer.decode_codec_ids(codes_tensor.unsqueeze(0).transpose(1, 2))
 
         print("[qwen3-tts] Warmup complete", flush=True)
 
@@ -140,22 +158,46 @@ class Qwen3TTS:
 
         voice_prompt = self.voice_prompts[voice_id]
         voice = VOICES[voice_id]
+        chunk_size = 25
 
-        for audio_chunk in generate_streaming(
-            self.tts_model,
+        accumulated_codes = []
+        yielded_audio_samples = 0
+
+        for codebook_ids in self.interface.generate_voice_clone(
             text=text,
             voice_clone_prompt=voice_prompt,
             language="english",
-            chunk_size=25,
             temperature=voice.temperature,
             top_p=voice.top_p,
         ):
-            audio_int16 = (audio_chunk * 32767).astype(np.int16)
-            yield audio_int16.tobytes()
+            accumulated_codes.append(codebook_ids)
+
+            if len(accumulated_codes) >= chunk_size and len(accumulated_codes) % chunk_size == 0:
+                codes_tensor = torch.tensor(accumulated_codes, device="cuda")
+                codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
+                wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
+
+                full_audio = wavs[0]
+                if len(full_audio) > yielded_audio_samples:
+                    audio_chunk = full_audio[yielded_audio_samples:]
+                    audio_int16 = (audio_chunk * 32767).astype(np.int16)
+                    yield audio_int16.tobytes()
+                    yielded_audio_samples = len(full_audio)
+
+        if accumulated_codes:
+            codes_tensor = torch.tensor(accumulated_codes, device="cuda")
+            codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
+            wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
+
+            full_audio = wavs[0]
+            if len(full_audio) > yielded_audio_samples:
+                audio_chunk = full_audio[yielded_audio_samples:]
+                audio_int16 = (audio_chunk * 32767).astype(np.int16)
+                yield audio_int16.tobytes()
 
     @modal.method()
     def synthesize(self, text: str, voice_id: str) -> dict:
-        """Synthesize speech from text with word-level timestamps (non-streaming)."""
+        """Synthesize speech from text (non-streaming)."""
         import base64
         import io
         from scipy.io import wavfile
@@ -166,30 +208,26 @@ class Qwen3TTS:
             }
 
         voice = VOICES[voice_id]
-        voice_clone_prompt = self.voice_prompts[voice_id]
+        voice_prompt = self.voice_prompts[voice_id]
 
-        wavs, sr = self.tts_model.generate_voice_clone(
+        audio_codes = []
+        for codebook_ids in self.interface.generate_voice_clone(
             text=text,
+            voice_clone_prompt=voice_prompt,
             language="english",
-            voice_clone_prompt=voice_clone_prompt,
             temperature=voice.temperature,
             top_p=voice.top_p,
-        )
+        ):
+            audio_codes.append(codebook_ids)
+
+        if not audio_codes:
+            return {"error": "No audio generated"}
+
+        codes_tensor = torch.tensor(audio_codes, device="cuda")
+        codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
+        wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
 
         audio = wavs[0]
-
-        audio_tensor = torch.from_numpy(audio).float()
-        word_timestamps = compute_word_timestamps(
-            audio_tensor,
-            text,
-            sr,
-            self.align_model,
-            self.align_tokenizer,
-            self.align_aligner,
-            self.align_sample_rate,
-            self.device,
-        )
-
         duration_ms = len(audio) / sr * 1000
 
         audio_int16 = (audio * 32767).astype(np.int16)
@@ -201,7 +239,6 @@ class Qwen3TTS:
             "audio": base64.b64encode(wav_bytes).decode("utf-8"),
             "sampleRate": sr,
             "durationMs": duration_ms,
-            "wordTimestamps": word_timestamps,
         }
 
 
@@ -224,7 +261,7 @@ def api():
 
     @web.post("/synthesize")
     async def synthesize(req: SynthesizeRequest):
-        """Spawn all segments in parallel (non-streaming with word timestamps)."""
+        """Spawn all segments in parallel (non-streaming)."""
         calls = []
         for seg in req.segments:
             call = await worker.synthesize.spawn.aio(
@@ -241,12 +278,20 @@ def api():
         Returns raw PCM s16le audio at 24kHz mono.
         Client plays with: ffplay -f s16le -ar 24000 -ac 1 -
         """
+        import asyncio
 
         async def audio_generator():
-            async for chunk in worker.synthesize_streaming.remote_gen.aio(
-                req.text, req.voice_id
-            ):
-                yield chunk
+            gen = worker.synthesize_streaming.remote_gen.aio(req.text, req.voice_id)
+            try:
+                async for chunk in gen:
+                    yield chunk
+            except asyncio.CancelledError:
+                return
+            finally:
+                try:
+                    await gen.aclose()
+                except Exception:
+                    pass
 
         return StreamingResponse(
             audio_generator(),

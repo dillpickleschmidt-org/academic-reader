@@ -11,17 +11,18 @@ export class UnifiedAudioPlayer {
   private ctx: AudioContext
   private gainNode: GainNode
 
-  // Complete buffer (for cached or completed streaming)
+  // Ready mode state
   private buffer: AudioBuffer | null = null
   private activeSource: AudioBufferSourceNode | null = null
-  private playbackStartTime = 0 // ctx.currentTime when play() called
-  private pausePosition = 0 // position in seconds when paused
 
-  // Streaming state
+  // Streaming mode state
   private streamingChunks: Float32Array[] = []
   private streamingSources: AudioBufferSourceNode[] = []
   private nextScheduleTime = 0
-  private streamingStartTime = 0
+
+  // Shared playback state
+  private startTime = 0 // ctx.currentTime when playback began (used to derive current position)
+  private pausePosition = 0
 
   // Public state
   mode: PlayerMode = "idle"
@@ -60,8 +61,11 @@ export class UnifiedAudioPlayer {
     this.streamingChunks = []
     this.streamingSources = []
     this.nextScheduleTime = 0
-    this.streamingStartTime = 0
+    this.startTime = 0
+    this.pausePosition = 0
+    this.isPlaying = true
     this.setMode("streaming")
+    this.callbacks.onPlayingChange(true)
     this.startTimeUpdates()
   }
 
@@ -71,8 +75,10 @@ export class UnifiedAudioPlayer {
     const pcmData = base64ToInt16Array(pcmBase64)
     const floatData = int16ToFloat32(pcmData)
 
-    // Store chunk for later consolidation
     this.streamingChunks.push(floatData)
+
+    // Don't schedule audio while paused — chunks accumulate for later
+    if (!this.isPlaying) return
 
     // Create and schedule audio buffer
     const audioBuffer = this.ctx.createBuffer(1, floatData.length, 24000)
@@ -85,17 +91,14 @@ export class UnifiedAudioPlayer {
     // Schedule seamlessly after previous chunk
     const startTime = Math.max(this.ctx.currentTime, this.nextScheduleTime)
 
-    if (!this.isPlaying) {
-      this.isPlaying = true
-      this.streamingStartTime = startTime
-      this.callbacks.onPlayingChange(true)
+    if (this.startTime === 0) {
+      this.startTime = startTime
     }
 
     source.start(startTime)
     this.nextScheduleTime = startTime + audioBuffer.duration
     this.streamingSources.push(source)
 
-    // Clean up finished sources
     source.onended = () => {
       const index = this.streamingSources.indexOf(source)
       if (index > -1) this.streamingSources.splice(index, 1)
@@ -105,48 +108,39 @@ export class UnifiedAudioPlayer {
   finishStreaming(): void {
     if (this.mode !== "streaming") return
 
-    // Consolidate all chunks into single AudioBuffer
-    const totalSamples = this.streamingChunks.reduce((sum, c) => sum + c.length, 0)
-    if (totalSamples === 0) {
+    this.stopStreamingSources()
+
+    const consolidated = this.consolidateChunks()
+    if (!consolidated) {
       this.setMode("idle")
       return
     }
 
-    const combined = new Float32Array(totalSamples)
-    let offset = 0
-    for (const chunk of this.streamingChunks) {
-      combined.set(chunk, offset)
-      offset += chunk.length
-    }
+    this.buffer = consolidated
 
-    this.buffer = this.ctx.createBuffer(1, totalSamples, 24000)
-    this.buffer.getChannelData(0).set(combined)
-
-    // Track where we are in playback relative to streaming start
+    // Preserve current playback position
     if (this.isPlaying) {
-      this.pausePosition = Math.max(0, this.ctx.currentTime - this.streamingStartTime)
-      // Clamp to duration to handle edge cases
+      this.pausePosition = Math.max(0, this.ctx.currentTime - this.startTime)
       this.pausePosition = Math.min(this.pausePosition, this.buffer.duration)
-    } else {
-      this.pausePosition = 0
     }
+    // If paused, pausePosition is already set
 
-    // Clean up streaming state
     this.streamingChunks = []
-    this.streamingSources = []
-
     this.setMode("ready")
   }
 
   // === Playback Controls ===
   play(): void {
+    if (this.isPlaying) return
+
     if (this.mode === "streaming") {
-      // Streaming mode - audio is already playing via scheduled chunks
+      if (!this.resumeStreamingFrom(this.pausePosition)) return
+      this.isPlaying = true
+      this.callbacks.onPlayingChange(true)
       return
     }
 
     if (this.mode !== "ready" || !this.buffer) return
-    if (this.isPlaying) return
 
     this.activeSource = this.ctx.createBufferSource()
     this.activeSource.buffer = this.buffer
@@ -154,23 +148,33 @@ export class UnifiedAudioPlayer {
 
     this.activeSource.onended = this.handlePlaybackEnded
     this.activeSource.start(0, this.pausePosition)
-    this.playbackStartTime = this.ctx.currentTime - this.pausePosition
+    this.startTime = this.ctx.currentTime - this.pausePosition
     this.isPlaying = true
     this.callbacks.onPlayingChange(true)
     this.startTimeUpdates()
   }
 
   pause(): void {
-    if (this.mode !== "ready" || !this.isPlaying) return
+    if (!this.isPlaying) return
 
-    this.pausePosition = this.ctx.currentTime - this.playbackStartTime
-    // Clamp to valid range
+    if (this.mode === "streaming") {
+      this.pausePosition = Math.max(0, this.ctx.currentTime - this.startTime)
+      this.stopStreamingSources()
+      this.isPlaying = false
+      this.callbacks.onPlayingChange(false)
+      // Keep time updates running so duration display grows as chunks arrive
+      return
+    }
+
+    if (this.mode !== "ready") return
+
+    this.pausePosition = this.ctx.currentTime - this.startTime
     if (this.buffer) {
       this.pausePosition = Math.max(0, Math.min(this.pausePosition, this.buffer.duration))
     }
 
     if (this.activeSource) {
-      this.activeSource.onended = null // Prevent ended callback
+      this.activeSource.onended = null
       this.activeSource.stop()
       this.activeSource = null
     }
@@ -182,20 +186,9 @@ export class UnifiedAudioPlayer {
 
   stop(): void {
     this.stopTimeUpdates()
-
-    // Stop streaming sources
-    for (const source of this.streamingSources) {
-      try {
-        source.onended = null
-        source.stop()
-      } catch {
-        // Already stopped
-      }
-    }
-    this.streamingSources = []
+    this.stopStreamingSources()
     this.streamingChunks = []
 
-    // Stop ready mode source
     if (this.activeSource) {
       try {
         this.activeSource.onended = null
@@ -210,31 +203,43 @@ export class UnifiedAudioPlayer {
     this.isPlaying = false
     this.pausePosition = 0
     this.nextScheduleTime = 0
-    this.streamingStartTime = 0
-    this.playbackStartTime = 0
+    this.startTime = 0
     this.callbacks.onPlayingChange(false)
   }
 
   seek(seconds: number): void {
+    if (this.mode === "streaming") {
+      const bufferedDuration = this.getDuration()
+      const targetTime = Math.max(0, Math.min(seconds, bufferedDuration))
+
+      if (this.isPlaying) {
+        this.stopStreamingSources()
+        this.resumeStreamingFrom(targetTime)
+      } else {
+        this.pausePosition = targetTime
+      }
+
+      this.callbacks.onTimeUpdate(targetTime, bufferedDuration)
+      return
+    }
+
     if (this.mode !== "ready" || !this.buffer) return
 
     const targetTime = Math.max(0, Math.min(seconds, this.buffer.duration))
 
     if (this.isPlaying) {
-      // Stop current playback
       if (this.activeSource) {
         this.activeSource.onended = null
         this.activeSource.stop()
       }
 
-      // Start from new position
       this.activeSource = this.ctx.createBufferSource()
       this.activeSource.buffer = this.buffer
       this.activeSource.connect(this.gainNode)
 
       this.activeSource.onended = this.handlePlaybackEnded
       this.activeSource.start(0, targetTime)
-      this.playbackStartTime = this.ctx.currentTime - targetTime
+      this.startTime = this.ctx.currentTime - targetTime
     } else {
       this.pausePosition = targetTime
     }
@@ -244,24 +249,13 @@ export class UnifiedAudioPlayer {
 
   // === State ===
   getCurrentTime(): number {
-    if (this.mode === "streaming") {
-      if (!this.isPlaying) return 0
-      return Math.max(0, this.ctx.currentTime - this.streamingStartTime)
-    }
-
-    if (this.mode === "ready") {
-      if (this.isPlaying) {
-        return Math.max(0, this.ctx.currentTime - this.playbackStartTime)
-      }
-      return this.pausePosition
-    }
-
-    return 0
+    if (this.mode === "idle") return 0
+    if (!this.isPlaying || this.startTime === 0) return this.pausePosition
+    return Math.max(0, this.ctx.currentTime - this.startTime)
   }
 
   getDuration(): number {
     if (this.mode === "streaming") {
-      // Estimate duration from scheduled chunks
       const totalSamples = this.streamingChunks.reduce((sum, c) => sum + c.length, 0)
       return totalSamples / 24000
     }
@@ -278,11 +272,11 @@ export class UnifiedAudioPlayer {
   }
 
   get canPause(): boolean {
-    return this.mode === "ready"
+    return this.mode === "streaming" || this.mode === "ready"
   }
 
   get canSeek(): boolean {
-    return this.mode === "ready"
+    return this.mode === "streaming" || this.mode === "ready"
   }
 
   dispose(): void {
@@ -300,7 +294,7 @@ export class UnifiedAudioPlayer {
 
   private handlePlaybackEnded = () => {
     if (this.isPlaying && this.mode === "ready") {
-      const currentPos = this.ctx.currentTime - this.playbackStartTime
+      const currentPos = this.ctx.currentTime - this.startTime
       if (currentPos >= this.buffer!.duration - 0.1) {
         this.isPlaying = false
         this.pausePosition = 0
@@ -310,6 +304,54 @@ export class UnifiedAudioPlayer {
         this.stopTimeUpdates()
       }
     }
+  }
+
+  private resumeStreamingFrom(position: number): boolean {
+    const consolidated = this.consolidateChunks()
+    if (!consolidated) return false
+
+    const source = this.ctx.createBufferSource()
+    source.buffer = consolidated
+    source.connect(this.gainNode)
+
+    source.start(0, position)
+    this.startTime = this.ctx.currentTime - position
+    this.nextScheduleTime = this.ctx.currentTime + (consolidated.duration - position)
+
+    this.streamingSources.push(source)
+    source.onended = () => {
+      const index = this.streamingSources.indexOf(source)
+      if (index > -1) this.streamingSources.splice(index, 1)
+    }
+    return true
+  }
+
+  private consolidateChunks(): AudioBuffer | null {
+    const totalSamples = this.streamingChunks.reduce((sum, c) => sum + c.length, 0)
+    if (totalSamples === 0) return null
+
+    const combined = new Float32Array(totalSamples)
+    let offset = 0
+    for (const chunk of this.streamingChunks) {
+      combined.set(chunk, offset)
+      offset += chunk.length
+    }
+
+    const buffer = this.ctx.createBuffer(1, totalSamples, 24000)
+    buffer.getChannelData(0).set(combined)
+    return buffer
+  }
+
+  private stopStreamingSources(): void {
+    for (const source of this.streamingSources) {
+      try {
+        source.onended = null
+        source.stop()
+      } catch {
+        // Already stopped
+      }
+    }
+    this.streamingSources = []
   }
 
   private startTimeUpdates(): void {

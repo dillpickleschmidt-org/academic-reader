@@ -410,12 +410,13 @@ export function AudioProvider({
   const createPlayerCallbacks = useCallback(() => ({
     onModeChange: (mode: "idle" | "streaming" | "ready") => {
       const playback = store.getState().playback
+      const hasControls = mode === "streaming" || mode === "ready"
       store.setState({
         playback: {
           ...playback,
           mode: mode === "idle" ? "idle" : mode,
-          canPause: mode === "ready",
-          canSeek: mode === "ready",
+          canPause: hasControls,
+          canSeek: hasControls,
         },
       })
     },

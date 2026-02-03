@@ -50,8 +50,8 @@ export function AudioSettingsPopover() {
         <Tabs defaultValue="narrator" className="w-full gap-0">
           <TabsList variant="line" className="w-full justify-start border-b px-2">
             <TabsTrigger value="narrator">Narrator</TabsTrigger>
-            <TabsTrigger value="music">Music</TabsTrigger>
             <TabsTrigger value="ambience">Ambience</TabsTrigger>
+            <TabsTrigger value="music">Music</TabsTrigger>
           </TabsList>
 
           <div className="p-4">
@@ -59,12 +59,12 @@ export function AudioSettingsPopover() {
               <NarratorTab />
             </TabsContent>
 
-            <TabsContent value="music" className="mt-0">
-              <MusicTab />
-            </TabsContent>
-
             <TabsContent value="ambience" className="mt-0">
               <AmbienceTab />
+            </TabsContent>
+
+            <TabsContent value="music" className="mt-0">
+              <MusicTab />
             </TabsContent>
           </div>
 

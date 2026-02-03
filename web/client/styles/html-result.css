@@ -24,7 +24,7 @@
 
 /* Brighter links for rose-quartz dark mode */
 [data-color-theme="rose-quartz"].dark .reader-output {
-  --reader-link: oklch(0.58 0.16 5);
+  --reader-link: oklch(0.54 0.15 5);
 }
 
 :is([data-reader-mode="comfort"], #theme-comfort:checked ~ .reader-output) {

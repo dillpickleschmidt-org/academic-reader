@@ -481,12 +481,6 @@
    Subtle background highlight for spoken words
    ======================================== */
 
-/* Cursor on blocks (before word wrapping) */
-[data-block-id] {
-  cursor: pointer;
-}
-
-/* Cursor on words (after wrapping) */
 .tts-word {
   border-radius: 4px;
   cursor: pointer;

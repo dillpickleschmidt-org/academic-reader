@@ -6,7 +6,7 @@
  */
 
 import * as mupdf from "mupdf"
-import { generateObject } from "ai"
+import { generateText, Output } from "ai"
 import { z } from "zod"
 import { createChatModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
@@ -244,9 +244,9 @@ async function generateTocWithAI(tocText: string): Promise<TocAIResult> {
   const model = createChatModel()
 
   const result = await tryCatch(
-    generateObject({
+    generateText({
       model,
-      schema: TocSchema,
+      output: Output.object({ schema: TocSchema }),
       system: TOC_SYSTEM_PROMPT,
       prompt: tocText,
       providerOptions: {
@@ -264,7 +264,12 @@ async function generateTocWithAI(tocText: string): Promise<TocAIResult> {
     return { sections: [], failed: true }
   }
 
-  return { sections: result.data.object.sections, failed: false }
+  if (!result.data.output) {
+    console.warn("[toc] AI returned no output")
+    return { sections: [], failed: true }
+  }
+
+  return { sections: result.data.output.sections, failed: false }
 }
 
 /**

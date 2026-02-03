@@ -31,6 +31,7 @@ export interface ChunkInput {
   page: number
   section?: string
   bbox: number[]
+  includeTts: boolean
 }
 
 /** Input for persisting a document */

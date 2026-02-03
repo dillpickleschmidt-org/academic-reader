@@ -64,6 +64,7 @@ export const addChunks = mutation({
         page: v.number(),
         section: v.optional(v.string()),
         bbox: v.array(v.number()),
+        includeTts: v.boolean(),
       }),
     ),
   },

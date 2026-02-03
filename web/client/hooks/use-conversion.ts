@@ -114,10 +114,7 @@ export function useConversion() {
       if (existing) {
         return prev.map((s) => (s.stage === progress.stage ? stageInfo : s))
       }
-      return [
-        ...prev.map((s) => ({ ...s, completed: true, current: s.total })),
-        { ...stageInfo, completed: false },
-      ]
+      return [...prev, stageInfo]
     })
   }, [])
 
@@ -357,6 +354,7 @@ export function useConversion() {
             blockType: string
             html: string
             page: number
+            includeTts: boolean
           }) => ({
             id: c.blockId,
             block_type: c.blockType,
@@ -364,6 +362,7 @@ export function useConversion() {
             page: c.page,
             polygon: [],
             bbox: [],
+            includeTts: c.includeTts,
           }),
         ) ?? [],
       )

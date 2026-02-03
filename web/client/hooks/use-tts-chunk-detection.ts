@@ -2,22 +2,6 @@ import { useCallback, useMemo, useState } from "react"
 import type { ChunkBlock } from "@repo/core/types/api"
 import { ensureWordsWrapped } from "@/utils/tts-word-wrapping"
 
-// Block types to skip for TTS (from Marker BlockTypes enum)
-// These contain non-readable content (images, tables, page furniture)
-const SKIP_BLOCK_TYPES = new Set([
-  "Picture",
-  "Figure",
-  "PictureGroup",
-  "FigureGroup",
-  "Table",
-  "TableGroup",
-  "TableCell",
-  "PageHeader",
-  "PageFooter",
-  "TableOfContents",
-  "Form",
-])
-
 export interface TTSMenuState {
   isOpen: boolean
   anchorElement: HTMLElement | null
@@ -72,8 +56,7 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
         return
       }
 
-      // Skip non-readable block types
-      if (SKIP_BLOCK_TYPES.has(chunk.block_type)) {
+      if (!chunk.includeTts) {
         return
       }
 

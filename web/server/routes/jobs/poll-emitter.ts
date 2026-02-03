@@ -144,16 +144,18 @@ export async function handlePollingJob(
               content: resultData?.content || job.htmlContent,
             }
 
-            // Emit TOC extraction progress
-            sendEvent("progress", { stage: "Extracting table of contents", current: 0, total: 1 })
+            const emitProgress = (progress: { stage: string; current: number; total: number }) => {
+              sendEvent("progress", progress)
+            }
 
-            const { content, imageUrls, toc, documentId } = await processCompletedJob(
+            const { content, blocks, imageUrls, toc, documentId } = await processCompletedJob(
               jobId,
               resultToProcess,
               fileInfo,
               storage,
               event,
               headers,
+              emitProgress,
             )
 
             // For backends that don't support html_ready (like datalab), send early preview
@@ -167,6 +169,9 @@ export async function handlePollingJob(
             if (resultForClient?.formats?.markdown) {
               const { markdown: _, ...formatsWithoutMarkdown } = resultForClient.formats
               resultForClient.formats = formatsWithoutMarkdown as typeof resultForClient.formats
+            }
+            if (resultForClient?.formats?.chunks) {
+              resultForClient.formats.chunks.blocks = blocks
             }
 
             // Send completed event with fileId for downloads

@@ -1,6 +1,5 @@
 import { generateText, Output } from "ai"
 import { z } from "zod"
-import type { ChunkBlock } from "@repo/core/types/api"
 import { createChatModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
 
@@ -122,7 +121,7 @@ Return every block id from the input with its include decision. Example:
  * Returns a map of blockId -> true (include) / false (skip).
  */
 export async function filterBlocksForTTS(
-  blocks: ChunkBlock[],
+  blocks: { id: string; html: string }[],
 ): Promise<Record<string, boolean>> {
   const textBlocks = blocks.filter((b) => b.id.includes("Text"))
 

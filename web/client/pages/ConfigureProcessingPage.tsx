@@ -223,13 +223,8 @@ function ProcessingView({ stages }: { stages: StageInfo[] }) {
 
   return (
     <div className="flex flex-col">
-      {stages.map((stage, index) => {
-        const isLast = index === stages.length - 1
-        const status = stage.completed
-          ? "completed"
-          : isLast
-            ? "active"
-            : "completed"
+      {stages.map((stage) => {
+        const status = stage.completed ? "completed" : "active"
 
         return (
           <ProcessingStepItem

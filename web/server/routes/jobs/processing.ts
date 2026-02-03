@@ -18,6 +18,9 @@ import {
   extractTableOfContents,
   type TocResult,
 } from "../../services/toc-extraction"
+import { filterBlocksForTTS } from "../../services/tts-block-filter"
+import type { ProgressData } from "../../utils/sse-transform"
+import type { ChunkBlock } from "@repo/core/types/api"
 import {
   extractLinkMappings,
   injectLinks,
@@ -89,18 +92,10 @@ export interface FileInfo {
 
 export interface ProcessedJobResult {
   content: string
+  blocks: ChunkBlock[]
   imageUrls?: Record<string, string>
   toc?: TocResult
   documentId?: string
-}
-
-interface NormalizedChunk {
-  id: string
-  blockType: string
-  html: string
-  page: number
-  bbox: number[]
-  sectionHierarchy?: Record<string, string>
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -136,37 +131,41 @@ export function handleCleanup(
 function normalizeChunk(
   block: WorkerChunkBlock,
   index: number,
-): NormalizedChunk {
+): ChunkBlock {
   if ("id" in block) {
     return {
       id: block.id,
-      blockType: block.block_type,
+      block_type: block.block_type,
       html: block.html,
       page: block.page,
       bbox: block.bbox,
-      sectionHierarchy: block.section_hierarchy,
+      polygon: [],
+      includeTts: false,
+      section_hierarchy: block.section_hierarchy,
     }
   }
-  // CHANDRA format
   return {
     id: `chandra-${index}`,
-    blockType: block.label,
+    block_type: block.label,
     html: block.content,
     page: block.page,
     bbox: block.bbox,
+    polygon: [],
+    includeTts: false,
   }
 }
 
-function transformChunks(chunks: NormalizedChunk[]): ChunkInput[] {
+function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
   return chunks.map((chunk) => ({
     blockId: chunk.id,
-    blockType: chunk.blockType,
+    blockType: chunk.block_type,
     html: chunk.html,
     page: chunk.page,
-    section: chunk.sectionHierarchy
-      ? Object.values(chunk.sectionHierarchy).filter(Boolean).join(" > ")
+    section: chunk.section_hierarchy
+      ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
       : undefined,
     bbox: chunk.bbox,
+    includeTts: chunk.includeTts,
   }))
 }
 
@@ -181,6 +180,7 @@ export async function processCompletedJob(
   storage: Storage,
   event: WideEvent,
   headers?: Headers,
+  emitProgress?: (progress: ProgressData) => void,
 ): Promise<ProcessedJobResult> {
   // Upload images and get public URLs
   let imageUrls: Record<string, string> | undefined
@@ -218,6 +218,7 @@ export async function processCompletedJob(
 
   // Extract and inject PDF links + TOC (all backends)
   let tocResult: TocResult | undefined
+  let blockFilter: Record<string, boolean> | undefined
   let pageOffset = 0
 
   if (!normalizedChunks.length || !fileInfo?.documentPath) {
@@ -275,28 +276,45 @@ export async function processCompletedJob(
         }
       }
 
-      // Extract table of contents
-      try {
-        const textContent = result.formats?.markdown || result.content || ""
-        const tocExtractResult = await tryCatch(
-          extractTableOfContents(textContent, pdfBuffer),
-        )
-        if (tocExtractResult.success) {
-          const { toc, meta } = tocExtractResult.data
-          event.tocStatus = meta.status
-          event.tocOffsetDetected = meta.offsetDetected
-          if (toc) {
-            tocResult = toc
-            pageOffset = toc.offset
-            event.tocSections = toc.sections.length
-          }
-        } else {
-          console.warn("[jobs] TOC extraction failed:", tocExtractResult.error)
-          event.tocStatus = "error"
+      // Run TOC extraction and block filtering in parallel
+      emitProgress?.({ stage: "Extracting table of contents", current: 0, total: 1 })
+      emitProgress?.({ stage: "Filtering text blocks", current: 0, total: 1 })
+
+      const textContent = result.formats?.markdown || result.content || ""
+
+      const [tocExtractResult, blockFilterResult] = await Promise.all([
+        tryCatch(extractTableOfContents(textContent, pdfBuffer)),
+        tryCatch(filterBlocksForTTS(normalizedChunks)),
+      ])
+
+      emitProgress?.({ stage: "Extracting table of contents", current: 1, total: 1 })
+      emitProgress?.({ stage: "Filtering text blocks", current: 1, total: 1 })
+
+      if (tocExtractResult.success) {
+        const { toc, meta } = tocExtractResult.data
+        event.tocStatus = meta.status
+        event.tocOffsetDetected = meta.offsetDetected
+        if (toc) {
+          tocResult = toc
+          pageOffset = toc.offset
+          event.tocSections = toc.sections.length
         }
-      } catch (err) {
-        console.warn("[jobs] TOC extraction failed (uncaught):", err)
+      } else {
+        console.warn("[jobs] TOC extraction failed:", tocExtractResult.error)
         event.tocStatus = "error"
+      }
+
+      if (blockFilterResult.success) {
+        blockFilter = blockFilterResult.data
+      } else {
+        console.warn("[jobs] Block filter failed:", blockFilterResult.error)
+      }
+
+      // Apply includeTts to normalized blocks
+      for (const chunk of normalizedChunks) {
+        chunk.includeTts = chunk.block_type.includes("SectionHeader")
+          ? true
+          : blockFilter?.[chunk.id] ?? false
       }
     } else {
       console.warn(
@@ -396,7 +414,7 @@ export async function processCompletedJob(
     }
   }
 
-  return { content: processedContent, imageUrls, toc: tocResult, documentId }
+  return { content: processedContent, blocks: normalizedChunks, imageUrls, toc: tocResult, documentId }
 }
 
 /**

@@ -45,6 +45,7 @@ export default defineSchema({
     page: v.number(),
     section: v.optional(v.string()), // Section hierarchy flattened
     bbox: v.array(v.number()), // [x1, y1, x2, y2] bounding box coordinates
+    includeTts: v.boolean(), // Whether block should be read aloud by TTS
     embedding: v.optional(v.array(v.float64())), // 768-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])

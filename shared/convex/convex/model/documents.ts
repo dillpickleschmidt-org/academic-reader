@@ -15,6 +15,7 @@ export interface ChunkInput {
   page: number
   section?: string
   bbox: number[] // [x1, y1, x2, y2] bounding box
+  includeTts: boolean
 }
 
 export interface TocSectionInput {
@@ -92,6 +93,7 @@ export async function addChunksToDocument(
         page: chunk.page,
         section: chunk.section,
         bbox: chunk.bbox,
+        includeTts: chunk.includeTts,
       }),
     ),
   )

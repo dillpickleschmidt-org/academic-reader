@@ -124,21 +124,20 @@ export async function handleStreamingJob(
           try {
             const parsed = JSON.parse(data)
 
-            // Emit TOC extraction progress
-            emitProgress({ stage: "Extracting table of contents", current: 0, total: 1 })
-
-            const { content, imageUrls, toc, documentId } = await processCompletedJob(
+            const { content, blocks, imageUrls, toc, documentId } = await processCompletedJob(
               jobId,
               parsed,
               fileInfo,
               storage,
               event,
               headers,
+              emitProgress,
             )
 
             parsed.content = content
             parsed.jobId = jobId
             parsed.fileId = fileInfo?.fileId
+            if (parsed.formats?.chunks) parsed.formats.chunks.blocks = blocks
             if (imageUrls) parsed.images = imageUrls
             if (toc) parsed.toc = toc
             if (documentId) parsed.documentId = documentId

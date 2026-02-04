@@ -167,6 +167,8 @@ export function ReaderSidebar({
     url: "#",
     icon: BookOpen,
     isActive: true,
+    className:
+      "max-h-[400px] overflow-y-auto [mask-image:linear-gradient(to_bottom,black_calc(100%-40px),transparent)]",
     onClick: () => {
       if (state === "collapsed") {
         setOpen(true)

@@ -37,6 +37,7 @@ type NavItem = {
   isActive?: boolean
   onClick?: () => boolean | "open" | void // false = no change, "open" = force open
   items?: NavSubItem[]
+  className?: string
 }
 
 function NavItem({ item }: { item: NavItem }) {
@@ -66,7 +67,7 @@ function NavItem({ item }: { item: NavItem }) {
           <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
         </SidebarMenuButton>
         <CollapsiblePanel>
-          <SidebarMenuSub>
+          <SidebarMenuSub className={item.className}>
             {item.items?.map((subItem, index) =>
               "render" in subItem ? (
                 <SidebarMenuSubItem key={index}>

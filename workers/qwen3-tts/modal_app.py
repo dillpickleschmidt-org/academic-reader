@@ -37,7 +37,7 @@ image = (
 
 app = modal.App("qwen3-tts", image=image)
 
-snapshot_key = "v114"
+snapshot_key = "v115"
 
 with image.imports():
     import sys
@@ -52,7 +52,7 @@ with image.imports():
 @app.cls(
     gpu="A10G",
     cpu=2.0,
-    memory=8192,
+    memory=12288,
     timeout=300,
     enable_memory_snapshot=True,
     experimental_options={"enable_gpu_snapshot": True},

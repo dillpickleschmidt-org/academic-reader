@@ -13,6 +13,8 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@repo/core/ui/primitives/resizable"
+import { Sheet, SheetContent } from "@repo/core/ui/primitives/sheet"
+import { useIsMobile } from "@repo/core/hooks/use-mobile"
 import { ReaderSidebar } from "./sidebar/ReaderSidebar"
 import { AIChatPanel } from "./AIChatPanel"
 import { TTSPlaybackBar } from "./TTSPlaybackBar"
@@ -51,6 +53,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
   const scrollRef = useRef<HTMLDivElement>(null)
   useScrollDirection(scrollRef)
   const documentName = documentContext?.documentName?.replace(/\.[^.]+$/, "")
+  const isMobile = useIsMobile()
 
   return (
     <SidebarProvider defaultOpen={false}>
@@ -82,7 +85,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
             </div>
           )}
           <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
-            <ResizablePanel id="content-panel" minSize="40%">
+            <ResizablePanel id="content-panel" minSize={isMobile ? undefined : "40%"}>
               <div ref={scrollRef} className="overflow-auto h-full" style={{ contain: "strict" }}>
                 {/* Sticky action buttons - top left */}
                 {showSidebar && (
@@ -108,7 +111,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
                 <div className="reader-content">{children}</div>
               </div>
             </ResizablePanel>
-            {chatOpen && (
+            {chatOpen && !isMobile && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -122,6 +125,13 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
               </>
             )}
           </ResizablePanelGroup>
+          {isMobile && (
+            <Sheet open={chatOpen} onOpenChange={(open) => !open && onChatClose()}>
+              <SheetContent side="right" className="data-[side=right]:w-full data-[side=right]:max-w-none p-0" showCloseButton={false}>
+                <AIChatPanel onClose={onChatClose} />
+              </SheetContent>
+            </Sheet>
+          )}
           <TTSPlaybackBar />
         </div>
       </SidebarInset>

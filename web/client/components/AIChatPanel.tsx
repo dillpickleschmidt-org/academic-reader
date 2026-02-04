@@ -1,4 +1,12 @@
-import { useState, useRef, useEffect, memo, useMemo, useCallback, type ChangeEvent } from "react"
+import {
+  useState,
+  useRef,
+  useEffect,
+  memo,
+  useMemo,
+  useCallback,
+  type ChangeEvent,
+} from "react"
 import { DefaultChatTransport, type UIMessage, type ChatStatus } from "ai"
 import { useChat } from "@ai-sdk/react"
 import { useQuery } from "convex/react"
@@ -41,7 +49,7 @@ const ChatMessage = memo(
             case "text":
               return (
                 <Message key={`${message.id}-${i}`} from={message.role}>
-                  <MessageContent>
+                  <MessageContent className="md:text-[15px]">
                     <MessageResponse>{part.text}</MessageResponse>
                   </MessageContent>
                 </Message>
@@ -117,12 +125,9 @@ const ChatPromptInput = memo(function ChatPromptInput({
 }) {
   const [input, setInput] = useState("")
 
-  const handleChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
-      setInput(e.target.value)
-    },
-    [],
-  )
+  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+  }, [])
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
@@ -140,6 +145,7 @@ const ChatPromptInput = memo(function ChatPromptInput({
           <PromptInputTextarea
             value={input}
             onChange={handleChange}
+            // className="md:text-[15px]"
             placeholder={
               embeddingsReady
                 ? "Ask a follow-up question..."
@@ -175,17 +181,13 @@ export function AIChatPanel({ onClose }: Props) {
   // Load persisted messages for active thread
   const persistedMessages = useQuery(
     api.api.chat.listMessages,
-    activeThreadId
-      ? { threadId: activeThreadId as Id<"chatThreads"> }
-      : "skip",
+    activeThreadId ? { threadId: activeThreadId as Id<"chatThreads"> } : "skip",
   )
 
   // Load thread to check isStreaming
   const activeThread = useQuery(
     api.api.chat.getThread,
-    activeThreadId
-      ? { threadId: activeThreadId as Id<"chatThreads"> }
-      : "skip",
+    activeThreadId ? { threadId: activeThreadId as Id<"chatThreads"> } : "skip",
   )
 
   // Cross-device streaming subscription
@@ -313,10 +315,13 @@ export function AIChatPanel({ onClose }: Props) {
     onClose()
   }
 
-  const handleSendMessage = useCallback((text: string) => {
-    isOriginatingRef.current = true
-    sendMessage({ text })
-  }, [sendMessage])
+  const handleSendMessage = useCallback(
+    (text: string) => {
+      isOriginatingRef.current = true
+      sendMessage({ text })
+    },
+    [sendMessage],
+  )
 
   // Build display messages: persisted + ephemeral streaming from other devices
   const displayMessages = useMemo(() => {
@@ -362,9 +367,12 @@ export function AIChatPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col font-sans text-base" style={{ contain: "strict" }}>
+    <div
+      className="flex h-full flex-col font-sans text-base"
+      style={{ contain: "strict" }}
+    >
       <header className="flex items-center justify-between border-b pl-4 pr-32 py-5.5">
-        <h2 className="text-sm font-semibold">AI Chat</h2>
+        <h2 className="text-[15px] font-semibold">AI Chat</h2>
         <Button
           variant="ghost"
           size="icon"

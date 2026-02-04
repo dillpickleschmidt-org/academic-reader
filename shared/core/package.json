@@ -7,13 +7,7 @@
     "typecheck": "tsc --noEmit"
   },
   "exports": {
-    "./types/api": "./src/types/api.ts",
-    "./lib/utils": "./src/lib/utils.ts",
-    "./ui/primitives/*": "./src/ui/primitives/*.tsx",
-    "./ui/ai-elements/*": "./src/ui/ai-elements/*.tsx",
-    "./ui/info-tooltip": "./src/ui/info-tooltip.tsx",
-    "./client/api-client": "./src/client/api-client.ts",
-    "./client/download": "./src/client/download.ts"
+    "./*": "./src/*"
   },
   "devDependencies": {
     "@types/react": "^19.2.8",

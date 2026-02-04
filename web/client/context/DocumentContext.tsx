@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react"
+import { createContext, useContext, useMemo, type ReactNode } from "react"
 import type { ChunkBlock, TocResult } from "@repo/core/types/api"
 
 interface DocumentContextValue {
@@ -25,8 +25,13 @@ export function DocumentProvider({
   toc,
   children,
 }: DocumentProviderProps) {
+  const value = useMemo(
+    () => ({ documentId, chunks, documentName, toc }),
+    [documentId, chunks, documentName, toc],
+  )
+
   return (
-    <DocumentContext.Provider value={{ documentId, chunks, documentName, toc }}>
+    <DocumentContext.Provider value={value}>
       {children}
     </DocumentContext.Provider>
   )

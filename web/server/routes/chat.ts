@@ -17,20 +17,22 @@ import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 import { loadPersistedDocument } from "../services/document-persistence"
+import { publishStreamMessage } from "../services/redis"
 import type { Storage } from "../storage/types"
 
-// Document context passed from frontend (markdown fetched server-side)
 interface DocumentContext {
-  documentId?: string // Required for both summary and RAG
+  documentId?: string
   isFirstMessage: boolean
 }
 
 interface ChatRequest {
   messages: UIMessage[]
+  threadId?: string
   documentContext?: DocumentContext
 }
 
-// Create search tool with documentId and authenticated client
+const activeStreams = new Map<string, AbortController>()
+
 function createSearchTool(
   documentId: string | undefined,
   convex: ConvexHttpClient,
@@ -47,10 +49,8 @@ function createSearchTool(
       }
 
       try {
-        // Generate embedding for query
         const queryEmbedding = await generateEmbedding(query)
 
-        // Call Convex to search using authenticated client
         const chunks = await convex.action(api.api.documents.search, {
           documentId: documentId as Id<"documents">,
           queryEmbedding,
@@ -61,7 +61,6 @@ function createSearchTool(
           return "No relevant information found in the document."
         }
 
-        // Format results with page citations
         return chunks
           .map(
             (
@@ -79,6 +78,13 @@ function createSearchTool(
   })
 }
 
+function extractUserMessage(messages: UIMessage[]): string | undefined {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== "user") return undefined
+  const textPart = last.parts.find((p) => p.type === "text")
+  return textPart?.type === "text" ? textPart.text : undefined
+}
+
 type Variables = {
   storage: Storage
   userId: string
@@ -93,7 +99,6 @@ chat.post("/chat", async (c) => {
   const storage = c.get("storage")
   const userId = c.get("userId")
 
-  // Create authenticated Convex client for RAG searches
   const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
   if (!convex) {
     event.error = {
@@ -116,9 +121,8 @@ chat.post("/chat", async (c) => {
     return c.json({ error: "Invalid request body" }, 400)
   }
 
-  const { messages, documentContext } = bodyResult.data
+  const { messages, threadId: existingThreadId, documentContext } = bodyResult.data
 
-  // Require documentId for all chat operations
   if (!documentContext?.documentId) {
     event.error = {
       category: "validation",
@@ -129,12 +133,57 @@ chat.post("/chat", async (c) => {
     return c.json({ error: "documentId is required" }, 400)
   }
 
+  // Create or reuse thread
+  let threadId: string
+  if (existingThreadId) {
+    threadId = existingThreadId
+  } else {
+    const createResult = await tryCatch(
+      convex.mutation(api.api.chat.createThread, {
+        documentId: documentContext.documentId as Id<"documents">,
+      }),
+    )
+    if (!createResult.success) {
+      event.error = {
+        category: "backend",
+        message: getErrorMessage(createResult.error),
+        code: "THREAD_CREATE_ERROR",
+      }
+      emitStreamingEvent(event, { status: 500 })
+      return c.json({ error: "Failed to create thread" }, 500)
+    }
+    threadId = createResult.data
+  }
+
+  // Cancel any in-flight stream for this thread
+  const existing = activeStreams.get(threadId)
+  if (existing) {
+    existing.abort()
+    activeStreams.delete(threadId)
+  }
+
+  // Save user message and set streaming flag in one transaction
+  const userText = extractUserMessage(messages)
+  if (userText) {
+    await tryCatch(
+      convex.mutation(api.api.chat.addMessageAndStartStreaming, {
+        threadId: threadId as Id<"chatThreads">,
+        content: userText,
+      }),
+    )
+  } else {
+    await tryCatch(
+      convex.mutation(api.api.chat.setStreaming, {
+        threadId: threadId as Id<"chatThreads">,
+        isStreaming: true,
+      }),
+    )
+  }
+
   const isSummaryMode = documentContext.isFirstMessage
   let markdown: string | undefined
 
-  // For summary mode, fetch markdown from S3
   if (isSummaryMode) {
-    // Get document from Convex to retrieve storageId
     const docResult = await tryCatch(
       convex.query(api.api.documents.get, {
         documentId: documentContext.documentId as Id<"documents">,
@@ -153,7 +202,6 @@ chat.post("/chat", async (c) => {
       return c.json({ error: "Document not found" }, 404)
     }
 
-    // Load markdown from S3
     const loadResult = await tryCatch(
       loadPersistedDocument(storage, userId, docResult.data.storageId),
     )
@@ -171,11 +219,9 @@ chat.post("/chat", async (c) => {
     markdown = loadResult.data.markdown
   }
 
-  // Build system prompt based on mode
   let systemPrompt: string
 
   if (isSummaryMode && markdown) {
-    // Summary mode: Include full markdown, request concise summary
     systemPrompt = `You are an academic assistant helping users understand research papers and documents.
 
 The user has uploaded a document. Here is the full content:
@@ -191,7 +237,6 @@ Provide a concise, one-paragraph summary that captures:
 
 Be direct and informative. Avoid phrases like "This document discusses..." - just state the content directly.`
   } else {
-    // RAG mode: Use search tool for follow-up questions
     systemPrompt = `You are an academic assistant helping users understand research papers and documents.
 
 The user has a document loaded and may ask questions about it. When answering:
@@ -204,7 +249,6 @@ The user has a document loaded and may ask questions about it. When answering:
 If the user asks a general question not about the document, answer normally without searching.`
   }
 
-  // Create model using provider abstraction
   let model
   try {
     model = createChatModel()
@@ -218,10 +262,12 @@ If the user asks a general question not about the document, answer normally with
     return c.json({ error: "Server configuration error" }, 500)
   }
 
-  // Create tools with documentId context (undefined for summary mode)
   const tools = isSummaryMode
     ? undefined
     : { searchDocument: createSearchTool(documentContext?.documentId, convex) }
+
+  const abortController = new AbortController()
+  activeStreams.set(threadId, abortController)
 
   const streamStart = performance.now()
   let streamError: string | undefined
@@ -232,11 +278,26 @@ If the user asks a general question not about the document, answer normally with
       messages: await convertToModelMessages(messages),
       system: systemPrompt,
       tools,
+      abortSignal: abortController.signal,
       stopWhen: isSummaryMode ? undefined : stepCountIs(20),
+      onChunk: ({ chunk }) => {
+        if (chunk.type === "text-delta") {
+          publishStreamMessage(threadId, { type: "token", text: chunk.text })
+        }
+      },
       onError: ({ error }) => {
         streamError = getErrorMessage(error)
+        publishStreamMessage(threadId, {
+          type: "error",
+          message: streamError,
+        })
+        convex.mutation(api.api.chat.setStreaming, {
+          threadId: threadId as Id<"chatThreads">,
+          isStreaming: false,
+        })
+        activeStreams.delete(threadId)
       },
-      onFinish: ({
+      onFinish: async ({
         usage,
         finishReason,
         rawFinishReason,
@@ -249,33 +310,45 @@ If the user asks a general question not about the document, answer normally with
         steps,
         totalUsage,
       }) => {
+        activeStreams.delete(threadId)
+
+        // Save assistant message, clear streaming, and set title in one transaction
+        const title = !existingThreadId && userText
+          ? (userText === "Please summarize this document."
+            ? "Document Summary"
+            : userText.slice(0, 80))
+          : undefined
+        await tryCatch(
+          convex.mutation(api.api.chat.finishStreaming, {
+            threadId: threadId as Id<"chatThreads">,
+            assistantContent: text,
+            title,
+          }),
+        )
+
+        // Publish done to Redis
+        await publishStreamMessage(threadId, { type: "done" })
+
         emitStreamingEvent(event, {
           durationMs: Math.round(performance.now() - streamStart),
           status: 200,
-          // Mode tracking
           mode: isSummaryMode ? "summary" : "rag",
-          // Response metadata
           responseId: response.id,
           modelId: response.modelId,
           finishReason,
           rawFinishReason,
-          // Usage (last step)
           inputTokenCount: usage.inputTokens,
           outputTokenCount: usage.outputTokens,
           totalTokenCount: usage.totalTokens,
-          // Usage (all steps combined)
           totalInputTokenCount: totalUsage.inputTokens,
           totalOutputTokenCount: totalUsage.outputTokens,
           grandTotalTokenCount: totalUsage.totalTokens,
-          // Content metrics
           responseLength: text.length,
           reasoningLength: reasoningText?.length,
           sourceCount: sources.length,
-          // Execution metrics
           stepCount: steps.length,
           toolCallCount: toolCalls?.length ?? 0,
           messageCount: messages.length,
-          // Warnings
           warningCount: warnings?.length ?? 0,
           warnings: warnings?.length ? warnings.map((w) => w.type) : undefined,
           streamError,
@@ -285,6 +358,13 @@ If the user asks a general question not about the document, answer normally with
   )
 
   if (!streamResult.success) {
+    activeStreams.delete(threadId)
+    await tryCatch(
+      convex.mutation(api.api.chat.setStreaming, {
+        threadId: threadId as Id<"chatThreads">,
+        isStreaming: false,
+      }),
+    )
     event.error = {
       category: "backend",
       message: getErrorMessage(streamResult.error),
@@ -294,5 +374,10 @@ If the user asks a general question not about the document, answer normally with
     return c.json({ error: "Failed to stream chat completion" }, 500)
   }
 
-  return streamResult.data.toUIMessageStreamResponse()
+  const response = streamResult.data.toUIMessageStreamResponse()
+
+  // Add thread ID header so client can capture it for new threads
+  response.headers.set("x-thread-id", threadId)
+
+  return response
 })

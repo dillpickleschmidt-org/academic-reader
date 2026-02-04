@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, Bot, Download, Plus } from "lucide-react"
+import { BookOpen, Bot, Download, Plus, Trash2 } from "lucide-react"
 
 import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"
@@ -33,6 +33,36 @@ function ChatThreadsNewButton() {
   )
 }
 
+const ChatThreadItem = React.memo(function ChatThreadItem({
+  threadId,
+  title,
+  isActive,
+}: {
+  threadId: string
+  title: string
+  isActive: boolean
+}) {
+  const { selectThread, deleteThread } = useChatPanel()
+  return (
+    <SidebarMenuSubButton
+      onClick={() => selectThread(threadId)}
+      className={`group/thread h-auto my-0.5 py-1 cursor-pointer ${isActive ? "bg-muted font-medium" : ""}`}
+    >
+      <span className="flex-1 truncate">{title}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          deleteThread(threadId)
+        }}
+        className="opacity-0 group-hover/thread:opacity-100 shrink-0 p-0.5 rounded hover:bg-destructive/20 hover:text-destructive transition-opacity"
+      >
+        <Trash2 className="size-3" />
+      </button>
+    </SidebarMenuSubButton>
+  )
+})
+
 interface ReaderSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDownload?: () => void
   downloadDisabled?: boolean
@@ -48,6 +78,29 @@ export function ReaderSidebar({
   const { state, setOpen } = useSidebar()
   const chatPanel = useChatPanel()
 
+  const threadItems = React.useMemo(() => {
+    const items: Array<{ render: React.ReactNode }> = []
+
+    items.push({ render: <ChatThreadsNewButton /> })
+
+    if (chatPanel.threads) {
+      for (const thread of chatPanel.threads) {
+        items.push({
+          render: (
+            <ChatThreadItem
+              key={thread._id}
+              threadId={thread._id}
+              title={thread.title ?? "New chat"}
+              isActive={chatPanel.activeThreadId === thread._id}
+            />
+          ),
+        })
+      }
+    }
+
+    return items
+  }, [chatPanel.threads, chatPanel.activeThreadId])
+
   const threadsData = {
     title: "Chat Threads",
     url: "#",
@@ -60,7 +113,7 @@ export function ReaderSidebar({
         return "open" as const
       }
     },
-    items: [{ render: <ChatThreadsNewButton /> }],
+    items: threadItems,
   }
 
   // Flatten TOC items with children for display (children indented)

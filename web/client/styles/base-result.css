@@ -175,6 +175,11 @@ body {
   box-sizing: border-box;
 }
 
+.reader-output [data-block-id] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 143px;
+}
+
 /* Smaller screens: hide on scroll down, match theme toggle background */
 @media (max-width: 1535px) {
   .reader-actions-left {

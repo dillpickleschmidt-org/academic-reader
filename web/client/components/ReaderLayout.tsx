@@ -1,4 +1,4 @@
-import { type ReactNode, useRef } from "react"
+import { type ReactNode, useRef, memo } from "react"
 import { Plus } from "lucide-react"
 import { THEMES } from "@/constants/themes"
 import { useReaderTheme } from "@/hooks/use-reader-theme"
@@ -30,16 +30,22 @@ interface Props {
   downloadDisabled?: boolean
 }
 
-function ReaderLayoutInner({
+interface InnerProps extends Props {
+  chatOpen: boolean
+  onChatClose: () => void
+}
+
+const ReaderLayoutInner = memo(function ReaderLayoutInner({
   children,
   onDownload,
   onReset,
   showThemeToggle = false,
   showSidebar = false,
   downloadDisabled = false,
-}: Props) {
+  chatOpen,
+  onChatClose,
+}: InnerProps) {
   const [readerMode, setReaderMode] = useReaderTheme()
-  const { isOpen, close } = useChatPanel()
   const documentContext = useDocumentContext()
   const tocItems = useTableOfContents(documentContext?.toc)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -77,7 +83,7 @@ function ReaderLayoutInner({
           )}
           <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
             <ResizablePanel id="content-panel" minSize="40%">
-              <div ref={scrollRef} className="overflow-auto h-full">
+              <div ref={scrollRef} className="overflow-auto h-full" style={{ contain: "strict" }}>
                 {/* Sticky action buttons - top left */}
                 {showSidebar && (
                   <div className="reader-actions-left sticky top-2 ml-4 mt-2 -mb-10 flex items-center gap-1 z-10 w-fit bg-[var(--reader-bg)] p-1 rounded-lg">
@@ -102,7 +108,7 @@ function ReaderLayoutInner({
                 <div className="reader-content">{children}</div>
               </div>
             </ResizablePanel>
-            {isOpen && (
+            {chatOpen && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -111,7 +117,7 @@ function ReaderLayoutInner({
                   minSize="20%"
                   maxSize="50%"
                 >
-                  <AIChatPanel onClose={close} />
+                  <AIChatPanel onClose={onChatClose} />
                 </ResizablePanel>
               </>
             )}
@@ -121,12 +127,17 @@ function ReaderLayoutInner({
       </SidebarInset>
     </SidebarProvider>
   )
+})
+
+function ChatBridge(props: Props) {
+  const { isOpen, close } = useChatPanel()
+  return <ReaderLayoutInner {...props} chatOpen={isOpen} onChatClose={close} />
 }
 
 export function ReaderLayout(props: Props) {
   return (
     <ChatPanelProvider>
-      <ReaderLayoutInner {...props} />
+      <ChatBridge {...props} />
     </ChatPanelProvider>
   )
 }

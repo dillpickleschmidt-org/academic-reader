@@ -15,46 +15,49 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`
 }
 
-export function TTSPlaybackBar() {
-  const mode = useAudioSelector((s) => s.playback.mode)
-  const isPlaying = useAudioSelector((s) => s.playback.isPlaying)
-  const canPause = useAudioSelector((s) => s.playback.canPause)
-  const canSeek = useAudioSelector((s) => s.playback.canSeek)
-  const currentVoice = useAudioSelector((s) => s.narrator.voice)
+function PlaybackProgress({ isStreaming }: { isStreaming: boolean }) {
   const currentTime = useAudioSelector((s) => s.playback.currentTime)
   const durationMs = useAudioSelector((s) => s.playback.durationMs)
-
-  const { togglePlayPause, skip, setVoice } = useAudioActions()
-  const { voices } = useVoiceSelection(currentVoice, setVoice)
-
-  // Show bar when streaming or ready (audio is available)
-  if (mode === "idle" || mode === "loading") return null
 
   const totalDuration = durationMs / 1000
   const progressPercent = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
 
   return (
-    <div className="shrink-0 bg-(--card) border-t border-(--reader-border)">
-      {/* Progress bar */}
+    <>
       <div className="relative h-1 bg-(--reader-border)">
         <div
           className="absolute inset-y-0 left-0 bg-(--reader-accent) transition-[width] duration-100"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
+      <div className="absolute left-4 flex items-center gap-2 text-xs text-(--reader-text-muted)">
+        <span>{formatTime(currentTime)}</span>
+        <span>/</span>
+        <span>{formatTime(totalDuration)}</span>
+        {isStreaming && <Loader2 size={12} className="ml-1 animate-spin" />}
+      </div>
+    </>
+  )
+}
+
+export function TTSPlaybackBar() {
+  const mode = useAudioSelector((s) => s.playback.mode)
+  const isPlaying = useAudioSelector((s) => s.playback.isPlaying)
+  const canPause = useAudioSelector((s) => s.playback.canPause)
+  const canSeek = useAudioSelector((s) => s.playback.canSeek)
+  const currentVoice = useAudioSelector((s) => s.narrator.voice)
+
+  const { togglePlayPause, skip, setVoice } = useAudioActions()
+  const { voices } = useVoiceSelection(currentVoice, setVoice)
+
+  if (mode === "idle" || mode === "loading") return null
+
+  return (
+    <div className="shrink-0 bg-(--card) border-t border-(--reader-border)">
+      <PlaybackProgress isStreaming={mode === "streaming"} />
 
       <div className="relative flex items-center justify-center py-2 md:pr-12">
-        {/* Time display - left side */}
-        <div className="absolute left-4 flex items-center gap-2 text-xs text-(--reader-text-muted)">
-          <span>{formatTime(currentTime)}</span>
-          <span>/</span>
-          <span>{formatTime(totalDuration)}</span>
-          {mode === "streaming" && <Loader2 size={12} className="ml-1 animate-spin" />}
-        </div>
-
-        {/* Centered playback controls */}
         <div className="flex items-center gap-1">
-          {/* Rewind 15s - only show when seekable */}
           {canSeek && (
             <button
               type="button"
@@ -67,7 +70,6 @@ export function TTSPlaybackBar() {
             </button>
           )}
 
-          {/* Play/Pause */}
           <button
             type="button"
             onClick={togglePlayPause}
@@ -78,7 +80,6 @@ export function TTSPlaybackBar() {
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
           </button>
 
-          {/* Skip 15s - only show when seekable */}
           {canSeek && (
             <button
               type="button"
@@ -92,7 +93,6 @@ export function TTSPlaybackBar() {
           )}
         </div>
 
-        {/* Speaker selector - absolute right */}
         <div className="absolute right-4">
           <Select
             value={currentVoice}

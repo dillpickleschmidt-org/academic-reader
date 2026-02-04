@@ -55,6 +55,26 @@ export default defineSchema({
       filterFields: ["documentId"], // Scope vector search to specific document
     }),
 
+  // Chat threads - persistent AI chat conversations per document
+  chatThreads: defineTable({
+    userId: v.string(),
+    documentId: v.id("documents"),
+    title: v.optional(v.string()),
+    isStreaming: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_document", ["userId", "documentId"]),
+
+  // Chat messages - individual messages within a thread
+  chatMessages: defineTable({
+    threadId: v.id("chatThreads"),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_thread", ["threadId"]),
+
   // TTS audio cache - stores synthesized audio metadata for reuse
   ttsAudio: defineTable({
     documentId: v.id("documents"),

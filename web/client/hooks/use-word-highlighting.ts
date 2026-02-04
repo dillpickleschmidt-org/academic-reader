@@ -1,28 +1,30 @@
 import { useEffect, useRef } from "react"
-import { useAudioSelector } from "@/context/AudioContext"
+import { useAudioSelector, useGetPlaybackTime } from "@/context/AudioContext"
 import { originalHtmlMap, wrapWordsInSpans } from "@/utils/tts-word-wrapping"
+
+const HIGHLIGHT_DELAY_MS = 0
 
 /**
  * Hook for word-level highlighting during TTS playback.
- * Uses requestAnimationFrame for ~16ms precision and direct DOM manipulation
- * to avoid React re-renders.
+ * Uses requestAnimationFrame with direct player time reads for per-frame
+ * precision, and direct DOM manipulation to avoid React re-renders.
  */
 export function useWordHighlighting() {
   const blockId = useAudioSelector((s) => s.playback.blockId)
   const text = useAudioSelector((s) => s.playback.text)
   const wordTimestamps = useAudioSelector((s) => s.playback.wordTimestamps)
   const isPlaying = useAudioSelector((s) => s.playback.isPlaying)
-  const currentTime = useAudioSelector((s) => s.playback.currentTime)
+  const getPlaybackTime = useGetPlaybackTime()
 
   const blockElementRef = useRef<HTMLElement | null>(null)
   const originalHtmlRef = useRef<string>("")
-  // Mapping (spoken word index → original word index)
   const mappingRef = useRef<Map<number, number>>(new Map())
   const gapRangesRef = useRef<GapRange[]>([])
-  // Cached spans for O(1) access during animation
   const spansRef = useRef<Element[]>([])
   const currentRangeRef = useRef<HighlightRange | null>(null)
   const rafIdRef = useRef<number>(0)
+  const wordTimestampsRef = useRef(wordTimestamps)
+  wordTimestampsRef.current = wordTimestamps
 
   useEffect(() => {
     const cleanup = () => {
@@ -46,9 +48,7 @@ export function useWordHighlighting() {
       return
     }
 
-    const blockEl = document.querySelector(
-      `[data-block-id="${blockId}"]`,
-    )
+    const blockEl = document.querySelector(`[data-block-id="${blockId}"]`)
     if (!blockEl) return
 
     const isSameBlock = blockEl === blockElementRef.current
@@ -58,7 +58,6 @@ export function useWordHighlighting() {
       originalHtmlRef.current =
         originalHtmlMap.get(blockElementRef.current) ?? blockEl.innerHTML
 
-      // Check if already wrapped to prevent duplicate word indices
       if (!blockEl.querySelector("[data-word-index]")) {
         wrapWordsInSpans(blockEl)
       }
@@ -67,31 +66,28 @@ export function useWordHighlighting() {
         blockElementRef.current.querySelectorAll("[data-word-index]"),
       )
       currentRangeRef.current = null
-
-      // Build mapping: spoken words → original words
-      const originalWords = spansRef.current.map((s) => s.textContent || "")
-      const spokenWords = wordTimestamps.map((t) => t.word)
-      const { mapping, gapRanges } = buildMapping(originalWords, spokenWords)
-      mappingRef.current = mapping
-      gapRangesRef.current = gapRanges
     }
 
-    const animate = () => {
-      const currentMs = currentTime * 1000
+    const originalWords = spansRef.current.map((s) => s.textContent || "")
+    const spokenWords = wordTimestamps.map((t) => t.word)
+    const { mapping, gapRanges } = buildMapping(originalWords, spokenWords)
+    mappingRef.current = mapping
+    gapRangesRef.current = gapRanges
 
-      // Start 50ms early for better perceived sync
-      const spokenIndex = wordTimestamps.findIndex(
-        (w) => currentMs >= Math.max(0, w.startMs - 50) && currentMs < w.endMs,
+    const animate = () => {
+      const currentMs = getPlaybackTime() * 1000 - HIGHLIGHT_DELAY_MS
+      const timestamps = wordTimestampsRef.current
+
+      const spokenIndex = timestamps.findIndex(
+        (w) => currentMs >= w.startMs && currentMs < w.endMs,
       )
 
       let range: HighlightRange | null = null
       if (spokenIndex >= 0) {
-        // Check direct mapping first
         const directMatch = mappingRef.current.get(spokenIndex)
         if (directMatch !== undefined) {
           range = { start: directMatch, end: directMatch }
         } else {
-          // Check gap ranges for block highlighting
           const gap = gapRangesRef.current.find(
             (g) => spokenIndex >= g.spokenStart && spokenIndex <= g.spokenEnd,
           )
@@ -101,9 +97,7 @@ export function useWordHighlighting() {
         }
       }
 
-      // Update DOM only if range changed (and we're on a word, not between words)
       if (spokenIndex >= 0 && !rangesEqual(range, currentRangeRef.current)) {
-        // Remove old highlights
         if (currentRangeRef.current) {
           for (
             let i = currentRangeRef.current.start;
@@ -113,7 +107,6 @@ export function useWordHighlighting() {
             spansRef.current[i]?.classList.remove("tts-word-active")
           }
         }
-        // Add new highlights
         if (range) {
           for (let i = range.start; i <= range.end; i++) {
             spansRef.current[i]?.classList.add("tts-word-active")
@@ -136,11 +129,11 @@ export function useWordHighlighting() {
         originalHtmlMap.delete(blockElementRef.current)
       }
     }
-  }, [blockId, text, wordTimestamps, isPlaying, currentTime])
+  }, [blockId, text, wordTimestamps, isPlaying, getPlaybackTime])
 }
 
-const NEARBY_THRESHOLD = 3 // Single word OK if within this distance
-const SEQ_LENGTH = 3 // Required sequence for distant matches
+const NEARBY_THRESHOLD = 3
+const SEQ_LENGTH = 3
 
 type GapRange = {
   spokenStart: number
@@ -184,7 +177,6 @@ export function alignWordIndices(
         break
       }
 
-      // Distance 5+: require 3-word sequence
       if (matchesSequence(spokenWords, i, originalWords, j, used, SEQ_LENGTH)) {
         match = j
         break
@@ -201,18 +193,10 @@ export function alignWordIndices(
   return mapping
 }
 
-// --- Helper functions ---
-
-/**
- * Normalize a word for comparison: lowercase, letters and apostrophes only.
- */
 function normalizeWord(word: string): string {
   return word.toLowerCase().replace(/[^a-z']/g, "")
 }
 
-/**
- * Check if N consecutive words match starting at given positions.
- */
 function matchesSequence(
   spoken: string[],
   si: number,
@@ -228,9 +212,6 @@ function matchesSequence(
   return true
 }
 
-/**
- * Detect gaps: unmapped spoken words between two anchors with corresponding original gaps.
- */
 function detectGapRanges(mapping: Map<number, number>): GapRange[] {
   const ranges: GapRange[] = []
   const entries = Array.from(mapping.entries()).sort((a, b) => a[0] - b[0])
@@ -244,7 +225,6 @@ function detectGapRanges(mapping: Map<number, number>): GapRange[] {
     const origGapStart = origIdx + 1
     const origGapEnd = nextOrigIdx - 1
 
-    // Gap exists if there are unmapped words on BOTH sides
     if (spokenGapEnd >= spokenGapStart && origGapEnd >= origGapStart) {
       ranges.push({
         spokenStart: spokenGapStart,

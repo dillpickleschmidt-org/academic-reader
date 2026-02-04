@@ -108,6 +108,8 @@ export class UnifiedAudioPlayer {
   finishStreaming(): void {
     if (this.mode !== "streaming") return
 
+    const wasPlaying = this.isPlaying
+
     this.stopStreamingSources()
 
     const consolidated = this.consolidateChunks()
@@ -118,15 +120,22 @@ export class UnifiedAudioPlayer {
 
     this.buffer = consolidated
 
-    // Preserve current playback position
-    if (this.isPlaying) {
+    if (wasPlaying) {
       this.pausePosition = Math.max(0, this.ctx.currentTime - this.startTime)
       this.pausePosition = Math.min(this.pausePosition, this.buffer.duration)
     }
-    // If paused, pausePosition is already set
 
     this.streamingChunks = []
     this.setMode("ready")
+
+    if (wasPlaying) {
+      this.activeSource = this.ctx.createBufferSource()
+      this.activeSource.buffer = this.buffer
+      this.activeSource.connect(this.gainNode)
+      this.activeSource.onended = this.handlePlaybackEnded
+      this.activeSource.start(0, this.pausePosition)
+      this.startTime = this.ctx.currentTime - this.pausePosition
+    }
   }
 
   // === Playback Controls ===

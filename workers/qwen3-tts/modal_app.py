@@ -20,9 +20,16 @@ image = (
         flash_attn_wheel,
         extra_index_url="https://download.pytorch.org/whl/cu126",
     )
-    .run_commands("pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git@195936c xxhash")
+    .run_commands("pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git@4ce5575 xxhash")
     .run_commands(
         'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\'); snapshot_download(\'Qwen/Qwen3-TTS-Tokenizer-12Hz\')"',
+    )
+    .pip_install("faster-whisper==1.2.1")
+    .run_commands(
+        'python -c "from faster_whisper import WhisperModel; WhisperModel(\'tiny.en\')"',
+    )
+    .run_commands(
+        'python -c "from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()"',
     )
     .add_local_dir(VOICES_DIR, remote_path="/voices")
     .add_local_dir(Path(__file__).parent / "core", remote_path="/root/core")
@@ -30,16 +37,16 @@ image = (
 
 app = modal.App("qwen3-tts", image=image)
 
-snapshot_key = "v102"
+snapshot_key = "v112"
 
 with image.imports():
     import sys
     sys.path.insert(0, "/root")
 
     import torch
-    import numpy as np
 
-    from core.voices import VoiceConfig, VOICES, list_voices
+    from core.voices import VOICES, list_voices
+    from core.synthesis import synthesize as core_synthesize, synthesize_streaming_ndjson
 
 
 @app.cls(
@@ -109,6 +116,18 @@ class Qwen3TTS:
             self.voice_prompts[voice_id] = load_voice_prompt(prompt_path, "cuda")
         print(f"[qwen3-tts] Loaded {len(self.voice_prompts)} voice(s)", flush=True)
 
+        # Load faster-whisper for transcription + MMS for alignment
+        from faster_whisper import WhisperModel
+        from core.alignment import load_mms_model
+
+        print("[qwen3-tts] Loading faster-whisper tiny.en...", flush=True)
+        self.whisper_model = WhisperModel("tiny.en", device="cuda", compute_type="int8_float16", device_index=0)
+        print("[qwen3-tts] faster-whisper loaded", flush=True)
+
+        print("[qwen3-tts] Loading MMS alignment...", flush=True)
+        self.mms_model = load_mms_model("cuda")
+        print("[qwen3-tts] MMS loaded", flush=True)
+
         # Warmup
         print("[qwen3-tts] Running warmup...", flush=True)
         self._warmup()
@@ -125,6 +144,8 @@ class Qwen3TTS:
         print(f"[qwen3-tts] Interface: {self.interface is not None}", flush=True)
         print(f"[qwen3-tts] Speech tokenizer: {self.speech_tokenizer is not None}", flush=True)
         print(f"[qwen3-tts] Voice prompts: {len(self.voice_prompts)}", flush=True)
+        print(f"[qwen3-tts] Whisper model: {self.whisper_model is not None}", flush=True)
+        print(f"[qwen3-tts] MMS model: {self.mms_model is not None}", flush=True)
         print("[qwen3-tts] Ready!", flush=True)
 
     def _warmup(self):
@@ -149,96 +170,24 @@ class Qwen3TTS:
 
     @modal.method()
     def synthesize_streaming(self, text: str, voice_id: str):
-        """
-        Generator that yields raw PCM audio chunks as codes are generated.
-        Each chunk is ~2 seconds of audio (25 codes at 12.5 Hz).
-        """
+        """Generator that yields NDJSON lines: audio chunks and word timestamps."""
         if voice_id not in VOICES:
             return
-
-        voice_prompt = self.voice_prompts[voice_id]
-        voice = VOICES[voice_id]
-        chunk_size = 50
-
-        accumulated_codes = []
-        yielded_audio_samples = 0
-
-        for codebook_ids in self.interface.generate_voice_clone(
-            text=text,
-            voice_clone_prompt=voice_prompt,
-            language="english",
-            temperature=voice.temperature,
-            top_p=voice.top_p,
-        ):
-            accumulated_codes.append(codebook_ids)
-
-            if len(accumulated_codes) >= chunk_size and len(accumulated_codes) % chunk_size == 0:
-                codes_tensor = torch.tensor(accumulated_codes, device="cuda")
-                codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
-                wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
-
-                full_audio = wavs[0]
-                if len(full_audio) > yielded_audio_samples:
-                    audio_chunk = full_audio[yielded_audio_samples:]
-                    audio_int16 = (audio_chunk * 32767).astype(np.int16)
-                    yield audio_int16.tobytes()
-                    yielded_audio_samples = len(full_audio)
-
-        if accumulated_codes:
-            codes_tensor = torch.tensor(accumulated_codes, device="cuda")
-            codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
-            wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
-
-            full_audio = wavs[0]
-            if len(full_audio) > yielded_audio_samples:
-                audio_chunk = full_audio[yielded_audio_samples:]
-                audio_int16 = (audio_chunk * 32767).astype(np.int16)
-                yield audio_int16.tobytes()
+        yield from synthesize_streaming_ndjson(text, voice_id, self)
 
     @modal.method()
     def synthesize(self, text: str, voice_id: str) -> dict:
         """Synthesize speech from text (non-streaming)."""
-        import base64
-        import io
-        from scipy.io import wavfile
-
         if voice_id not in VOICES:
             return {
                 "error": f"Unknown voice: {voice_id}. Available: {list(VOICES.keys())}"
             }
-
-        voice = VOICES[voice_id]
-        voice_prompt = self.voice_prompts[voice_id]
-
-        audio_codes = []
-        for codebook_ids in self.interface.generate_voice_clone(
-            text=text,
-            voice_clone_prompt=voice_prompt,
-            language="english",
-            temperature=voice.temperature,
-            top_p=voice.top_p,
-        ):
-            audio_codes.append(codebook_ids)
-
-        if not audio_codes:
-            return {"error": "No audio generated"}
-
-        codes_tensor = torch.tensor(audio_codes, device="cuda")
-        codes_tensor = codes_tensor.unsqueeze(0).transpose(1, 2)
-        wavs, sr = self.speech_tokenizer.decode_codec_ids(codes_tensor)
-
-        audio = wavs[0]
-        duration_ms = len(audio) / sr * 1000
-
-        audio_int16 = (audio * 32767).astype(np.int16)
-        buffer = io.BytesIO()
-        wavfile.write(buffer, sr, audio_int16)
-        wav_bytes = buffer.getvalue()
-
+        audio_base64, sr, duration_ms, word_timestamps = core_synthesize(text, voice_id, self)
         return {
-            "audio": base64.b64encode(wav_bytes).decode("utf-8"),
+            "audio": audio_base64,
             "sampleRate": sr,
             "durationMs": duration_ms,
+            "wordTimestamps": word_timestamps,
         }
 
 
@@ -268,18 +217,14 @@ def api():
 
     @web.post("/synthesize/stream")
     async def synthesize_stream(req: StreamRequest):
-        """
-        Stream audio as it's generated.
-        Returns raw PCM s16le audio at 24kHz mono.
-        Client plays with: ffplay -f s16le -ar 24000 -ac 1 -
-        """
+        """Stream audio as NDJSON with interleaved timestamps."""
         import asyncio
 
-        async def audio_generator():
+        async def ndjson_generator():
             gen = worker.synthesize_streaming.remote_gen.aio(req.text, req.voice_id)
             try:
-                async for chunk in gen:
-                    yield chunk
+                async for line in gen:
+                    yield line
             except asyncio.CancelledError:
                 return
             finally:
@@ -289,8 +234,8 @@ def api():
                     pass
 
         return StreamingResponse(
-            audio_generator(),
-            media_type="audio/pcm",
+            ndjson_generator(),
+            media_type="application/x-ndjson",
             headers={
                 "Transfer-Encoding": "chunked",
                 "X-Audio-Sample-Rate": "24000",

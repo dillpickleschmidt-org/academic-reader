@@ -234,6 +234,7 @@ tts.post("/tts/synthesize", async (c) => {
         }
 
         sendEvent({ type: "progress", stage: "synthesizing" })
+        sendEvent({ type: "text", text: variationText })
 
         await workerActivation
 
@@ -251,26 +252,15 @@ tts.post("/tts/synthesize", async (c) => {
           return
         }
 
-        // Non-streaming synthesis for testing (swap back to streaming when done)
-        const USE_STREAMING = true
-
         const pcmChunks: Uint8Array[] = []
+        let latestWordTimestamps: Array<{ word: string; startMs: number; endMs: number }> = []
 
-        if (USE_STREAMING) {
-          let pendingByte: number | null = null
-          for await (const chunk of backend.synthesizeStream(
-            variationText!,
-            voiceId,
-          )) {
-            let data = chunk
-            if (pendingByte !== null) {
-              data = new Uint8Array([pendingByte, ...chunk])
-              pendingByte = null
-            }
-            if (data.length % 2 !== 0) {
-              pendingByte = data[data.length - 1]
-              data = data.slice(0, -1)
-            }
+        for await (const chunk of backend.synthesizeStream(
+          variationText!,
+          voiceId,
+        )) {
+          if (chunk.type === "audio") {
+            let data = chunk.data
             if (data.length > 0) {
               pcmChunks.push(data)
               sendEvent({
@@ -278,17 +268,13 @@ tts.post("/tts/synthesize", async (c) => {
                 data: Buffer.from(data).toString("base64"),
               })
             }
+          } else if (chunk.type === "timestamps") {
+            latestWordTimestamps = chunk.wordTimestamps
+            sendEvent({
+              type: "timestamps",
+              wordTimestamps: chunk.wordTimestamps,
+            })
           }
-        } else {
-          const result = await backend.synthesize(variationText!, voiceId)
-          // Decode base64 WAV and extract PCM (skip 44-byte WAV header)
-          const wavBuffer = Buffer.from(result.audio, "base64")
-          const pcmData = new Uint8Array(wavBuffer.subarray(44))
-          pcmChunks.push(pcmData)
-          sendEvent({
-            type: "audio-chunk",
-            data: Buffer.from(pcmData).toString("base64"),
-          })
         }
 
         // Send completion event
@@ -327,7 +313,7 @@ tts.post("/tts/synthesize", async (c) => {
                 storagePath,
                 durationMs,
                 sampleRate,
-                wordTimestamps: [],
+                wordTimestamps: latestWordTimestamps,
               })
               .catch((e) => {
                 event.warning = {

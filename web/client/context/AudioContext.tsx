@@ -249,6 +249,7 @@ type AudioActions = {
 const AudioContext = createContext<{
   store: AudioStore
   actions: AudioActions
+  getPlaybackTime: () => number
 } | null>(null)
 
 function createInitialState(): AudioState {
@@ -595,12 +596,20 @@ export function AudioProvider({
                 event.stage === "rewriting" ? "Preparing text..." : "Generating speech...",
                 { id: toastId },
               )
+            } else if (event.type === "text") {
+              store.setState({
+                playback: { ...store.getState().playback, text: event.text },
+              })
             } else if (event.type === "audio-chunk") {
               if (firstChunk) {
                 toast.success("Speech ready", { id: toastId })
                 firstChunk = false
               }
               playerRef.current?.addPcmChunk(event.data)
+            } else if (event.type === "timestamps") {
+              store.setState({
+                playback: { ...store.getState().playback, wordTimestamps: event.wordTimestamps },
+              })
             } else if (event.type === "complete") {
               // Stream finished - consolidate buffer for full controls
               playerRef.current?.finishStreaming()
@@ -1069,12 +1078,14 @@ export function AudioProvider({
   const valueRef = useRef<{
     store: AudioStore
     actions: AudioActions
+    getPlaybackTime: () => number
   }>(null!)
 
   if (!valueRef.current) {
     valueRef.current = {
       store,
       actions: {} as AudioActions, // Populated below
+      getPlaybackTime: () => playerRef.current?.getCurrentTime() ?? 0,
     }
   }
 
@@ -1147,4 +1158,8 @@ export function useAudioSelector<T>(selector: (state: AudioState) => T): T {
 
 export function useAudioActions(): AudioActions {
   return useAudioContext().actions
+}
+
+export function useGetPlaybackTime(): () => number {
+  return useAudioContext().getPlaybackTime
 }

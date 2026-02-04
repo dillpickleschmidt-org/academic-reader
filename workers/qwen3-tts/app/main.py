@@ -5,7 +5,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.voices import VOICES, list_voices
-from .synthesis import synthesize, synthesize_streaming
+from core.synthesis import synthesize, synthesize_streaming_ndjson
+from .models import get_or_create_model
 
 app = FastAPI(title="Qwen3-TTS Worker", version="2.0.0")
 
@@ -30,6 +31,7 @@ class SynthesizeResponse(BaseModel):
     audio: str
     sampleRate: int
     durationMs: float
+    wordTimestamps: list[dict] = []
 
 
 class VoiceInfo(BaseModel):
@@ -64,13 +66,15 @@ async def synthesize_endpoint(request: SynthesizeRequest):
         )
 
     try:
-        audio_base64, sample_rate, duration_ms = synthesize(
-            request.text, request.voiceId
+        model = get_or_create_model()
+        audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
+            request.text, request.voiceId, model
         )
         return SynthesizeResponse(
             audio=audio_base64,
             sampleRate=sample_rate,
             durationMs=duration_ms,
+            wordTimestamps=word_timestamps,
         )
     except Exception as e:
         print(f"[error] Synthesis failed: {e}", flush=True)
@@ -79,11 +83,7 @@ async def synthesize_endpoint(request: SynthesizeRequest):
 
 @app.post("/synthesize/stream")
 async def synthesize_stream(request: StreamRequest):
-    """Stream audio as it's generated.
-
-    Returns raw PCM s16le audio at 24kHz mono.
-    Client plays with: ffplay -f s16le -ar 24000 -ac 1 -
-    """
+    """Stream audio as NDJSON with interleaved timestamps."""
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -93,13 +93,11 @@ async def synthesize_stream(request: StreamRequest):
             detail=f"Unknown voice: {request.voice_id}. Available: {list(VOICES.keys())}",
         )
 
-    def audio_generator():
-        for chunk in synthesize_streaming(request.text, request.voice_id):
-            yield chunk
+    model = get_or_create_model()
 
     return StreamingResponse(
-        audio_generator(),
-        media_type="audio/pcm",
+        synthesize_streaming_ndjson(request.text, request.voice_id, model),
+        media_type="application/x-ndjson",
         headers={
             "Transfer-Encoding": "chunked",
             "X-Audio-Sample-Rate": "24000",
@@ -112,7 +110,7 @@ async def synthesize_stream(request: StreamRequest):
 @app.post("/load")
 async def load():
     """Load TTS model. Idempotent - instant if already loaded."""
-    from .models import get_or_create_model, _model_cache
+    from .models import _model_cache
 
     if _model_cache is not None:
         return {"status": "already_loaded"}

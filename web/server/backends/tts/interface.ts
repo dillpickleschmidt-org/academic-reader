@@ -7,6 +7,47 @@ export interface SynthesizeResult {
   audio: string // base64-encoded WAV
   sampleRate: number
   durationMs: number
+  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
+}
+
+export type WordTimestamp = { word: string; startMs: number; endMs: number }
+
+export type StreamChunk =
+  | { type: "audio"; data: Uint8Array }
+  | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
+
+export async function* parseNdjsonStream(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split("\n")
+    buffer = lines.pop() || ""
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const parsed = JSON.parse(line)
+      if (parsed.type === "audio") {
+        yield { type: "audio", data: Buffer.from(parsed.data, "base64") }
+      } else if (parsed.type === "timestamps") {
+        yield { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const parsed = JSON.parse(buffer)
+    if (parsed.type === "audio") {
+      yield { type: "audio", data: Buffer.from(parsed.data, "base64") }
+    } else if (parsed.type === "timestamps") {
+      yield { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
+    }
+  }
 }
 
 export interface TTSBackend {
@@ -18,9 +59,9 @@ export interface TTSBackend {
   synthesize(text: string, voiceId: string): Promise<SynthesizeResult>
 
   /**
-   * Stream audio chunks as raw PCM s16le at 24kHz.
+   * Stream audio chunks and word timestamps as NDJSON.
    */
-  synthesizeStream(text: string, voiceId: string): AsyncGenerator<Uint8Array>
+  synthesizeStream(text: string, voiceId: string): AsyncGenerator<StreamChunk>
 
   /**
    * List available voices.

@@ -17,6 +17,8 @@ class ModelCache:
     interface: "Qwen3TTSInterface"
     speech_tokenizer: "SpeechTokenizerCUDAGraph"
     voice_prompts: dict
+    whisper_model: "WhisperModel"
+    mms_model: dict
 
 
 _model_cache: Optional[ModelCache] = None
@@ -81,10 +83,23 @@ def get_or_create_model() -> ModelCache:
                 voice_prompts[voice_id] = load_voice_prompt(prompt_path, "cuda")
             print(f"[models] Loaded {len(voice_prompts)} voice(s)", flush=True)
 
+            from faster_whisper import WhisperModel
+            from core.alignment import load_mms_model
+
+            print("[models] Loading faster-whisper tiny.en...", flush=True)
+            whisper_model = WhisperModel("tiny.en", device="cuda", compute_type="int8_float16", device_index=0)
+            print("[models] faster-whisper loaded", flush=True)
+
+            print("[models] Loading MMS alignment model...", flush=True)
+            mms_model = load_mms_model("cuda")
+            print("[models] MMS loaded", flush=True)
+
             _model_cache = ModelCache(
                 interface=interface,
                 speech_tokenizer=speech_tokenizer,
                 voice_prompts=voice_prompts,
+                whisper_model=whisper_model,
+                mms_model=mms_model,
             )
 
             print("[models] Running warmup...", flush=True)

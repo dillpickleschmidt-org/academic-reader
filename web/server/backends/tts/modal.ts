@@ -1,4 +1,5 @@
-import type { TTSBackend, VoiceInfo, SynthesizeResult } from "./interface"
+import type { TTSBackend, VoiceInfo, SynthesizeResult, StreamChunk } from "./interface"
+import { parseNdjsonStream } from "./interface"
 
 interface ModalTTSConfig {
   qwen3Url?: string
@@ -35,7 +36,7 @@ export class ModalTTSBackend implements TTSBackend {
     return res.json() as Promise<SynthesizeResult>
   }
 
-  async *synthesizeStream(text: string, voiceId: string): AsyncGenerator<Uint8Array> {
+  async *synthesizeStream(text: string, voiceId: string): AsyncGenerator<StreamChunk> {
     if (!text.trim()) {
       throw new Error("Empty text")
     }
@@ -59,12 +60,7 @@ export class ModalTTSBackend implements TTSBackend {
       throw new Error("No response body")
     }
 
-    const reader = res.body.getReader()
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      yield value
-    }
+    yield* parseNdjsonStream(res.body)
   }
 
   async listVoices(): Promise<VoiceInfo[]> {

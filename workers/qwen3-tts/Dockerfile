@@ -27,6 +27,21 @@ print('Downloading model...'); \
 snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-Base'); \
 print('Model downloaded successfully')"
 
+# Pre-download faster-whisper tiny.en for transcription
+RUN pip install --no-cache-dir faster-whisper==1.2.1
+RUN python -c "\
+from faster_whisper import WhisperModel; \
+print('Downloading faster-whisper tiny.en...'); \
+WhisperModel('tiny.en'); \
+print('faster-whisper model cached successfully')"
+
+# Pre-download MMS alignment model for word-level timestamps
+RUN python -c "\
+from torchaudio.pipelines import MMS_FA; \
+print('Downloading MMS alignment model...'); \
+MMS_FA.get_model(); \
+print('MMS model cached successfully')"
+
 # Copy application code
 COPY core/ ./core/
 COPY app/ ./app/

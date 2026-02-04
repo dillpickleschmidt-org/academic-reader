@@ -252,8 +252,7 @@ tts.post("/tts/synthesize", async (c) => {
           return
         }
 
-        let fullAudioPcm: Uint8Array | null = null
-        let fullAudioSampleRate = 24000
+        const pcmChunks: Uint8Array[] = []
         let latestWordTimestamps: Array<{ word: string; startMs: number; endMs: number }> = []
 
         for await (const chunk of backend.synthesizeStream(
@@ -263,14 +262,12 @@ tts.post("/tts/synthesize", async (c) => {
           if (chunk.type === "audio") {
             let data = chunk.data
             if (data.length > 0) {
+              pcmChunks.push(data)
               sendEvent({
                 type: "audio-chunk",
                 data: Buffer.from(data).toString("base64"),
               })
             }
-          } else if (chunk.type === "full_audio") {
-            fullAudioPcm = chunk.data
-            fullAudioSampleRate = chunk.sampleRate
           } else if (chunk.type === "timestamps") {
             latestWordTimestamps = chunk.wordTimestamps
             sendEvent({
@@ -283,17 +280,22 @@ tts.post("/tts/synthesize", async (c) => {
         // Send completion event
         sendEvent({ type: "complete" })
 
-        if (!fullAudioPcm) {
-          console.warn("[tts] No full_audio received, skipping cache")
+        if (pcmChunks.length === 0) {
+          console.warn("[tts] No audio chunks received, skipping cache")
           controller.close()
           return
         }
 
-        // Cache the single-pass full decode (not the concatenated streaming
-        // chunks) so timestamps and cached audio are from the same decode.
-        const sampleRate = fullAudioSampleRate
-        const durationMs = Math.round((fullAudioPcm.length / 2 / sampleRate) * 1000)
-        const wavBuffer = pcmToWav(fullAudioPcm, sampleRate)
+        const sampleRate = 24000
+        const totalLen = pcmChunks.reduce((sum, c) => sum + c.length, 0)
+        const concatenated = new Uint8Array(totalLen)
+        let offset = 0
+        for (const c of pcmChunks) {
+          concatenated.set(c, offset)
+          offset += c.length
+        }
+        const durationMs = Math.round((concatenated.length / 2 / sampleRate) * 1000)
+        const wavBuffer = pcmToWav(concatenated, sampleRate)
 
         const storagePath = `documents/${userId}/${doc.storageId}/audio/${voiceId}/${blockId.replace(/\//g, "_")}.wav`
 

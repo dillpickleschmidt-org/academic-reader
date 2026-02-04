@@ -50,9 +50,7 @@ export class UnifiedAudioPlayer {
     const response = await fetch(url)
     const arrayBuffer = await response.arrayBuffer()
 
-    // Parse WAV manually to create a 24000Hz buffer (matching streaming path).
-    // decodeAudioData resamples to AudioContext's native rate, which can
-    // introduce timing differences vs the streaming playback path.
+    // Parse manually to create a 24000Hz buffer, matching the streaming path
     this.buffer = parseWavToBuffer(this.ctx, arrayBuffer)
 
     this.pausePosition = 0

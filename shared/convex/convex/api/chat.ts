@@ -73,9 +73,13 @@ export const getThread = query({
   handler: (ctx, { threadId }) => Chat.getThread(ctx, threadId),
 })
 
-export const listMessages = query({
+export const getThreadMessages = query({
   args: {
     threadId: v.id("chatThreads"),
   },
-  handler: (ctx, { threadId }) => Chat.getMessages(ctx, threadId),
+  handler: async (ctx, { threadId }) => {
+    const thread = await Chat.getThread(ctx, threadId)
+    const messages = await Chat.getMessages(ctx, threadId)
+    return { thread, messages }
+  },
 })

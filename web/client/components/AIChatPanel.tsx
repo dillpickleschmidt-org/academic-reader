@@ -7,6 +7,7 @@ import {
   useCallback,
   type ChangeEvent,
 } from "react"
+import "katex/dist/katex.min.css"
 import { DefaultChatTransport, type UIMessage, type ChatStatus } from "ai"
 import { useChat } from "@ai-sdk/react"
 import { useQuery } from "convex/react"
@@ -14,7 +15,6 @@ import { api } from "@repo/convex/convex/_generated/api"
 import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
 import { Bot, LogIn, X } from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
-import { VirtualizedConversation } from "@repo/core/ui/ai-elements/virtualized-conversation"
 import {
   Message,
   MessageContent,
@@ -40,6 +40,12 @@ interface Props {
   onClose: () => void
 }
 
+// Convert single-dollar LaTeX ($...$) to double-dollar ($$...$$) for Streamdown
+function convertLatex(text: string): string {
+  // Match $...$ but not $$...$$ (already double) or escaped \$
+  return text.replace(/(?<!\$)\$(?!\$)([^$]+?)\$(?!\$)/g, "$$$$$1$$$$")
+}
+
 const ChatMessage = memo(
   function ChatMessage({ message }: { message: UIMessage }) {
     return (
@@ -50,7 +56,7 @@ const ChatMessage = memo(
               return (
                 <Message key={`${message.id}-${i}`} from={message.role}>
                   <MessageContent className="md:text-[15px]">
-                    <MessageResponse>{part.text}</MessageResponse>
+                    <MessageResponse>{convertLatex(part.text)}</MessageResponse>
                   </MessageContent>
                 </Message>
               )
@@ -178,17 +184,13 @@ export function AIChatPanel({ onClose }: Props) {
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId
 
-  // Load persisted messages for active thread
-  const persistedMessages = useQuery(
-    api.api.chat.listMessages,
+  // Load thread and messages together
+  const threadData = useQuery(
+    api.api.chat.getThreadMessages,
     activeThreadId ? { threadId: activeThreadId as Id<"chatThreads"> } : "skip",
   )
-
-  // Load thread to check isStreaming
-  const activeThread = useQuery(
-    api.api.chat.getThread,
-    activeThreadId ? { threadId: activeThreadId as Id<"chatThreads"> } : "skip",
-  )
+  const activeThread = threadData?.thread
+  const persistedMessages = threadData?.messages
 
   // Cross-device streaming subscription
   const streamingText = useStreamSubscription(
@@ -323,18 +325,17 @@ export function AIChatPanel({ onClose }: Props) {
     [sendMessage],
   )
 
-  // Build display messages: persisted + ephemeral streaming from other devices
-  const displayMessages = useMemo(() => {
-    if (streamingText) {
-      const ephemeralMessage: UIMessage = {
+  // Reversed messages for flex-col-reverse layout (memoized separately from streaming)
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages])
+
+  // Ephemeral streaming message (rendered first due to flex-col-reverse = appears at bottom)
+  const ephemeralMessage = streamingText
+    ? {
         id: "streaming-ephemeral",
-        role: "assistant",
+        role: "assistant" as const,
         parts: [{ type: "text" as const, text: streamingText }],
       }
-      return [...messages, ephemeralMessage]
-    }
-    return messages
-  }, [messages, streamingText])
+    : null
 
   const conversationFooter = useMemo(() => {
     const isLoading = status === "submitted" || status === "streaming"
@@ -349,11 +350,6 @@ export function AIChatPanel({ onClose }: Props) {
       </>
     )
   }, [status, storageError, streamingText])
-
-  const renderMessage = useCallback(
-    (message: UIMessage) => <ChatMessage message={message} />,
-    [],
-  )
 
   const handleSignIn = async () => {
     try {
@@ -393,12 +389,35 @@ export function AIChatPanel({ onClose }: Props) {
         <ThreadSelectionPlaceholder />
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
-          <VirtualizedConversation
-            messages={displayMessages}
-            className="flex-1"
-            renderMessage={renderMessage}
-            footer={conversationFooter}
-          />
+          <div className="flex flex-col-reverse flex-1 overflow-y-auto">
+            {conversationFooter && (
+              <div className="p-4">{conversationFooter}</div>
+            )}
+            {ephemeralMessage && (
+              <div key={ephemeralMessage.id} className="p-4">
+                <ChatMessage message={ephemeralMessage} />
+              </div>
+            )}
+            {reversedMessages.map((message) => (
+              <div
+                key={message.id}
+                className="p-4"
+                style={
+                  reversedMessages.length > 50
+                    ? {
+                        contentVisibility: "auto",
+                        containIntrinsicSize:
+                          message.role === "user"
+                            ? "auto 142px"
+                            : "auto 1346px",
+                      }
+                    : undefined
+                }
+              >
+                <ChatMessage message={message} />
+              </div>
+            ))}
+          </div>
 
           <ChatPromptInput
             onSendMessage={handleSendMessage}

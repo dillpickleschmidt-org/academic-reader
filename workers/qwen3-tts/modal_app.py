@@ -37,7 +37,7 @@ image = (
 
 app = modal.App("qwen3-tts", image=image)
 
-snapshot_key = "v112"
+snapshot_key = "v114"
 
 with image.imports():
     import sys

@@ -49,7 +49,11 @@ export class UnifiedAudioPlayer {
 
     const response = await fetch(url)
     const arrayBuffer = await response.arrayBuffer()
-    this.buffer = await this.ctx.decodeAudioData(arrayBuffer)
+
+    // Parse WAV manually to create a 24000Hz buffer (matching streaming path).
+    // decodeAudioData resamples to AudioContext's native rate, which can
+    // introduce timing differences vs the streaming playback path.
+    this.buffer = parseWavToBuffer(this.ctx, arrayBuffer)
 
     this.pausePosition = 0
     this.setMode("ready")
@@ -393,4 +397,14 @@ function int16ToFloat32(int16: Int16Array): Float32Array {
     float32[i] = int16[i] / 32768
   }
   return float32
+}
+
+function parseWavToBuffer(ctx: AudioContext, arrayBuffer: ArrayBuffer): AudioBuffer {
+  const view = new DataView(arrayBuffer)
+  const sampleRate = view.getUint32(24, true)
+  const pcmData = new Int16Array(arrayBuffer, 44)
+  const floatData = int16ToFloat32(pcmData)
+  const buffer = ctx.createBuffer(1, floatData.length, sampleRate)
+  buffer.getChannelData(0).set(floatData)
+  return buffer
 }

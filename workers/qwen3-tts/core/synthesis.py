@@ -156,6 +156,12 @@ def synthesize_streaming(text: str, voice_id: str, model, chunk_size: int = 50) 
             audio_int16 = (audio_chunk * 32767).astype(np.int16)
             yield {"type": "audio", "data": audio_int16.tobytes()}
 
+        # Yield the full single-pass decode for caching — the concatenated
+        # streaming chunks have splice drift at chunk boundaries, so the
+        # cached WAV should use this consistent decode instead.
+        full_audio_int16 = (full_audio * 32767).astype(np.int16)
+        yield {"type": "full_audio", "data": full_audio_int16.tobytes(), "sampleRate": sr}
+
         transcript = transcribe(model.whisper_model, full_audio, sr)
         audio_tensor = torch.from_numpy(full_audio).float()
         word_timestamps = get_word_timestamps(model.mms_model, audio_tensor, transcript, sr)
@@ -165,10 +171,11 @@ def synthesize_streaming(text: str, voice_id: str, model, chunk_size: int = 50) 
 def synthesize_streaming_ndjson(text: str, voice_id: str, model, chunk_size: int = 50) -> Generator[str, None, None]:
     """Wrap synthesize_streaming as NDJSON lines for HTTP streaming."""
     for chunk in synthesize_streaming(text, voice_id, model, chunk_size):
-        if chunk["type"] == "audio":
+        if chunk["type"] in ("audio", "full_audio"):
             yield json.dumps({
-                "type": "audio",
+                "type": chunk["type"],
                 "data": base64.b64encode(chunk["data"]).decode("ascii"),
+                **({"sampleRate": chunk["sampleRate"]} if "sampleRate" in chunk else {}),
             }) + "\n"
         else:
             yield json.dumps(chunk) + "\n"

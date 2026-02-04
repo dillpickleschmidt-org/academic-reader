@@ -18,13 +18,22 @@ export function useWordHighlighting() {
 
   const blockElementRef = useRef<HTMLElement | null>(null)
   const originalHtmlRef = useRef<string>("")
-  const mappingRef = useRef<Map<number, number>>(new Map())
-  const gapRangesRef = useRef<GapRange[]>([])
   const spansRef = useRef<Element[]>([])
+  const rangesRef = useRef<(HighlightRange | null)[]>([])
   const currentRangeRef = useRef<HighlightRange | null>(null)
+  const lastIndexRef = useRef(0)
   const rafIdRef = useRef<number>(0)
   const wordTimestampsRef = useRef(wordTimestamps)
   wordTimestampsRef.current = wordTimestamps
+
+  // Rebuild ranges when timestamps change without restarting the RAF loop
+  const prevTimestampsRef = useRef(wordTimestamps)
+  if (wordTimestamps !== prevTimestampsRef.current && spansRef.current.length > 0) {
+    prevTimestampsRef.current = wordTimestamps
+    const originalWords = spansRef.current.map((s) => s.textContent || "")
+    const spokenWords = wordTimestamps.map((t) => t.word)
+    rangesRef.current = buildRanges(originalWords, spokenWords)
+  }
 
   useEffect(() => {
     const cleanup = () => {
@@ -37,13 +46,13 @@ export function useWordHighlighting() {
       }
       blockElementRef.current = null
       originalHtmlRef.current = ""
-      mappingRef.current = new Map()
-      gapRangesRef.current = []
       spansRef.current = []
+      rangesRef.current = []
       currentRangeRef.current = null
+      lastIndexRef.current = 0
     }
 
-    if (!blockId || !isPlaying || !wordTimestamps?.length || !text) {
+    if (!blockId || !isPlaying || !text) {
       cleanup()
       return
     }
@@ -66,44 +75,36 @@ export function useWordHighlighting() {
         blockElementRef.current.querySelectorAll("[data-word-index]"),
       )
       currentRangeRef.current = null
-    }
 
-    const originalWords = spansRef.current.map((s) => s.textContent || "")
-    const spokenWords = wordTimestamps.map((t) => t.word)
-    const { mapping, gapRanges } = buildMapping(originalWords, spokenWords)
-    mappingRef.current = mapping
-    gapRangesRef.current = gapRanges
+      // Initial range build after DOM setup
+      if (wordTimestamps?.length) {
+        const originalWords = spansRef.current.map((s) => s.textContent || "")
+        const spokenWords = wordTimestamps.map((t) => t.word)
+        rangesRef.current = buildRanges(originalWords, spokenWords)
+        prevTimestampsRef.current = wordTimestamps
+      }
+    }
 
     const animate = () => {
       const currentMs = getPlaybackTime() * 1000 - HIGHLIGHT_DELAY_MS
       const timestamps = wordTimestampsRef.current
+      const ranges = rangesRef.current
 
-      const spokenIndex = timestamps.findIndex(
-        (w) => currentMs >= w.startMs && currentMs < w.endMs,
-      )
-
-      let range: HighlightRange | null = null
-      if (spokenIndex >= 0) {
-        const directMatch = mappingRef.current.get(spokenIndex)
-        if (directMatch !== undefined) {
-          range = { start: directMatch, end: directMatch }
-        } else {
-          const gap = gapRangesRef.current.find(
-            (g) => spokenIndex >= g.spokenStart && spokenIndex <= g.spokenEnd,
-          )
-          if (gap) {
-            range = { start: gap.origStart, end: gap.origEnd }
-          }
+      let spokenIndex = -1
+      for (let i = Math.max(0, lastIndexRef.current - 1); i < timestamps.length; i++) {
+        if (timestamps[i].startMs > currentMs) break
+        if (currentMs >= timestamps[i].startMs && currentMs < timestamps[i].endMs) {
+          spokenIndex = i
+          lastIndexRef.current = i
+          break
         }
       }
 
+      const range = spokenIndex >= 0 ? ranges[spokenIndex] ?? null : null
+
       if (spokenIndex >= 0 && !rangesEqual(range, currentRangeRef.current)) {
         if (currentRangeRef.current) {
-          for (
-            let i = currentRangeRef.current.start;
-            i <= currentRangeRef.current.end;
-            i++
-          ) {
+          for (let i = currentRangeRef.current.start; i <= currentRangeRef.current.end; i++) {
             spansRef.current[i]?.classList.remove("tts-word-active")
           }
         }
@@ -129,31 +130,43 @@ export function useWordHighlighting() {
         originalHtmlMap.delete(blockElementRef.current)
       }
     }
-  }, [blockId, text, wordTimestamps, isPlaying, getPlaybackTime])
+  }, [blockId, text, isPlaying, getPlaybackTime])
 }
+
+// --- Types ---
+
+type HighlightRange = { start: number; end: number }
+
+// --- Precomputation ---
 
 const NEARBY_THRESHOLD = 3
 const SEQ_LENGTH = 3
 
-type GapRange = {
-  spokenStart: number
-  spokenEnd: number
-  origStart: number
-  origEnd: number
-}
-
-type HighlightRange = { start: number; end: number }
-
-function buildMapping(
+function buildRanges(
   originalWords: string[],
   spokenWords: string[],
-): { mapping: Map<number, number>; gapRanges: GapRange[] } {
+): (HighlightRange | null)[] {
   const normOrig = originalWords.map(normalizeWord)
   const normSpoken = spokenWords.map(normalizeWord)
   const mapping = alignWordIndices(normSpoken, normOrig)
   const gapRanges = detectGapRanges(mapping)
-  return { mapping, gapRanges }
+
+  const ranges: (HighlightRange | null)[] = new Array(spokenWords.length).fill(null)
+
+  for (const [spokenIdx, origIdx] of mapping) {
+    ranges[spokenIdx] = { start: origIdx, end: origIdx }
+  }
+
+  for (const gap of gapRanges) {
+    for (let i = gap.spokenStart; i <= gap.spokenEnd; i++) {
+      ranges[i] = { start: gap.origStart, end: gap.origEnd }
+    }
+  }
+
+  return ranges
 }
+
+// --- Word alignment ---
 
 export function alignWordIndices(
   spokenWords: string[],
@@ -212,8 +225,10 @@ function matchesSequence(
   return true
 }
 
-function detectGapRanges(mapping: Map<number, number>): GapRange[] {
-  const ranges: GapRange[] = []
+function detectGapRanges(
+  mapping: Map<number, number>,
+): { spokenStart: number; spokenEnd: number; origStart: number; origEnd: number }[] {
+  const ranges: { spokenStart: number; spokenEnd: number; origStart: number; origEnd: number }[] = []
   const entries = Array.from(mapping.entries()).sort((a, b) => a[0] - b[0])
 
   for (let i = 0; i < entries.length - 1; i++) {

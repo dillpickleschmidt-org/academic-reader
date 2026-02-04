@@ -14,7 +14,19 @@ export type WordTimestamp = { word: string; startMs: number; endMs: number }
 
 export type StreamChunk =
   | { type: "audio"; data: Uint8Array }
+  | { type: "full_audio"; data: Uint8Array; sampleRate: number }
   | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
+
+function parseNdjsonLine(line: string): StreamChunk {
+  const parsed = JSON.parse(line)
+  if (parsed.type === "audio") {
+    return { type: "audio", data: Buffer.from(parsed.data, "base64") }
+  } else if (parsed.type === "full_audio") {
+    return { type: "full_audio", data: Buffer.from(parsed.data, "base64"), sampleRate: parsed.sampleRate }
+  } else {
+    return { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
+  }
+}
 
 export async function* parseNdjsonStream(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
   const reader = body.getReader()
@@ -31,22 +43,12 @@ export async function* parseNdjsonStream(body: ReadableStream<Uint8Array>): Asyn
 
     for (const line of lines) {
       if (!line.trim()) continue
-      const parsed = JSON.parse(line)
-      if (parsed.type === "audio") {
-        yield { type: "audio", data: Buffer.from(parsed.data, "base64") }
-      } else if (parsed.type === "timestamps") {
-        yield { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
-      }
+      yield parseNdjsonLine(line)
     }
   }
 
   if (buffer.trim()) {
-    const parsed = JSON.parse(buffer)
-    if (parsed.type === "audio") {
-      yield { type: "audio", data: Buffer.from(parsed.data, "base64") }
-    } else if (parsed.type === "timestamps") {
-      yield { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
-    }
+    yield parseNdjsonLine(buffer)
   }
 }
 

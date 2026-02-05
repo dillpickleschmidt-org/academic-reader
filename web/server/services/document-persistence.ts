@@ -31,7 +31,7 @@ export interface ChunkInput {
   page: number
   section?: string
   bbox: number[]
-  includeTts: boolean
+  includeTts?: boolean
 }
 
 /** Input for persisting a document */
@@ -40,7 +40,7 @@ export interface PersistDocumentInput {
   fileId: string
   filename: string
   pageCount?: number
-  toc: TocResult
+  toc?: TocResult
   chunks: ChunkInput[]
 }
 

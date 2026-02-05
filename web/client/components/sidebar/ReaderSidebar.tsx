@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, Bot, Download, Link2Off, Plus, Trash2 } from "lucide-react"
+import { BookOpen, Bot, Download, Link2Off, Loader2, Plus, Trash2 } from "lucide-react"
 
 import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"
@@ -169,6 +169,8 @@ export function ReaderSidebar({
     items: threadItems,
   }
 
+  const tocLoading = tocItems === undefined
+
   // Flatten TOC items with children for display (children indented)
   const flattenedTocItems = React.useMemo(() => {
     if (!tocItems) return []
@@ -228,13 +230,24 @@ export function ReaderSidebar({
         return "open" as const
       }
     },
-    items: flattenedTocItems.map((item) => ({
-      title: item.title,
-      url: item.url,
-      displayPage: item.displayPage,
-      isChild: item.isChild,
-      onClick: item.onClick,
-    })),
+    items: tocLoading
+      ? [
+          {
+            render: (
+              <div className="flex items-center gap-2 px-2 py-3 text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                <span className="text-xs">Extracting...</span>
+              </div>
+            ),
+          },
+        ]
+      : flattenedTocItems.map((item) => ({
+          title: item.title,
+          url: item.url,
+          displayPage: item.displayPage,
+          isChild: item.isChild,
+          onClick: item.onClick,
+        })),
   }
 
   const actions = [

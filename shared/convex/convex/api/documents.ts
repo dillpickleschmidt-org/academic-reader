@@ -44,7 +44,7 @@ export const create = mutation({
     filename: v.string(),
     storageId: v.string(),
     pageCount: v.optional(v.number()),
-    toc: tocValidator,
+    toc: v.optional(tocValidator),
   },
   handler: (ctx, args) => Documents.createDocument(ctx, args),
 })
@@ -64,11 +64,40 @@ export const addChunks = mutation({
         page: v.number(),
         section: v.optional(v.string()),
         bbox: v.array(v.number()),
-        includeTts: v.boolean(),
+        includeTts: v.optional(v.boolean()),
       }),
     ),
   },
   handler: (ctx, args) => Documents.addChunksToDocument(ctx, args.documentId, args.chunks),
+})
+
+/**
+ * Update a document's table of contents after background extraction.
+ */
+export const updateToc = mutation({
+  args: {
+    documentId: v.id("documents"),
+    toc: tocValidator,
+  },
+  handler: (ctx, { documentId, toc }) =>
+    Documents.updateDocumentToc(ctx, documentId, toc),
+})
+
+/**
+ * Bulk-update includeTts flags on chunks after background filtering.
+ */
+export const updateChunksTts = mutation({
+  args: {
+    documentId: v.id("documents"),
+    flags: v.array(
+      v.object({
+        blockId: v.string(),
+        includeTts: v.boolean(),
+      }),
+    ),
+  },
+  handler: (ctx, { documentId, flags }) =>
+    Documents.updateChunksTts(ctx, documentId, flags),
 })
 
 /**

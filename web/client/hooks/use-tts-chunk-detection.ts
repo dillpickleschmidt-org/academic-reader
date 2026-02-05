@@ -22,7 +22,10 @@ const initialMenuState: TTSMenuState = {
  * Hook for detecting which chunk a clicked element belongs to
  * and showing a context menu for TTS playback.
  */
-export function useTTSChunkDetection(chunks: ChunkBlock[]) {
+export function useTTSChunkDetection(
+  chunks: ChunkBlock[],
+  ttsMap: Map<string, boolean> | undefined,
+) {
   const [menuState, setMenuState] = useState<TTSMenuState>(initialMenuState)
 
   // Build lookup map: blockId -> chunk
@@ -56,7 +59,17 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
         return
       }
 
-      if (!chunk.includeTts) {
+      // TTS map not yet loaded — show brief progress cursor
+      if (ttsMap === undefined) {
+        const blockEl = element as HTMLElement
+        blockEl.style.cursor = "progress"
+        setTimeout(() => {
+          blockEl.style.cursor = ""
+        }, 500)
+        return
+      }
+
+      if (!ttsMap.get(blockId)) {
         return
       }
 
@@ -91,7 +104,7 @@ export function useTTSChunkDetection(chunks: ChunkBlock[]) {
         chunkContent,
       })
     },
-    [chunkMap],
+    [chunkMap, ttsMap],
   )
 
   const setMenuOpen = useCallback((open: boolean) => {

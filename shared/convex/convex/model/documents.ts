@@ -4,40 +4,20 @@
  */
 
 import type { MutationCtx, QueryCtx, ActionCtx } from "../_generated/server"
-import type { Id } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { requireAuth } from "./auth"
 
-export interface ChunkInput {
-  blockId: string
-  blockType: string
-  html: string
-  page: number
-  section?: string
-  bbox: number[] // [x1, y1, x2, y2] bounding box
-  includeTts: boolean
-}
-
-export interface TocSectionInput {
-  id: string
-  title: string
-  page: number
-  children?: { id: string; title: string; page: number }[]
-}
-
-export interface TocInput {
-  sections: TocSectionInput[]
-  offset: number
-  hasRomanNumerals?: boolean
-}
+export type ChunkInput = Omit<Doc<"chunks">, "_id" | "_creationTime" | "documentId" | "embedding">
+export type TocInput = NonNullable<Doc<"documents">["toc"]>
 
 export interface CreateDocumentInput {
   filename: string
   /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
   storageId: string
   pageCount?: number
-  toc: TocInput
-  chunks: ChunkInput[] // Without embeddings
+  toc?: TocInput
+  chunks: ChunkInput[]
 }
 
 // ===== Mutation Helpers =====
@@ -100,6 +80,54 @@ export async function addChunksToDocument(
   )
 
   return { added: chunks.length }
+}
+
+/**
+ * Update a document's table of contents.
+ */
+export async function updateDocumentToc(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+  toc: TocInput,
+) {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  await ctx.db.patch(documentId, { toc })
+  return { updated: true }
+}
+
+/**
+ * Bulk-update includeTts flags on chunks.
+ */
+export async function updateChunksTts(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+  flags: { blockId: string; includeTts: boolean }[],
+) {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  const chunks = await ctx.db
+    .query("chunks")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .collect()
+
+  const flagMap = new Map(flags.map((f) => [f.blockId, f.includeTts]))
+
+  await Promise.all(
+    chunks
+      .filter((chunk) => flagMap.has(chunk.blockId))
+      .map((chunk) =>
+        ctx.db.patch(chunk._id, { includeTts: flagMap.get(chunk.blockId)! }),
+      ),
+  )
+
+  return { updated: flags.length }
 }
 
 /**

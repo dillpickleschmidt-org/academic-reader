@@ -366,13 +366,17 @@ export function AudioProvider({
   chunksRef.current = docContext?.chunks
 
   // Find the next TTS-eligible block after the current one
+  const ttsMapRef = useRef<Map<string, boolean> | undefined>(undefined)
+  ttsMapRef.current = docContext?.ttsMap
+
   const findNextTtsBlock = useCallback(
     (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
       const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
       if (currentIndex === -1) return null
 
+      const map = ttsMapRef.current
       for (let i = currentIndex + 1; i < chunks.length; i++) {
-        if (chunks[i].includeTts) return chunks[i]
+        if (map ? map.get(chunks[i].id) : chunks[i].includeTts) return chunks[i]
       }
       return null
     },
@@ -384,8 +388,9 @@ export function AudioProvider({
       const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
       if (currentIndex === -1) return null
 
+      const map = ttsMapRef.current
       for (let i = currentIndex - 1; i >= 0; i--) {
-        if (chunks[i].includeTts) return chunks[i]
+        if (map ? map.get(chunks[i].id) : chunks[i].includeTts) return chunks[i]
       }
       return null
     },

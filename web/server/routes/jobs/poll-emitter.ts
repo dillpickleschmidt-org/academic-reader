@@ -144,18 +144,13 @@ export async function handlePollingJob(
               content: resultData?.content || job.htmlContent,
             }
 
-            const emitProgress = (progress: { stage: string; current: number; total: number }) => {
-              sendEvent("progress", progress)
-            }
-
-            const { content, blocks, imageUrls, toc, documentId } = await processCompletedJob(
+            const { content, blocks, imageUrls, documentId } = await processCompletedJob(
               jobId,
               resultToProcess,
               fileInfo,
               storage,
               event,
               headers,
-              emitProgress,
             )
 
             // For backends that don't support html_ready (like datalab), send early preview
@@ -179,7 +174,6 @@ export async function handlePollingJob(
               ...resultForClient,
               content,
               ...(imageUrls && { images: imageUrls }),
-              ...(toc && { toc }),
               ...(documentId && { documentId }),
               jobId,
               fileId: fileInfo?.fileId,

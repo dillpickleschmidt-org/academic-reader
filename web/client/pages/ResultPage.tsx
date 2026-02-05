@@ -26,9 +26,10 @@ export function ResultPage({
   const documentContext = useDocumentContext()
   const chunks = documentContext?.chunks ?? []
   const documentId = documentContext?.documentId ?? null
+  const ttsMap = documentContext?.ttsMap
   const pageOffset = documentContext?.toc?.offset ?? 0
   const { menuState, setMenuOpen, handleContentClick } =
-    useTTSChunkDetection(chunks)
+    useTTSChunkDetection(chunks, ttsMap)
 
   // Enable word-level highlighting during TTS playback
   useWordHighlighting()
@@ -40,6 +41,19 @@ export function ResultPage({
 
   const htmlContent = useMemo(() => ({ __html: content }), [content])
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Correct page marker display numbers when TOC offset arrives
+  useEffect(() => {
+    if (!contentRef.current) return
+    const markers = contentRef.current.querySelectorAll(".page-marker")
+    markers.forEach((marker) => {
+      const match = marker.id.match(/^page-marker-(\d+)$/)
+      if (match) {
+        const physicalPage = parseInt(match[1], 10)
+        marker.textContent = String(physicalPage - pageOffset + 1)
+      }
+    })
+  }, [pageOffset])
 
   // Combined click handler: page markers, internal links, then TTS chunk detection
   const handleClick = useCallback(
@@ -77,7 +91,7 @@ export function ResultPage({
       // Delegate to TTS chunk detection
       handleContentClick(e)
     },
-    [handleContentClick, documentId],
+    [handleContentClick, documentId, pageOffset],
   )
 
   // Detect table overflow and update shadow classes based on scroll position

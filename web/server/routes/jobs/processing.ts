@@ -19,7 +19,6 @@ import {
   type TocResult,
 } from "../../services/toc-extraction"
 import { filterBlocksForTTS } from "../../services/tts-block-filter"
-import type { ProgressData } from "../../utils/sse-transform"
 import type { ChunkBlock } from "@repo/core/types/api"
 import {
   extractLinkMappings,
@@ -32,6 +31,8 @@ import {
   type ChunkInput,
 } from "../../services/document-persistence"
 import { createAuthenticatedConvexClient } from "../../services/convex"
+import { api } from "@repo/convex/convex/_generated/api"
+import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { tryCatch, getErrorMessage } from "../../utils/try-catch"
 
 // ─────────────────────────────────────────────────────────────
@@ -94,7 +95,6 @@ export interface ProcessedJobResult {
   content: string
   blocks: ChunkBlock[]
   imageUrls?: Record<string, string>
-  toc?: TocResult
   documentId?: string
 }
 
@@ -140,7 +140,6 @@ function normalizeChunk(
       page: block.page,
       bbox: block.bbox,
       polygon: [],
-      includeTts: false,
       section_hierarchy: block.section_hierarchy,
     }
   }
@@ -151,7 +150,6 @@ function normalizeChunk(
     page: block.page,
     bbox: block.bbox,
     polygon: [],
-    includeTts: false,
   }
 }
 
@@ -171,6 +169,7 @@ function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
 
 /**
  * Process a completed job: upload images, rewrite URLs, save to S3, persist to Convex.
+ * TOC extraction and TTS filtering are deferred to background processing.
  * Shared by both streaming and polling paths.
  */
 export async function processCompletedJob(
@@ -180,7 +179,6 @@ export async function processCompletedJob(
   storage: Storage,
   event: WideEvent,
   headers?: Headers,
-  emitProgress?: (progress: ProgressData) => void,
 ): Promise<ProcessedJobResult> {
   // Upload images and get public URLs
   let imageUrls: Record<string, string> | undefined
@@ -216,127 +214,63 @@ export async function processCompletedJob(
   )
   event.chunkCount = normalizedChunks.length
 
-  // Extract and inject PDF links + TOC (all backends)
-  let tocResult: TocResult | undefined
-  let blockFilter: Record<string, boolean> | undefined
-  let pageOffset = 0
-
-  if (!normalizedChunks.length || !fileInfo?.documentPath) {
-    event.tocStatus = "skipped"
-  } else {
-    // Try to read PDF for link extraction and TOC
+  // Extract and inject PDF links (datalab only, synchronous)
+  if (normalizedChunks.length && fileInfo?.documentPath && event.backend === "datalab") {
     const pdfReadResult = await tryCatch(
       storage.readFile(`${fileInfo.documentPath}/original.pdf`),
     )
 
     if (pdfReadResult.success) {
-      const pdfBuffer = pdfReadResult.data
+      try {
+        const mappings = extractLinkMappings(pdfReadResult.data)
+        if (mappings.length) {
+          const bboxMap: BboxMap = new Map()
+          const pageDims: PageDimensions = new Map()
 
-      // Extract and inject PDF links (datalab only - for some reason it's broken so I handle it manually)
-      if (event.backend === "datalab") {
-        try {
-          const mappings = extractLinkMappings(pdfBuffer)
-          if (mappings.length) {
-            // Build bbox map and get page dimensions from Marker's page_info
-            const bboxMap: BboxMap = new Map()
-            const pageDims: PageDimensions = new Map()
-
-            for (const chunk of normalizedChunks) {
-              if (chunk.bbox.length === 4) {
-                bboxMap.set(chunk.id, chunk.bbox as [number, number, number, number])
-              }
-            }
-
-            // Get actual page dimensions from Marker's page_info (bbox is [0, 0, width, height])
-            const pageInfo = result.formats?.chunks?.page_info
-            if (pageInfo) {
-              for (const [pageStr, info] of Object.entries(pageInfo)) {
-                const pageNum = parseInt(pageStr, 10)
-                if (info.bbox?.length === 4) {
-                  pageDims.set(pageNum, [info.bbox[2], info.bbox[3]])
-                }
-              }
-            }
-
-            const { html: linkedHtml, linkCount } = injectLinks(
-              processedContent,
-              mappings,
-              bboxMap,
-              pageDims,
-            )
-            processedContent = linkedHtml
-            event.linkCount = linkCount
-
-            if (result.formats?.html) {
-              result.formats.html = injectLinks(result.formats.html, mappings, bboxMap, pageDims).html
+          for (const chunk of normalizedChunks) {
+            if (chunk.bbox.length === 4) {
+              bboxMap.set(chunk.id, chunk.bbox as [number, number, number, number])
             }
           }
-        } catch (err) {
-          event.linkExtractionError = getErrorMessage(err)
+
+          const pageInfo = result.formats?.chunks?.page_info
+          if (pageInfo) {
+            for (const [pageStr, info] of Object.entries(pageInfo)) {
+              const pageNum = parseInt(pageStr, 10)
+              if (info.bbox?.length === 4) {
+                pageDims.set(pageNum, [info.bbox[2], info.bbox[3]])
+              }
+            }
+          }
+
+          const { html: linkedHtml, linkCount } = injectLinks(
+            processedContent,
+            mappings,
+            bboxMap,
+            pageDims,
+          )
+          processedContent = linkedHtml
+          event.linkCount = linkCount
+
+          if (result.formats?.html) {
+            result.formats.html = injectLinks(result.formats.html, mappings, bboxMap, pageDims).html
+          }
         }
+      } catch (err) {
+        event.linkExtractionError = getErrorMessage(err)
       }
-
-      // Run TOC extraction and block filtering in parallel
-      emitProgress?.({ stage: "Extracting table of contents", current: 0, total: 1 })
-      emitProgress?.({ stage: "Filtering text blocks", current: 0, total: 1 })
-
-      const textContent = result.formats?.markdown || result.content || ""
-
-      const [tocExtractResult, blockFilterResult] = await Promise.all([
-        tryCatch(extractTableOfContents(textContent, pdfBuffer)),
-        tryCatch(filterBlocksForTTS(normalizedChunks)),
-      ])
-
-      emitProgress?.({ stage: "Extracting table of contents", current: 1, total: 1 })
-      emitProgress?.({ stage: "Filtering text blocks", current: 1, total: 1 })
-
-      if (tocExtractResult.success) {
-        const { toc, meta } = tocExtractResult.data
-        event.tocStatus = meta.status
-        event.tocOffsetDetected = meta.offsetDetected
-        if (toc) {
-          tocResult = toc
-          pageOffset = toc.offset
-          event.tocSections = toc.sections.length
-        }
-      } else {
-        console.warn("[jobs] TOC extraction failed:", tocExtractResult.error)
-        event.tocStatus = "error"
-      }
-
-      if (blockFilterResult.success) {
-        blockFilter = blockFilterResult.data
-      } else {
-        console.warn("[jobs] Block filter failed:", blockFilterResult.error)
-      }
-
-      // Apply includeTts to normalized blocks
-      for (const chunk of normalizedChunks) {
-        chunk.includeTts = chunk.block_type.includes("SectionHeader")
-          ? true
-          : blockFilter?.[chunk.id] ?? false
-      }
-    } else {
-      console.warn(
-        "[jobs] Failed to read PDF for link extraction:",
-        pdfReadResult.error,
-      )
-      event.tocStatus = "pdf_read_failed"
     }
   }
 
-  // Inject page markers (parses page numbers from data-block-id attributes)
+  // Inject page markers with offset=0 (corrected client-side when TOC arrives)
   try {
-    const pageMarkerResult = injectPageMarkers(processedContent, pageOffset)
+    const pageMarkerResult = injectPageMarkers(processedContent, 0)
     processedContent = pageMarkerResult.html
     event.pageMarkersExpected = pageMarkerResult.stats.expected
     event.pageMarkersInjected = pageMarkerResult.stats.injected
 
     if (result.formats?.html) {
-      result.formats.html = injectPageMarkers(
-        result.formats.html,
-        pageOffset,
-      ).html
+      result.formats.html = injectPageMarkers(result.formats.html, 0).html
     }
   } catch (err) {
     event.pageMarkerError = getErrorMessage(err)
@@ -381,7 +315,7 @@ export async function processCompletedJob(
     }
   }
 
-  // Inline persistence to Convex
+  // Persist to Convex (without TOC, without includeTts)
   let documentId: string | undefined
   if (fileInfo && headers) {
     const convex = await createAuthenticatedConvexClient(headers)
@@ -393,7 +327,6 @@ export async function processCompletedJob(
           fileId: fileInfo.fileId,
           filename: fileInfo.filename,
           pageCount: result.metadata?.pages,
-          toc: tocResult ?? { sections: [], offset: 0 },
           chunks: chunksForPersistence,
         }),
       )
@@ -401,6 +334,20 @@ export async function processCompletedJob(
       if (persistResult.success) {
         documentId = persistResult.data
         event.documentId = documentId
+
+        // Fire-and-forget background enrichments (TOC + TTS)
+        if (normalizedChunks.length && fileInfo.documentPath) {
+          processEnrichments(
+            storage,
+            fileInfo,
+            result,
+            normalizedChunks,
+            documentId,
+            convex,
+          ).catch((err) =>
+            console.warn("[jobs] Background enrichment failed:", err),
+          )
+        }
       } else {
         console.warn("[jobs] Failed to persist document:", persistResult.error)
         event.error = {
@@ -414,7 +361,97 @@ export async function processCompletedJob(
     }
   }
 
-  return { content: processedContent, blocks: normalizedChunks, imageUrls, toc: tocResult, documentId }
+  return { content: processedContent, blocks: normalizedChunks, imageUrls, documentId }
+}
+
+const TTS_BATCH_SIZE = 200
+
+/**
+ * Background enrichment: extract TOC and filter TTS blocks, then update Convex.
+ * Runs asynchronously after the document is persisted and SSE completed is sent.
+ */
+async function processEnrichments(
+  storage: Storage,
+  fileInfo: FileInfo,
+  result: JobResultInput,
+  normalizedChunks: ChunkBlock[],
+  documentId: string,
+  convex: import("convex/browser").ConvexHttpClient,
+) {
+  const typedDocumentId = documentId as Id<"documents">
+
+  const pdfReadResult = await tryCatch(
+    storage.readFile(`${fileInfo.documentPath}/original.pdf`),
+  )
+
+  if (!pdfReadResult.success) {
+    console.warn("[jobs/enrichment] Failed to read PDF:", pdfReadResult.error)
+    // Fallback: set empty TOC and all blocks TTS-included
+    await tryCatch(
+      convex.mutation(api.api.documents.updateToc, {
+        documentId: typedDocumentId,
+        toc: { sections: [], offset: 0 },
+      }),
+    )
+    const allTtsFlags = normalizedChunks.map((c) => ({
+      blockId: c.id,
+      includeTts: true,
+    }))
+    for (let i = 0; i < allTtsFlags.length; i += TTS_BATCH_SIZE) {
+      await tryCatch(
+        convex.mutation(api.api.documents.updateChunksTts, {
+          documentId: typedDocumentId,
+          flags: allTtsFlags.slice(i, i + TTS_BATCH_SIZE),
+        }),
+      )
+    }
+    return
+  }
+
+  const pdfBuffer = pdfReadResult.data
+  const textContent = result.formats?.markdown || result.content || ""
+
+  // Run TOC extraction and TTS filtering in parallel
+  const [tocExtractResult, blockFilterResult] = await Promise.all([
+    tryCatch(extractTableOfContents(textContent, pdfBuffer)),
+    tryCatch(filterBlocksForTTS(normalizedChunks)),
+  ])
+
+  // Update TOC (always, even on failure)
+  let tocResult: TocResult = { sections: [], offset: 0 }
+  if (tocExtractResult.success && tocExtractResult.data.toc) {
+    tocResult = tocExtractResult.data.toc
+  } else if (!tocExtractResult.success) {
+    console.warn("[jobs/enrichment] TOC extraction failed:", tocExtractResult.error)
+  }
+  await tryCatch(
+    convex.mutation(api.api.documents.updateToc, {
+      documentId: typedDocumentId,
+      toc: tocResult,
+    }),
+  )
+
+  // Update TTS flags (always, even on failure — default to true)
+  const blockFilter = blockFilterResult.success ? blockFilterResult.data : undefined
+  if (!blockFilterResult.success) {
+    console.warn("[jobs/enrichment] Block filter failed:", blockFilterResult.error)
+  }
+
+  const ttsFlags = normalizedChunks.map((chunk) => ({
+    blockId: chunk.id,
+    includeTts: chunk.block_type.includes("SectionHeader")
+      ? true
+      : blockFilter?.[chunk.id] ?? true,
+  }))
+
+  for (let i = 0; i < ttsFlags.length; i += TTS_BATCH_SIZE) {
+    await tryCatch(
+      convex.mutation(api.api.documents.updateChunksTts, {
+        documentId: typedDocumentId,
+        flags: ttsFlags.slice(i, i + TTS_BATCH_SIZE),
+      }),
+    )
+  }
 }
 
 /**

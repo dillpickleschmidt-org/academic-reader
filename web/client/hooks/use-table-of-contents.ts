@@ -10,15 +10,22 @@ export interface TocDisplayItem {
 
 /**
  * Hook for table of contents display.
+ * Returns undefined when TOC is still processing (show loading state).
  * Prefers server-provided TOC with page numbers, falls back to DOM-based h1/h2 extraction.
  */
-export function useTableOfContents(serverToc?: TocResult): TocDisplayItem[] {
+export function useTableOfContents(
+  serverToc: TocResult | undefined,
+  hasDocumentId: boolean,
+): TocDisplayItem[] | undefined {
   const [domItems, setDomItems] = useState<TocDisplayItem[]>([])
   const hasServerToc = Boolean(serverToc?.sections.length)
 
-  // DOM-based fallback extraction (only runs if no server TOC)
+  // If we have a documentId but no TOC yet, it's still processing
+  const isProcessing = hasDocumentId && serverToc === undefined
+
+  // DOM-based fallback extraction (only runs if no server TOC and not processing)
   useEffect(() => {
-    if (hasServerToc) return
+    if (hasServerToc || isProcessing) return
 
     const extractHeaders = () => {
       const container = document.querySelector(".reader-content")
@@ -42,10 +49,11 @@ export function useTableOfContents(serverToc?: TocResult): TocDisplayItem[] {
 
     const timer = setTimeout(extractHeaders, 100)
     return () => clearTimeout(timer)
-  }, [hasServerToc])
+  }, [hasServerToc, isProcessing])
 
-  // Prefer server TOC if available
   return useMemo(() => {
+    if (isProcessing) return undefined
+
     if (!serverToc?.sections.length) {
       return domItems
     }
@@ -67,5 +75,5 @@ export function useTableOfContents(serverToc?: TocResult): TocDisplayItem[] {
 
       return item
     })
-  }, [serverToc, domItems])
+  }, [serverToc, domItems, isProcessing])
 }

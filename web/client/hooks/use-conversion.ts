@@ -354,7 +354,7 @@ export function useConversion() {
             blockType: string
             html: string
             page: number
-            includeTts: boolean
+            includeTts?: boolean
           }) => ({
             id: c.blockId,
             block_type: c.blockType,

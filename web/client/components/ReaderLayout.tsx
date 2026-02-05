@@ -49,7 +49,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
 }: InnerProps) {
   const [readerMode, setReaderMode] = useReaderTheme()
   const documentContext = useDocumentContext()
-  const tocItems = useTableOfContents(documentContext?.toc)
+  const tocItems = useTableOfContents(documentContext?.toc, !!documentContext?.documentId)
   const scrollRef = useRef<HTMLDivElement>(null)
   useScrollDirection(scrollRef)
   const documentName = documentContext?.documentName?.replace(/\.[^.]+$/, "")

@@ -13,7 +13,7 @@ import { useChat } from "@ai-sdk/react"
 import { useQuery } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
 import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
-import { Bot, LogIn, X } from "lucide-react"
+import { Bot, LogIn, X, Loader2 } from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
 import {
   Message,
@@ -176,13 +176,13 @@ const ChatPromptInput = memo(function ChatPromptInput({
 export function AIChatPanel({ onClose }: Props) {
   const [embeddingsReady, setEmbeddingsReady] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
-  const triggeredThreadsRef = useRef(new Set<string>())
-  const isOriginatingRef = useRef(false)
+  const embeddingsTriggeredRef = useRef(new Set<string>())
   const { user, isLoading: configLoading } = useAppConfig()
   const chatPanel = useChatPanel()
   const { activeThreadId } = chatPanel
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId
+  const summary = documentContext?.summary
 
   // Load thread and messages together
   const threadData = useQuery(
@@ -196,7 +196,7 @@ export function AIChatPanel({ onClose }: Props) {
   const streamingText = useStreamSubscription(
     activeThreadId,
     activeThread?.isStreaming ?? false,
-    isOriginatingRef.current,
+    false,
   )
 
   // Refs for transport closure
@@ -209,26 +209,17 @@ export function AIChatPanel({ onClose }: Props) {
     new DefaultChatTransport({
       api: "/api/chat",
       credentials: "same-origin",
-      body: () => {
-        const isFirstMessage = messagesRef.current.length === 0
-        return {
-          threadId: activeThreadIdRef.current ?? undefined,
-          documentContext: {
-            documentId: documentIdRef.current ?? undefined,
-            isFirstMessage,
-          },
-        }
-      },
+      body: () => ({
+        threadId: activeThreadIdRef.current ?? undefined,
+        documentContext: {
+          documentId: documentIdRef.current ?? undefined,
+        },
+      }),
     }),
   )
 
-  const onFinish = useCallback(() => {
-    isOriginatingRef.current = false
-  }, [])
-
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: transportRef.current,
-    onFinish,
   })
 
   // Keep refs in sync
@@ -247,69 +238,28 @@ export function AIChatPanel({ onClose }: Props) {
     }
   }, [activeThreadId, persistedMessages, setMessages])
 
-  // Generate embeddings for document chunks
-  const generateEmbeddings = async () => {
-    if (!documentId) return
-
-    try {
-      const response = await fetch(`/api/documents/${documentId}/embeddings`, {
-        method: "POST",
-        credentials: "same-origin",
-      })
-
-      if (!response.ok) {
-        let errorMessage = "Unknown error"
-        try {
-          const error = await response.json()
-          errorMessage = error.message || JSON.stringify(error)
-        } catch {
-          // Response wasn't JSON
-        }
-        console.error("Failed to generate embeddings:", errorMessage)
-        setStorageError("Failed to enable follow-up questions")
-        return
-      }
-
-      const result = await response.json()
-      setEmbeddingsReady(true)
-      if (result.alreadyHasEmbeddings) {
-        console.log("Document already has embeddings")
-      }
-    } catch (error) {
-      console.error("Embedding generation error:", error)
-      setStorageError("Failed to enable follow-up questions")
-    }
-  }
-
-  // Auto-trigger summary when new thread starts
+  // Generate embeddings when a thread is first opened
   const hasDocument = !!documentId
   useEffect(() => {
-    if (configLoading) return
-    if (!activeThreadId) return
+    if (!activeThreadId || !hasDocument || !user) return
+    if (embeddingsTriggeredRef.current.has(activeThreadId)) return
+    embeddingsTriggeredRef.current.add(activeThreadId)
 
-    if (
-      user &&
-      hasDocument &&
-      !triggeredThreadsRef.current.has(activeThreadId) &&
-      messages.length === 0 &&
-      persistedMessages !== undefined &&
-      persistedMessages.length === 0
-    ) {
-      triggeredThreadsRef.current.add(activeThreadId)
-      isOriginatingRef.current = true
-      sendMessage({ text: "Please summarize this document." })
-      generateEmbeddings()
-    }
-  }, [
-    configLoading,
-    user,
-    hasDocument,
-    messages.length,
-    sendMessage,
-    documentId,
-    activeThreadId,
-    persistedMessages,
-  ])
+    fetch(`/api/documents/${documentId}/embeddings`, {
+      method: "POST",
+      credentials: "same-origin",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          setStorageError("Failed to enable follow-up questions")
+          return
+        }
+        setEmbeddingsReady(true)
+      })
+      .catch(() => {
+        setStorageError("Failed to enable follow-up questions")
+      })
+  }, [activeThreadId, hasDocument, documentId, user])
 
   const handleClose = () => {
     setStorageError(null)
@@ -319,7 +269,6 @@ export function AIChatPanel({ onClose }: Props) {
 
   const handleSendMessage = useCallback(
     (text: string) => {
-      isOriginatingRef.current = true
       sendMessage({ text })
     },
     [sendMessage],
@@ -417,6 +366,21 @@ export function AIChatPanel({ onClose }: Props) {
                 <ChatMessage message={message} />
               </div>
             ))}
+            {summary === undefined && documentId && (
+              <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Generating summary...
+              </div>
+            )}
+            {summary && (
+              <div className="p-4">
+                <Message from="assistant">
+                  <MessageContent className="md:text-[15px]">
+                    <MessageResponse>{convertLatex(summary)}</MessageResponse>
+                  </MessageContent>
+                </Message>
+              </div>
+            )}
           </div>
 
           <ChatPromptInput

@@ -19,6 +19,7 @@ import {
   type TocResult,
 } from "../../services/toc-extraction"
 import { filterBlocksForTTS } from "../../services/tts-block-filter"
+import { generateDocumentSummary } from "../../services/summary-generation"
 import type { ChunkBlock } from "@repo/core/types/api"
 import {
   extractLinkMappings,
@@ -367,7 +368,7 @@ export async function processCompletedJob(
 const TTS_BATCH_SIZE = 200
 
 /**
- * Background enrichment: extract TOC and filter TTS blocks, then update Convex.
+ * Background enrichment: extract TOC, filter TTS blocks, and generate summary.
  * Runs asynchronously after the document is persisted and SSE completed is sent.
  */
 async function processEnrichments(
@@ -379,6 +380,7 @@ async function processEnrichments(
   convex: import("convex/browser").ConvexHttpClient,
 ) {
   const typedDocumentId = documentId as Id<"documents">
+  const chunkHtml = normalizedChunks.map((c) => c.html).join("\n")
 
   const pdfReadResult = await tryCatch(
     storage.readFile(`${fileInfo.documentPath}/original.pdf`),
@@ -386,13 +388,22 @@ async function processEnrichments(
 
   if (!pdfReadResult.success) {
     console.warn("[jobs/enrichment] Failed to read PDF:", pdfReadResult.error)
-    // Fallback: set empty TOC and all blocks TTS-included
-    await tryCatch(
-      convex.mutation(api.api.documents.updateToc, {
-        documentId: typedDocumentId,
-        toc: { sections: [], offset: 0 },
-      }),
-    )
+    // Fallback: set empty TOC, all blocks TTS-included, still generate summary
+    const summaryResult = await tryCatch(generateDocumentSummary(chunkHtml))
+    await Promise.all([
+      tryCatch(
+        convex.mutation(api.api.documents.updateToc, {
+          documentId: typedDocumentId,
+          toc: { sections: [], offset: 0 },
+        }),
+      ),
+      tryCatch(
+        convex.mutation(api.api.documents.updateSummary, {
+          documentId: typedDocumentId,
+          summary: summaryResult.success ? summaryResult.data : "",
+        }),
+      ),
+    ])
     const allTtsFlags = normalizedChunks.map((c) => ({
       blockId: c.id,
       includeTts: true,
@@ -411,10 +422,11 @@ async function processEnrichments(
   const pdfBuffer = pdfReadResult.data
   const textContent = result.formats?.markdown || result.content || ""
 
-  // Run TOC extraction and TTS filtering in parallel
-  const [tocExtractResult, blockFilterResult] = await Promise.all([
+  // Run TOC extraction, TTS filtering, and summary generation in parallel
+  const [tocExtractResult, blockFilterResult, summaryResult] = await Promise.all([
     tryCatch(extractTableOfContents(textContent, pdfBuffer)),
     tryCatch(filterBlocksForTTS(normalizedChunks)),
+    tryCatch(generateDocumentSummary(chunkHtml)),
   ])
 
   // Update TOC (always, even on failure)
@@ -452,6 +464,17 @@ async function processEnrichments(
       }),
     )
   }
+
+  // Update summary (always, even on failure — default to empty string)
+  if (!summaryResult.success) {
+    console.warn("[jobs/enrichment] Summary generation failed:", summaryResult.error)
+  }
+  await tryCatch(
+    convex.mutation(api.api.documents.updateSummary, {
+      documentId: typedDocumentId,
+      summary: summaryResult.success ? summaryResult.data : "",
+    }),
+  )
 }
 
 /**

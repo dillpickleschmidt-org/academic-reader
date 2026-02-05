@@ -31,6 +31,7 @@ export default defineSchema({
     storageId: v.string(),
     pageCount: v.optional(v.number()),
     toc: v.optional(tocValidator),
+    summary: v.optional(v.string()),
     color: v.number(), // 0-11 index into color palette
     createdAt: v.number(),
   })

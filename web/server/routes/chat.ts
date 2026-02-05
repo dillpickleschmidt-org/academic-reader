@@ -16,13 +16,10 @@ import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
-import { loadPersistedDocument } from "../services/document-persistence"
 import { publishStreamMessage } from "../services/redis"
-import type { Storage } from "../storage/types"
 
 interface DocumentContext {
   documentId?: string
-  isFirstMessage: boolean
 }
 
 interface ChatRequest {
@@ -85,19 +82,12 @@ function extractUserMessage(messages: UIMessage[]): string | undefined {
   return textPart?.type === "text" ? textPart.text : undefined
 }
 
-type Variables = {
-  storage: Storage
-  userId: string
-}
-
-export const chat = new Hono<{ Variables: Variables }>()
+export const chat = new Hono()
 
 chat.use("/chat", requireAuth)
 
 chat.post("/chat", async (c) => {
   const event = c.get("event")
-  const storage = c.get("storage")
-  const userId = c.get("userId")
 
   const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
   if (!convex) {
@@ -180,65 +170,23 @@ chat.post("/chat", async (c) => {
     )
   }
 
-  const isSummaryMode = documentContext.isFirstMessage
-  let markdown: string | undefined
-
-  if (isSummaryMode) {
-    const docResult = await tryCatch(
-      convex.query(api.api.documents.get, {
-        documentId: documentContext.documentId as Id<"documents">,
-      }),
-    )
-
-    if (!docResult.success || !docResult.data) {
-      event.error = {
-        category: "storage",
-        message: !docResult.success
-          ? getErrorMessage(docResult.error)
-          : "Document not found",
-        code: "DOCUMENT_NOT_FOUND",
-      }
-      emitStreamingEvent(event, { status: 404 })
-      return c.json({ error: "Document not found" }, 404)
-    }
-
-    const loadResult = await tryCatch(
-      loadPersistedDocument(storage, userId, docResult.data.storageId),
-    )
-
-    if (!loadResult.success) {
-      event.error = {
-        category: "storage",
-        message: getErrorMessage(loadResult.error),
-        code: "DOCUMENT_LOAD_ERROR",
-      }
-      emitStreamingEvent(event, { status: 500 })
-      return c.json({ error: "Failed to load document" }, 500)
-    }
-
-    markdown = loadResult.data.markdown
+  // Fetch document for pre-generated summary
+  let summary: string | undefined
+  const docResult = await tryCatch(
+    convex.query(api.api.documents.get, {
+      documentId: documentContext.documentId as Id<"documents">,
+    }),
+  )
+  if (docResult.success && docResult.data) {
+    summary = docResult.data.summary
   }
 
-  let systemPrompt: string
+  const summaryBlock = summary
+    ? `\nHere is a pre-generated summary of the document:\n<summary>\n${summary}\n</summary>\n`
+    : ""
 
-  if (isSummaryMode && markdown) {
-    systemPrompt = `You are an academic assistant helping users understand research papers and documents.
-
-The user has uploaded a document. Here is the full content:
-
-<document>
-${markdown}
-</document>
-
-Provide a concise, one-paragraph summary that captures:
-- The main topic or thesis
-- Key findings, arguments, or contributions
-- The significance or implications
-
-Be direct and informative. Avoid phrases like "This document discusses..." - just state the content directly.`
-  } else {
-    systemPrompt = `You are an academic assistant helping users understand research papers and documents.
-
+  const systemPrompt = `You are an academic assistant helping users understand research papers and documents.
+${summaryBlock}
 The user has a document loaded and may ask questions about it. When answering:
 1. Use the searchDocument tool to find relevant passages from the document
 2. Base your answers on the search results
@@ -247,7 +195,6 @@ The user has a document loaded and may ask questions about it. When answering:
 5. Be concise and directly answer what was asked
 
 If the user asks a general question not about the document, answer normally without searching.`
-  }
 
   let model
   try {
@@ -262,9 +209,7 @@ If the user asks a general question not about the document, answer normally with
     return c.json({ error: "Server configuration error" }, 500)
   }
 
-  const tools = isSummaryMode
-    ? undefined
-    : { searchDocument: createSearchTool(documentContext?.documentId, convex) }
+  const tools = { searchDocument: createSearchTool(documentContext.documentId, convex) }
 
   const abortController = new AbortController()
   activeStreams.set(threadId, abortController)
@@ -279,7 +224,7 @@ If the user asks a general question not about the document, answer normally with
       system: systemPrompt,
       tools,
       abortSignal: abortController.signal,
-      stopWhen: isSummaryMode ? undefined : stepCountIs(20),
+      stopWhen: stepCountIs(20),
       onChunk: ({ chunk }) => {
         if (chunk.type === "text-delta") {
           publishStreamMessage(threadId, { type: "token", text: chunk.text })
@@ -314,9 +259,7 @@ If the user asks a general question not about the document, answer normally with
 
         // Save assistant message, clear streaming, and set title in one transaction
         const title = !existingThreadId && userText
-          ? (userText === "Please summarize this document."
-            ? "Document Summary"
-            : userText.slice(0, 80))
+          ? userText.slice(0, 80)
           : undefined
         await tryCatch(
           convex.mutation(api.api.chat.finishStreaming, {
@@ -332,7 +275,6 @@ If the user asks a general question not about the document, answer normally with
         emitStreamingEvent(event, {
           durationMs: Math.round(performance.now() - streamStart),
           status: 200,
-          mode: isSummaryMode ? "summary" : "rag",
           responseId: response.id,
           modelId: response.modelId,
           finishReason,

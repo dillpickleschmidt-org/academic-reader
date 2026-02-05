@@ -100,6 +100,23 @@ export async function updateDocumentToc(
 }
 
 /**
+ * Update a document's summary.
+ */
+export async function updateDocumentSummary(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+  summary: string,
+) {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  await ctx.db.patch(documentId, { summary })
+  return { updated: true }
+}
+
+/**
  * Bulk-update includeTts flags on chunks.
  */
 export async function updateChunksTts(

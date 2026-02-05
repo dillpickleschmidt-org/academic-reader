@@ -84,6 +84,18 @@ export const updateToc = mutation({
 })
 
 /**
+ * Update a document's summary after background generation.
+ */
+export const updateSummary = mutation({
+  args: {
+    documentId: v.id("documents"),
+    summary: v.string(),
+  },
+  handler: (ctx, { documentId, summary }) =>
+    Documents.updateDocumentSummary(ctx, documentId, summary),
+})
+
+/**
  * Bulk-update includeTts flags on chunks after background filtering.
  */
 export const updateChunksTts = mutation({
@@ -164,6 +176,23 @@ export const getChunks = query({
     documentId: v.id("documents"),
   },
   handler: (ctx, { documentId }) => Documents.getChunksForDocument(ctx, documentId),
+})
+
+/**
+ * Get TTS flags for all chunks in a document.
+ * Lightweight projection of getChunks — only returns blockId + includeTts.
+ */
+export const getTtsFlags = query({
+  args: {
+    documentId: v.id("documents"),
+  },
+  handler: async (ctx, { documentId }) => {
+    const chunks = await Documents.getChunksForDocument(ctx, documentId)
+    return chunks.map((c) => ({
+      blockId: c.blockId,
+      includeTts: c.includeTts,
+    }))
+  },
 })
 
 /**

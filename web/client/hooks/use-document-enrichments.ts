@@ -2,13 +2,17 @@ import { useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
-import type { TocResult } from "@repo/core/types/api"
+import type { ChunkBlock, TocResult } from "@repo/core/types/api"
 
 /**
  * Subscribe to deferred document enrichments (TOC + TTS flags) via Convex.
- * Returns undefined while still processing, resolved values when ready.
+ * Skips the chunks subscription when prop data already has includeTts populated
+ * (i.e. saved documents with completed enrichments).
  */
-export function useDocumentEnrichments(documentId: string | null) {
+export function useDocumentEnrichments(
+  documentId: string | null,
+  propChunks: ChunkBlock[] | undefined,
+) {
   const typedId = documentId as Id<"documents"> | null
 
   const doc = useQuery(
@@ -16,22 +20,38 @@ export function useDocumentEnrichments(documentId: string | null) {
     typedId ? { documentId: typedId } : "skip",
   )
 
-  const chunks = useQuery(
-    api.api.documents.getChunks,
-    typedId ? { documentId: typedId } : "skip",
+  // Only subscribe to TTS flags when enrichment hasn't completed yet
+  const needsTtsSubscription = propChunks?.length
+    ? propChunks.every((c) => c.includeTts === undefined)
+    : false
+
+  const ttsFlags = useQuery(
+    api.api.documents.getTtsFlags,
+    typedId && needsTtsSubscription ? { documentId: typedId } : "skip",
   )
 
   const toc: TocResult | undefined = doc?.toc
+  const summary: string | undefined = doc?.summary
 
   const ttsMap = useMemo(() => {
-    if (!chunks) return undefined
-    if (chunks.every((c) => c.includeTts === undefined)) return undefined
+    // Prefer Convex subscription data when available, otherwise use prop chunks
+    if (ttsFlags) {
+      if (ttsFlags.every((f) => f.includeTts === undefined)) return undefined
+      const map = new Map<string, boolean>()
+      for (const f of ttsFlags) {
+        map.set(f.blockId, f.includeTts ?? true)
+      }
+      return map
+    }
+
+    if (!propChunks?.length) return undefined
+    if (propChunks.every((c) => c.includeTts === undefined)) return undefined
     const map = new Map<string, boolean>()
-    for (const c of chunks) {
-      map.set(c.blockId, c.includeTts ?? true)
+    for (const c of propChunks) {
+      map.set(c.id, c.includeTts ?? true)
     }
     return map
-  }, [chunks])
+  }, [ttsFlags, propChunks])
 
-  return { toc, ttsMap }
+  return { toc, ttsMap, summary }
 }

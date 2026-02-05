@@ -17,7 +17,12 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@repo/core/*": ["../shared/core/src/*"]
+    }
   },
   "include": ["vite.config.ts", "server/**/*"]
 }

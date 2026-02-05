@@ -220,7 +220,7 @@ type AudioActions = {
   loadBlockTTS: (
     blockId: string,
     chunkContent: string,
-    options?: { wordIndex?: number },
+    options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number },
   ) => Promise<void>
   play: () => void
   pause: () => void
@@ -324,6 +324,9 @@ export function AudioProvider({
   const prefetchAbortRef = useRef<AbortController | null>(null)
   // In-flight synthesis deduplication: blockId:voiceId → Promise
   const synthInFlightRef = useRef(new Map<string, Promise<void>>())
+  // Refs for cross-callback access (onEnded, skip need loadBlockTTS which is defined later)
+  const chunksRef = useRef<ChunkBlock[] | undefined>(undefined)
+  const loadBlockTTSRef = useRef<(blockId: string, content: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => Promise<void>>(null!)
 
   if (!storeRef.current) {
     storeRef.current = createStore(createInitialState())
@@ -360,6 +363,7 @@ export function AudioProvider({
 
   // Get document context for prefetch
   const docContext = useDocumentContext()
+  chunksRef.current = docContext?.chunks
 
   // Find the next TTS-eligible block after the current one
   const findNextTtsBlock = useCallback(
@@ -368,6 +372,19 @@ export function AudioProvider({
       if (currentIndex === -1) return null
 
       for (let i = currentIndex + 1; i < chunks.length; i++) {
+        if (chunks[i].includeTts) return chunks[i]
+      }
+      return null
+    },
+    [],
+  )
+
+  const findPreviousTtsBlock = useCallback(
+    (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
+      const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
+      if (currentIndex === -1) return null
+
+      for (let i = currentIndex - 1; i >= 0; i--) {
         if (chunks[i].includeTts) return chunks[i]
       }
       return null
@@ -517,6 +534,17 @@ export function AudioProvider({
       })
     },
     onEnded: () => {
+      const chunks = chunksRef.current
+      const { blockId } = store.getState().playback
+
+      if (chunks && blockId) {
+        const nextBlock = findNextTtsBlock(chunks, blockId)
+        if (nextBlock) {
+          loadBlockTTSRef.current(nextBlock.id, nextBlock.html)
+          return
+        }
+      }
+
       store.setState({
         playback: {
           ...store.getState().playback,
@@ -525,12 +553,12 @@ export function AudioProvider({
         },
       })
     },
-  }), [store])
+  }), [store, findNextTtsBlock])
 
   // === TTS Playback Actions ===
   const loadBlockTTS = useCallback(
-    async (blockId: string, chunkContent: string, options?: { wordIndex?: number }) => {
-      const { wordIndex } = options || {}
+    async (blockId: string, chunkContent: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => {
+      const { wordIndex, seekToSeconds, seekFromEndSeconds } = options || {}
 
       if (!documentId) {
         const state = store.getState()
@@ -637,8 +665,13 @@ export function AudioProvider({
             },
           })
 
-          // If wordIndex provided, seek to that word's timestamp
-          if (wordIndex !== undefined && wordIndex >= 0 && data.wordTimestamps?.length) {
+          // Apply seek position if specified
+          if (seekToSeconds !== undefined) {
+            playerRef.current.seek(seekToSeconds)
+          } else if (seekFromEndSeconds !== undefined) {
+            const dur = playerRef.current.getDuration()
+            playerRef.current.seek(Math.max(0, dur - seekFromEndSeconds))
+          } else if (wordIndex !== undefined && wordIndex >= 0 && data.wordTimestamps?.length) {
             const timestamp = data.wordTimestamps[Math.min(wordIndex, data.wordTimestamps.length - 1)]
             if (timestamp) {
               playerRef.current.seek(timestamp.startMs / 1000)
@@ -750,6 +783,7 @@ export function AudioProvider({
     },
     [store, documentId, getAudioContext, cleanupPlayer, createPlayerCallbacks, prefetchNextBlock],
   )
+  loadBlockTTSRef.current = loadBlockTTS
 
   const play = useCallback(() => {
     playerRef.current?.play()
@@ -772,10 +806,41 @@ export function AudioProvider({
       if (!playerRef.current?.canSeek) return
       const currentTime = playerRef.current.getCurrentTime()
       const duration = playerRef.current.getDuration()
-      const targetTime = Math.max(0, Math.min(duration, currentTime + seconds))
-      playerRef.current.seek(targetTime)
+      const targetTime = currentTime + seconds
+
+      if (targetTime >= 0 && targetTime <= duration) {
+        playerRef.current.seek(targetTime)
+        return
+      }
+
+      const chunks = chunksRef.current
+      const blockId = store.getState().playback.blockId
+      if (!chunks || !blockId) {
+        playerRef.current.seek(Math.max(0, Math.min(duration, targetTime)))
+        return
+      }
+
+      if (targetTime < 0) {
+        const prevBlock = findPreviousTtsBlock(chunks, blockId)
+        if (!prevBlock) {
+          playerRef.current.seek(0)
+          return
+        }
+        loadBlockTTSRef.current(prevBlock.id, prevBlock.html, {
+          seekFromEndSeconds: Math.abs(targetTime),
+        })
+      } else {
+        const nextBlock = findNextTtsBlock(chunks, blockId)
+        if (!nextBlock) {
+          playerRef.current.seek(duration)
+          return
+        }
+        loadBlockTTSRef.current(nextBlock.id, nextBlock.html, {
+          seekToSeconds: targetTime - duration,
+        })
+      }
     },
-    [],
+    [store, findNextTtsBlock, findPreviousTtsBlock],
   )
 
   const seekToWord = useCallback(

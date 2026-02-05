@@ -158,12 +158,11 @@ export function ReaderSidebar({
     title: "Chat Threads",
     url: "#",
     icon: Bot,
-    isActive: false,
+    isActive: chatPanel.isOpen,
     onClick: () => {
       if (state === "collapsed") {
         setOpen(true)
         chatPanel.open()
-        return "open" as const
       }
     },
     items: threadItems,
@@ -227,7 +226,6 @@ export function ReaderSidebar({
     onClick: () => {
       if (state === "collapsed") {
         setOpen(true)
-        return "open" as const
       }
     },
     items: tocLoading

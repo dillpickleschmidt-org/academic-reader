@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useState, useEffect, useRef, type ReactNode } from "react"
 import { ChevronRight, type LucideIcon } from "lucide-react"
 
 import {
@@ -35,18 +35,24 @@ type NavItem = {
   url: string
   icon?: LucideIcon
   isActive?: boolean
-  onClick?: () => boolean | "open" | void // false = no change, "open" = force open
+  onClick?: () => boolean | void
   items?: NavSubItem[]
   className?: string
 }
 
-function NavItem({ item }: { item: NavItem }) {
-  const [open, setOpen] = useState(item.isActive ?? false)
-
+function NavItem({
+  item,
+  open,
+  onToggle,
+}: {
+  item: NavItem
+  open: boolean
+  onToggle: () => void
+}) {
   return (
     <CollapsibleRoot
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onToggle}
       className="group/collapsible"
     >
       <SidebarMenuItem>
@@ -55,11 +61,7 @@ function NavItem({ item }: { item: NavItem }) {
           onClick={() => {
             const result = item.onClick?.()
             if (result === false) return
-            if (result === "open") {
-              setOpen(true)
-              return
-            }
-            setOpen((o) => !o)
+            onToggle()
           }}
         >
           {item.icon && <item.icon />}
@@ -114,12 +116,35 @@ export function NavMain({
   items: NavItem[]
   label?: string
 }) {
+  const [openKey, setOpenKey] = useState<string | null>(
+    () => items.find((i) => i.isActive)?.title ?? null,
+  )
+
+  // Expand items that become newly active (e.g. chat panel opening)
+  const prevActiveRef = useRef(new Set(items.filter((i) => i.isActive).map((i) => i.title)))
+  useEffect(() => {
+    for (const item of items) {
+      if (item.isActive && !prevActiveRef.current.has(item.title)) {
+        setOpenKey(item.title)
+        break
+      }
+    }
+    prevActiveRef.current = new Set(items.filter((i) => i.isActive).map((i) => i.title))
+  }, [items])
+
   return (
     <SidebarGroup>
       {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) => (
-          <NavItem key={item.title} item={item} />
+          <NavItem
+            key={item.title}
+            item={item}
+            open={openKey === item.title}
+            onToggle={() =>
+              setOpenKey((prev) => (prev === item.title ? null : item.title))
+            }
+          />
         ))}
       </SidebarMenu>
     </SidebarGroup>

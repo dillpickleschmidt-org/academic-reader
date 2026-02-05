@@ -179,7 +179,7 @@ export function AIChatPanel({ onClose }: Props) {
   const embeddingsTriggeredRef = useRef(new Set<string>())
   const { user, isLoading: configLoading } = useAppConfig()
   const chatPanel = useChatPanel()
-  const { activeThreadId } = chatPanel
+  const { activeThreadId, pendingMessage, setPendingMessage } = chatPanel
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId
   const summary = documentContext?.summary
@@ -201,6 +201,7 @@ export function AIChatPanel({ onClose }: Props) {
 
   // Refs for transport closure
   const documentIdRef = useRef(documentId)
+  const summaryRef = useRef(summary)
   const messagesRef = useRef<unknown[]>([])
   const activeThreadIdRef = useRef(activeThreadId)
 
@@ -213,6 +214,7 @@ export function AIChatPanel({ onClose }: Props) {
         threadId: activeThreadIdRef.current ?? undefined,
         documentContext: {
           documentId: documentIdRef.current ?? undefined,
+          summary: summaryRef.current ?? undefined,
         },
       }),
     }),
@@ -224,8 +226,11 @@ export function AIChatPanel({ onClose }: Props) {
 
   // Keep refs in sync
   documentIdRef.current = documentId
+  summaryRef.current = summary
   messagesRef.current = messages
   activeThreadIdRef.current = activeThreadId
+  const sendMessageRef = useRef(sendMessage)
+  sendMessageRef.current = sendMessage
 
   // Sync persisted messages into useChat when thread changes
   useEffect(() => {
@@ -260,6 +265,16 @@ export function AIChatPanel({ onClose }: Props) {
         setStorageError("Failed to enable follow-up questions")
       })
   }, [activeThreadId, hasDocument, documentId, user])
+
+  // Auto-send pending message from floating prompt
+  const pendingSentRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!pendingMessage || !activeThreadId) return
+    if (pendingSentRef.current === pendingMessage) return
+    pendingSentRef.current = pendingMessage
+    sendMessageRef.current({ text: pendingMessage })
+    setPendingMessage(null)
+  }, [pendingMessage, activeThreadId, setPendingMessage])
 
   const handleClose = () => {
     setStorageError(null)

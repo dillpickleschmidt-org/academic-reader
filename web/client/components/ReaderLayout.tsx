@@ -21,7 +21,9 @@ import { TTSPlaybackBar } from "./TTSPlaybackBar"
 import { ChatPanelProvider, useChatPanel } from "@/context/ChatPanelContext"
 import { useTableOfContents } from "@/hooks/use-table-of-contents"
 import { useScrollDirection } from "@/hooks/use-scroll-direction"
+import { useIsScrolledToTop } from "@/hooks/use-is-scrolled-to-top"
 import { useDocumentContext } from "@/context/DocumentContext"
+import { FloatingChatPrompt } from "./FloatingChatPrompt"
 
 interface Props {
   children: ReactNode
@@ -52,6 +54,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
   const tocItems = useTableOfContents(documentContext?.toc, !!documentContext?.documentId)
   const scrollRef = useRef<HTMLDivElement>(null)
   useScrollDirection(scrollRef)
+  const atTop = useIsScrolledToTop(scrollRef)
   const documentName = documentContext?.documentName?.replace(/\.[^.]+$/, "")
   const isMobile = useIsMobile()
 
@@ -85,7 +88,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
             </div>
           )}
           <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
-            <ResizablePanel id="content-panel" minSize={isMobile ? undefined : "40%"}>
+            <ResizablePanel id="content-panel" className="relative" minSize={isMobile ? undefined : "40%"}>
               <div ref={scrollRef} className="overflow-auto h-full" style={{ contain: "strict" }}>
                 {/* Sticky action buttons - top left */}
                 {showSidebar && (
@@ -110,6 +113,9 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
                 )}
                 <div className="reader-content">{children}</div>
               </div>
+              <FloatingChatPrompt
+                visible={atTop && !chatOpen && !!documentContext?.documentId}
+              />
             </ResizablePanel>
             {chatOpen && !isMobile && (
               <>

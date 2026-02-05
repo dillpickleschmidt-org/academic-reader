@@ -20,6 +20,7 @@ import { publishStreamMessage } from "../services/redis"
 
 interface DocumentContext {
   documentId?: string
+  summary?: string
 }
 
 interface ChatRequest {
@@ -170,15 +171,22 @@ chat.post("/chat", async (c) => {
     )
   }
 
-  // Fetch document for pre-generated summary
-  let summary: string | undefined
-  const docResult = await tryCatch(
-    convex.query(api.api.documents.get, {
-      documentId: documentContext.documentId as Id<"documents">,
-    }),
-  )
-  if (docResult.success && docResult.data) {
-    summary = docResult.data.summary
+  // Use client-provided summary, or poll until enrichment completes
+  const typedDocId = documentContext.documentId as Id<"documents">
+  let summary = documentContext.summary
+  if (summary === undefined) {
+    const deadline = Date.now() + 60_000
+    while (summary === undefined && Date.now() < deadline) {
+      const poll = await tryCatch(
+        convex.query(api.api.documents.get, { documentId: typedDocId }),
+      )
+      if (poll.success && poll.data) {
+        summary = poll.data.summary
+      }
+      if (summary === undefined) {
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+    }
   }
 
   const summaryBlock = summary

@@ -17,6 +17,8 @@ type ThreadWithColor = Doc<"chatThreads"> & { documentColor?: number; documentNa
 interface ChatPanelContextValue {
   isOpen: boolean
   activeThreadId: string | null
+  pendingMessage: string | null
+  setPendingMessage: (message: string | null) => void
   threads: ThreadWithColor[] | undefined
   viewMode: ViewMode
   setViewMode: (mode: ViewMode) => void
@@ -32,6 +34,7 @@ const ChatPanelContext = createContext<ChatPanelContextValue | null>(null)
 export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("document")
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId
@@ -83,6 +86,8 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
     () => ({
       isOpen,
       activeThreadId,
+      pendingMessage,
+      setPendingMessage,
       threads,
       viewMode,
       setViewMode,
@@ -95,6 +100,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
     [
       isOpen,
       activeThreadId,
+      pendingMessage,
       threads,
       viewMode,
       open,

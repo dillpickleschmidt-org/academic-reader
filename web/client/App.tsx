@@ -80,7 +80,7 @@ function App() {
 
   const recentDocuments = useQuery(
     api.api.documents.listPersisted,
-    user ? { limit: 2 } : "skip",
+    user ? {} : "skip",
   )
 
   const handleViewDocument = useCallback(

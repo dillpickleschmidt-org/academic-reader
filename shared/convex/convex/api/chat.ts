@@ -57,6 +57,15 @@ export const finishStreaming = mutation({
   },
 })
 
+export const updateThreadTitle = mutation({
+  args: {
+    threadId: v.id("chatThreads"),
+    title: v.string(),
+  },
+  handler: (ctx, { threadId, title }) =>
+    Chat.updateThread(ctx, threadId, { title }),
+})
+
 // ===== Queries =====
 
 export const listThreads = query({

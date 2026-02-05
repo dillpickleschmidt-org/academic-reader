@@ -17,6 +17,7 @@ import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 import { publishStreamMessage } from "../services/redis"
+import { generateChatTitle } from "../services/title-generation"
 
 interface DocumentContext {
   documentId?: string
@@ -25,7 +26,7 @@ interface DocumentContext {
 
 interface ChatRequest {
   messages: UIMessage[]
-  threadId?: string
+  threadId: string
   documentContext?: DocumentContext
 }
 
@@ -112,7 +113,7 @@ chat.post("/chat", async (c) => {
     return c.json({ error: "Invalid request body" }, 400)
   }
 
-  const { messages, threadId: existingThreadId, documentContext } = bodyResult.data
+  const { messages, threadId, documentContext } = bodyResult.data
 
   if (!documentContext?.documentId) {
     event.error = {
@@ -124,26 +125,14 @@ chat.post("/chat", async (c) => {
     return c.json({ error: "documentId is required" }, 400)
   }
 
-  // Create or reuse thread
-  let threadId: string
-  if (existingThreadId) {
-    threadId = existingThreadId
-  } else {
-    const createResult = await tryCatch(
-      convex.mutation(api.api.chat.createThread, {
-        documentId: documentContext.documentId as Id<"documents">,
-      }),
-    )
-    if (!createResult.success) {
-      event.error = {
-        category: "backend",
-        message: getErrorMessage(createResult.error),
-        code: "THREAD_CREATE_ERROR",
-      }
-      emitStreamingEvent(event, { status: 500 })
-      return c.json({ error: "Failed to create thread" }, 500)
+  if (!threadId) {
+    event.error = {
+      category: "validation",
+      message: "threadId is required",
+      code: "THREAD_ID_REQUIRED",
     }
-    threadId = createResult.data
+    emitStreamingEvent(event, { status: 400 })
+    return c.json({ error: "threadId is required" }, 400)
   }
 
   // Cancel any in-flight stream for this thread
@@ -265,20 +254,35 @@ If the user asks a general question not about the document, answer normally with
       }) => {
         activeStreams.delete(threadId)
 
-        // Save assistant message, clear streaming, and set title in one transaction
-        const title = !existingThreadId && userText
-          ? userText.slice(0, 80)
+        const isFirstMessage = messages.length === 1 && !!userText
+        const fallbackTitle = isFirstMessage
+          ? userText!.slice(0, 20)
           : undefined
         await tryCatch(
           convex.mutation(api.api.chat.finishStreaming, {
             threadId: threadId as Id<"chatThreads">,
             assistantContent: text,
-            title,
+            title: fallbackTitle,
           }),
         )
 
         // Publish done to Redis
         await publishStreamMessage(threadId, { type: "done" })
+
+        // Fire-and-forget: generate LLM title for new threads
+        if (isFirstMessage) {
+          generateChatTitle(userText!, text)
+            .then(async (llmTitle) => {
+              if (!llmTitle) return
+              await convex.mutation(api.api.chat.updateThreadTitle, {
+                threadId: threadId as Id<"chatThreads">,
+                title: llmTitle,
+              })
+            })
+            .catch((err) =>
+              console.warn("[chat] Background title generation failed:", err),
+            )
+        }
 
         emitStreamingEvent(event, {
           durationMs: Math.round(performance.now() - streamStart),
@@ -324,10 +328,5 @@ If the user asks a general question not about the document, answer normally with
     return c.json({ error: "Failed to stream chat completion" }, 500)
   }
 
-  const response = streamResult.data.toUIMessageStreamResponse()
-
-  // Add thread ID header so client can capture it for new threads
-  response.headers.set("x-thread-id", threadId)
-
-  return response
+  return streamResult.data.toUIMessageStreamResponse()
 })

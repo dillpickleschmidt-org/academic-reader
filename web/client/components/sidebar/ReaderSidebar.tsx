@@ -132,21 +132,23 @@ export function ReaderSidebar({
     items.push({ render: <ChatThreadsViewToggle /> })
 
     if (chatPanel.threads) {
-      for (const thread of chatPanel.threads) {
-        items.push({
-          render: (
-            <ChatThreadItem
-              key={thread._id}
-              threadId={thread._id}
-              title={thread.title ?? "New chat"}
-              isActive={chatPanel.activeThreadId === thread._id}
-              isUnlinked={thread.documentId === undefined}
-              colorIndex={thread.documentColor}
-              documentName={thread.documentName}
-            />
-          ),
-        })
-      }
+      items.push({
+        render: (
+          <div className="max-h-[300px] overflow-y-auto">
+            {chatPanel.threads.map((thread) => (
+              <ChatThreadItem
+                key={thread._id}
+                threadId={thread._id}
+                title={thread.title ?? "New chat"}
+                isActive={chatPanel.activeThreadId === thread._id}
+                isUnlinked={thread.documentId === undefined}
+                colorIndex={thread.documentColor}
+                documentName={thread.documentName}
+              />
+            ))}
+          </div>
+        ),
+      })
     }
 
     return items

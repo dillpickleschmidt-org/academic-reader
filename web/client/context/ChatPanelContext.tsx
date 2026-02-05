@@ -11,10 +11,15 @@ import { api } from "@repo/convex/convex/_generated/api"
 import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
 import { useDocumentContext } from "./DocumentContext"
 
+type ViewMode = "all" | "document"
+type ThreadWithColor = Doc<"chatThreads"> & { documentColor?: number; documentName?: string }
+
 interface ChatPanelContextValue {
   isOpen: boolean
   activeThreadId: string | null
-  threads: Doc<"chatThreads">[] | undefined
+  threads: ThreadWithColor[] | undefined
+  viewMode: ViewMode
+  setViewMode: (mode: ViewMode) => void
   open: () => void
   selectThread: (threadId: string) => void
   startNewThread: () => void
@@ -27,13 +32,17 @@ const ChatPanelContext = createContext<ChatPanelContextValue | null>(null)
 export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("document")
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId
 
-  const threads = useQuery(
-    api.api.chat.listThreads,
-    documentId ? { documentId: documentId as Id<"documents"> } : "skip",
-  )
+  const allThreads = useQuery(api.api.chat.listAllThreads)
+
+  const threads = useMemo(() => {
+    if (!allThreads) return undefined
+    if (viewMode === "all") return allThreads
+    return allThreads.filter((t) => t.documentId === documentId)
+  }, [allThreads, viewMode, documentId])
 
   const createThreadMutation = useMutation(api.api.chat.createThread)
   const deleteThreadMutation = useMutation(api.api.chat.deleteThread)
@@ -75,6 +84,8 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
       isOpen,
       activeThreadId,
       threads,
+      viewMode,
+      setViewMode,
       open,
       selectThread,
       startNewThread,
@@ -85,6 +96,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
       isOpen,
       activeThreadId,
       threads,
+      viewMode,
       open,
       selectThread,
       startNewThread,

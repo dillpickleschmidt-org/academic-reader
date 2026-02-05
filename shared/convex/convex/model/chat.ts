@@ -126,3 +126,38 @@ export async function getMessages(
     .order("asc")
     .collect()
 }
+
+export async function listAllThreads(ctx: QueryCtx) {
+  const user = await requireAuth(ctx)
+
+  const threads = await ctx.db
+    .query("chatThreads")
+    .withIndex("by_user", (q) => q.eq("userId", user._id))
+    .order("desc")
+    .collect()
+
+  return Promise.all(
+    threads.map(async (thread) => {
+      const doc = thread.documentId
+        ? await ctx.db.get(thread.documentId)
+        : null
+      return { ...thread, documentColor: doc?.color, documentName: doc?.filename }
+    }),
+  )
+}
+
+export async function countThreadsForDocument(
+  ctx: QueryCtx,
+  documentId: Id<"documents">,
+) {
+  const user = await requireAuth(ctx)
+
+  const threads = await ctx.db
+    .query("chatThreads")
+    .withIndex("by_document", (q) =>
+      q.eq("userId", user._id).eq("documentId", documentId),
+    )
+    .collect()
+
+  return threads.length
+}

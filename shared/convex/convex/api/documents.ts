@@ -90,8 +90,10 @@ export const addEmbeddings = mutation({
 export const remove = mutation({
   args: {
     documentId: v.id("documents"),
+    threadAction: v.union(v.literal("keep"), v.literal("delete")),
   },
-  handler: (ctx, { documentId }) => Documents.deleteDocument(ctx, documentId),
+  handler: (ctx, { documentId, threadAction }) =>
+    Documents.deleteDocument(ctx, documentId, threadAction),
 })
 
 // ===== Queries =====

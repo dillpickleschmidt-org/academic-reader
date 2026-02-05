@@ -31,6 +31,7 @@ export default defineSchema({
     storageId: v.string(),
     pageCount: v.optional(v.number()),
     toc: tocValidator,
+    color: v.number(), // 0-11 index into color palette
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -58,12 +59,13 @@ export default defineSchema({
   // Chat threads - persistent AI chat conversations per document
   chatThreads: defineTable({
     userId: v.string(),
-    documentId: v.id("documents"),
+    documentId: v.optional(v.id("documents")), // optional for unlinked threads
     title: v.optional(v.string()),
     isStreaming: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_user", ["userId"]) // list all threads
     .index("by_document", ["userId", "documentId"]),
 
   // Chat messages - individual messages within a thread

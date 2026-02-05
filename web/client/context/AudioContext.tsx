@@ -14,8 +14,12 @@ import type {
   MusicTrack,
   AmbientSoundId,
 } from "@/audio/types"
+import type { ChunkBlock } from "@repo/core/types/api"
 import { AMBIENT_SOUNDS } from "@/audio/constants"
 import { UnifiedAudioPlayer } from "@/audio/UnifiedAudioPlayer"
+import { useDocumentContext } from "@/context/DocumentContext"
+
+const backendMode = import.meta.env.VITE_BACKEND_MODE
 
 // ============================================================================
 // CrossfadeLooper: Encapsulates seamless audio looping with crossfade
@@ -316,6 +320,10 @@ export function AudioProvider({
   const sseAbortRef = useRef<AbortController | null>(null)
   // Unified audio player for TTS
   const playerRef = useRef<UnifiedAudioPlayer | null>(null)
+  // Prefetch state
+  const prefetchAbortRef = useRef<AbortController | null>(null)
+  // In-flight synthesis deduplication: blockId:voiceId → Promise
+  const synthInFlightRef = useRef(new Map<string, Promise<void>>())
 
   if (!storeRef.current) {
     storeRef.current = createStore(createInitialState())
@@ -350,6 +358,72 @@ export function AudioProvider({
     }
   }, [])
 
+  // Get document context for prefetch
+  const docContext = useDocumentContext()
+
+  // Find the next TTS-eligible block after the current one
+  const findNextTtsBlock = useCallback(
+    (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
+      const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
+      if (currentIndex === -1) return null
+
+      for (let i = currentIndex + 1; i < chunks.length; i++) {
+        if (chunks[i].includeTts) return chunks[i]
+      }
+      return null
+    },
+    [],
+  )
+
+  // Prefetch the next TTS block
+  const prefetchNextBlock = useCallback(
+    async (currentBlockId: string, voiceId: string) => {
+      const chunks = docContext?.chunks
+      if (!chunks || !documentId) return
+
+      const nextBlock = findNextTtsBlock(chunks, currentBlockId)
+      if (!nextBlock) return
+
+      const key = `${nextBlock.id}:${voiceId}`
+      if (synthInFlightRef.current.has(key)) return
+
+      // Cancel any existing prefetch
+      if (prefetchAbortRef.current) {
+        prefetchAbortRef.current.abort()
+      }
+
+      const abortController = new AbortController()
+      prefetchAbortRef.current = abortController
+
+      let resolveInFlight!: () => void
+      const promise = new Promise<void>((r) => {
+        resolveInFlight = r
+      })
+      synthInFlightRef.current.set(key, promise)
+
+      try {
+        await fetch("/api/tts/prefetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            documentId,
+            blockId: nextBlock.id,
+            chunkHtml: nextBlock.html,
+            voiceId,
+          }),
+          signal: abortController.signal,
+        })
+      } catch {
+        // Silently ignore abort errors and failures
+      } finally {
+        synthInFlightRef.current.delete(key)
+        resolveInFlight()
+      }
+    },
+    [documentId, docContext?.chunks, findNextTtsBlock],
+  )
+
   // === Narrator Actions ===
   const setVoice = useCallback(
     (voiceId: VoiceId) => {
@@ -361,6 +435,13 @@ export function AudioProvider({
         sseAbortRef.current.abort()
         sseAbortRef.current = null
       }
+
+      // Cancel any ongoing prefetch and clear in-flight tracking
+      if (prefetchAbortRef.current) {
+        prefetchAbortRef.current.abort()
+        prefetchAbortRef.current = null
+      }
+      synthInFlightRef.current.clear()
 
       // Stop current playback
       cleanupPlayer()
@@ -463,40 +544,46 @@ export function AudioProvider({
         return
       }
 
-      // Cancel any ongoing SSE stream
+      const voiceId = store.getState().narrator.voice
+      const inFlightKey = `${blockId}:${voiceId}`
+
+      // Always stop previous playback immediately
       if (sseAbortRef.current) {
         sseAbortRef.current.abort()
         sseAbortRef.current = null
       }
+      cleanupPlayer()
 
-      // Stop current playback if switching blocks
-      const currentState = store.getState()
-      if (currentState.playback.blockId !== blockId) {
-        cleanupPlayer()
-        store.setState({
-          playback: {
-            ...currentState.playback,
-            mode: "idle",
-            text: null,
-            durationMs: 0,
-            wordTimestamps: [],
-            isPlaying: false,
-            canPause: false,
-            canSeek: false,
-            currentTime: 0,
-          },
-        })
-      }
-
+      // Set loading state for the new block
       store.setState({
         playback: {
           ...store.getState().playback,
           mode: "loading",
           error: null,
           blockId,
+          text: null,
+          durationMs: 0,
+          wordTimestamps: [],
+          isPlaying: false,
+          canPause: false,
+          canSeek: false,
+          currentTime: 0,
         },
       })
+
+      // Wait for in-flight prefetch if one exists for this block
+      const inFlight = synthInFlightRef.current.get(inFlightKey)
+      if (inFlight) {
+        await inFlight
+      }
+
       const toastId = toast.loading("Preparing speech...")
+
+      let resolveInFlight!: () => void
+      const inFlightPromise = new Promise<void>((r) => {
+        resolveInFlight = r
+      })
+      synthInFlightRef.current.set(inFlightKey, inFlightPromise)
 
       try {
         const abortController = new AbortController()
@@ -560,6 +647,9 @@ export function AudioProvider({
 
           playerRef.current.play()
           toast.success("Speech ready", { id: toastId })
+
+          // Prefetch next block (no GPU usage for cached, so always prefetch)
+          prefetchNextBlock(blockId, store.getState().narrator.voice)
           return
         }
 
@@ -604,6 +694,11 @@ export function AudioProvider({
               if (firstChunk) {
                 toast.success("Speech ready", { id: toastId })
                 firstChunk = false
+
+                // Modal/Datalab: Start prefetch in parallel
+                if (backendMode !== "local") {
+                  prefetchNextBlock(blockId, store.getState().narrator.voice)
+                }
               }
               playerRef.current?.addPcmChunk(event.data)
             } else if (event.type === "timestamps") {
@@ -613,6 +708,14 @@ export function AudioProvider({
             } else if (event.type === "complete") {
               // Stream finished - consolidate buffer for full controls
               playerRef.current?.finishStreaming()
+
+              // Local mode: Start prefetch after stream completes (sequential)
+              if (backendMode === "local") {
+                // Wait for model unload, then prefetch
+                fetch("/api/tts/unload", { method: "POST" })
+                  .catch(() => {})
+                  .finally(() => prefetchNextBlock(blockId, store.getState().narrator.voice))
+              }
             } else if (event.type === "error") {
               throw new Error(event.error)
             }
@@ -640,9 +743,12 @@ export function AudioProvider({
           },
         })
         toast.error(errorMsg, { id: toastId })
+      } finally {
+        synthInFlightRef.current.delete(inFlightKey)
+        resolveInFlight()
       }
     },
-    [store, documentId, getAudioContext, cleanupPlayer, createPlayerCallbacks],
+    [store, documentId, getAudioContext, cleanupPlayer, createPlayerCallbacks, prefetchNextBlock],
   )
 
   const play = useCallback(() => {
@@ -1033,12 +1139,27 @@ export function AudioProvider({
     return unsubscribe
   }, [store, getAudioContext])
 
+  // Effect: Cancel prefetch on document change
+  useEffect(() => {
+    return () => {
+      if (prefetchAbortRef.current) {
+        prefetchAbortRef.current.abort()
+        prefetchAbortRef.current = null
+      }
+    }
+  }, [documentId])
+
   // Effect: Cleanup on unmount
   useEffect(() => {
     return () => {
       // Cancel any ongoing SSE stream
       if (sseAbortRef.current) {
         sseAbortRef.current.abort()
+      }
+
+      // Cancel any ongoing prefetch
+      if (prefetchAbortRef.current) {
+        prefetchAbortRef.current.abort()
       }
 
       // Clean up TTS player
@@ -1057,23 +1178,6 @@ export function AudioProvider({
       }
     }
   }, [])
-
-  // Auto-unload TTS models when synthesis completes
-  const prevModeRef = useRef<string | null>(null)
-  useEffect(() => {
-    const state = store.getState()
-    const { mode, isPlaying } = state.playback
-
-    // Only act on transition from loading to streaming/ready
-    const wasLoading = prevModeRef.current === "loading"
-    prevModeRef.current = mode
-
-    // Unload when synthesis is complete (streaming or ready mode)
-    if (wasLoading && (mode === "streaming" || mode === "ready") && isPlaying) {
-      // Synthesis complete - unload models to free GPU memory
-      fetch("/api/tts/unload", { method: "POST" }).catch(() => {})
-    }
-  })
 
   const valueRef = useRef<{
     store: AudioStore

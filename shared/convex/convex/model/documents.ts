@@ -58,6 +58,7 @@ export async function createDocument(
     storageId: input.storageId,
     pageCount: input.pageCount,
     toc: input.toc,
+    color: Math.floor(Math.random() * 12), // 0-11 random color
     createdAt: Date.now(),
   })
 
@@ -140,10 +141,12 @@ export async function addEmbeddings(
 
 /**
  * Delete a document and all its chunks and cached audio.
+ * @param threadAction - "keep" to unlink threads, "delete" to cascade delete threads and messages
  */
 export async function deleteDocument(
   ctx: MutationCtx,
   documentId: Id<"documents">,
+  threadAction: "keep" | "delete",
 ) {
   const user = await requireAuth(ctx)
   const doc = await ctx.db.get(documentId)
@@ -167,6 +170,39 @@ export async function deleteDocument(
     .withIndex("by_document_block_voice", (q) => q.eq("documentId", documentId))
     .collect()
 
+  // Handle chat threads based on threadAction
+  const threads = await ctx.db
+    .query("chatThreads")
+    .withIndex("by_document", (q) =>
+      q.eq("userId", user._id).eq("documentId", documentId),
+    )
+    .collect()
+
+  let threadCount = 0
+  let messageCount = 0
+
+  if (threadAction === "delete") {
+    // Cascade delete threads and their messages
+    for (const thread of threads) {
+      const messages = await ctx.db
+        .query("chatMessages")
+        .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+        .collect()
+      await Promise.all(messages.map((m) => ctx.db.delete(m._id)))
+      await ctx.db.delete(thread._id)
+      threadCount++
+      messageCount += messages.length
+    }
+  } else {
+    // Unlink threads by setting documentId to undefined
+    await Promise.all(
+      threads.map((thread) =>
+        ctx.db.patch(thread._id, { documentId: undefined }),
+      ),
+    )
+    threadCount = threads.length
+  }
+
   await Promise.all([
     ...chunks.map((chunk) => ctx.db.delete(chunk._id)),
     ...audioRecords.map((audio) => ctx.db.delete(audio._id)),
@@ -179,6 +215,9 @@ export async function deleteDocument(
     deleted: true,
     chunkCount: chunks.length,
     audioCount: audioRecords.length,
+    threadCount,
+    messageCount,
+    threadAction,
   }
 }
 

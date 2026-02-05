@@ -383,6 +383,158 @@ tts.post("/tts/unload", async (c) => {
   return c.json({ unloaded: results })
 })
 
+/**
+ * Prefetch audio for a chunk using non-streaming synthesis.
+ * Used to pre-generate the next block's audio while streaming current block.
+ */
+tts.post("/tts/prefetch", async (c) => {
+  const storage = c.get("storage")
+  const userId = c.get("userId")
+
+  const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
+  if (!convex) {
+    return c.json({ error: "Authentication failed" }, 401)
+  }
+
+  const bodyResult = await tryCatch(c.req.json<TTSSynthesizeRequest>())
+  if (!bodyResult.success) {
+    return c.json({ error: "Invalid request body" }, 400)
+  }
+
+  const { documentId, blockId, chunkHtml, voiceId = "male_1" } = bodyResult.data
+
+  if (!documentId || !blockId || !chunkHtml) {
+    return c.json({ error: "Missing required fields" }, 400)
+  }
+
+  const docResult = await tryCatch(
+    convex.query(api.api.documents.get, {
+      documentId: documentId as Id<"documents">,
+    }),
+  )
+
+  if (!docResult.success || !docResult.data) {
+    return c.json({ error: "Document not found" }, 404)
+  }
+
+  const doc = docResult.data
+
+  // Check if already cached
+  const cachedResult = await tryCatch(
+    convex.query(api.api.ttsAudio.getBlockAudio, {
+      documentId: documentId as Id<"documents">,
+      blockId,
+      voiceId,
+    }),
+  )
+
+  if (cachedResult.success && cachedResult.data) {
+    return c.json({ success: true, cached: true })
+  }
+
+  // Get or generate variation text
+  let variationText: string | null = null
+
+  const existingTextResult = await tryCatch(
+    convex.query(api.api.ttsAudio.getBlockVariationText, {
+      documentId: documentId as Id<"documents">,
+      blockId,
+    }),
+  )
+
+  if (existingTextResult.success && existingTextResult.data) {
+    variationText = existingTextResult.data
+  } else {
+    const plainText = stripHtmlForEmbedding(chunkHtml)
+
+    if (!plainText.trim()) {
+      return c.json({ error: "No text content" }, 400)
+    }
+
+    let model
+    try {
+      model = createChatModel()
+    } catch {
+      return c.json({ error: "Server configuration error" }, 500)
+    }
+
+    const generateResult = await tryCatch(
+      generateText({
+        model,
+        system: TTS_SYSTEM_PROMPT,
+        prompt: plainText,
+        providerOptions: {
+          google: {
+            thinkingConfig: {
+              thinkingLevel: "minimal",
+            },
+          },
+        },
+      }),
+    )
+
+    if (!generateResult.success) {
+      return c.json({ error: "Text preparation failed" }, 500)
+    }
+
+    variationText = generateResult.data.text
+  }
+
+  // Activate worker and create backend
+  const engine = getEngineForVoice(voiceId)
+  await activateWorker(engine)
+
+  let backend
+  try {
+    backend = createTTSBackend(voiceId)
+  } catch {
+    return c.json({ error: "TTS backend configuration error" }, 500)
+  }
+
+  // Non-streaming synthesis
+  const synthesisResult = await tryCatch(backend.synthesize(variationText!, voiceId))
+  if (!synthesisResult.success) {
+    return c.json({ error: "Synthesis failed" }, 500)
+  }
+
+  const { audio, sampleRate, durationMs, wordTimestamps } = synthesisResult.data
+
+  // Save to S3
+  const wavBuffer = Buffer.from(audio, "base64")
+  const storagePath = `documents/${userId}/${doc.storageId}/audio/${voiceId}/${blockId.replace(/\//g, "_")}.wav`
+
+  const saveResult = await tryCatch(
+    storage.saveFile(storagePath, wavBuffer, {
+      contentType: "audio/wav",
+      cacheControl: "public, max-age=31536000, immutable",
+    }),
+  )
+
+  if (!saveResult.success) {
+    return c.json({ error: "Storage save failed" }, 500)
+  }
+
+  // Save to Convex
+  const convexResult = await tryCatch(
+    convex.mutation(api.api.ttsAudio.createAudio, {
+      documentId: documentId as Id<"documents">,
+      blockId,
+      voiceId,
+      text: variationText!,
+      storagePath,
+      durationMs,
+      sampleRate,
+      wordTimestamps,
+    }),
+  )
+
+  if (!convexResult.success) {
+    return c.json({ error: "Cache save failed" }, 500)
+  }
+
+  return c.json({ success: true, prefetched: true })
+})
+
 function pcmToWav(pcmData: Uint8Array, sampleRate: number): Buffer {
   const numChannels = 1
   const bitsPerSample = 16

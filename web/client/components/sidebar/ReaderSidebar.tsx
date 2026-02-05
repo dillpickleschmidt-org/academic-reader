@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, Bot, Download, Plus, Trash2 } from "lucide-react"
+import { BookOpen, Bot, Download, Link2Off, Plus, Trash2 } from "lucide-react"
 
 import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"
@@ -17,8 +17,25 @@ import {
   SidebarRail,
   useSidebar,
 } from "@repo/core/ui/primitives/sidebar"
+import { Switch } from "@repo/core/ui/primitives/switch"
 import { useChatPanel } from "@/context/ChatPanelContext"
 import type { TocDisplayItem } from "@/hooks/use-table-of-contents"
+
+function ChatThreadsViewToggle() {
+  const { viewMode, setViewMode } = useChatPanel()
+  return (
+    <div className="flex items-center justify-end gap-1.5 ml-2 -mr-2.5 mt-1">
+      <span className="text-xs text-muted-foreground">
+        {viewMode === "all" ? "All threads" : "This document"}
+      </span>
+      <Switch
+        size="sm"
+        checked={viewMode === "all"}
+        onCheckedChange={(checked) => setViewMode(checked ? "all" : "document")}
+      />
+    </div>
+  )
+}
 
 function ChatThreadsNewButton() {
   const { startNewThread } = useChatPanel()
@@ -33,21 +50,51 @@ function ChatThreadsNewButton() {
   )
 }
 
+const THREAD_COLORS = [
+  "bg-red-400",
+  "bg-orange-400",
+  "bg-amber-400",
+  "bg-yellow-400",
+  "bg-lime-400",
+  "bg-green-400",
+  "bg-emerald-400",
+  "bg-cyan-400",
+  "bg-sky-400",
+  "bg-blue-400",
+  "bg-violet-400",
+  "bg-pink-400",
+]
+
 const ChatThreadItem = React.memo(function ChatThreadItem({
   threadId,
   title,
   isActive,
+  isUnlinked,
+  colorIndex,
+  documentName,
 }: {
   threadId: string
   title: string
   isActive: boolean
+  isUnlinked: boolean
+  colorIndex?: number
+  documentName?: string
 }) {
   const { selectThread, deleteThread } = useChatPanel()
   return (
     <SidebarMenuSubButton
       onClick={() => selectThread(threadId)}
-      className={`group/thread h-auto my-0.5 py-1 cursor-pointer ${isActive ? "bg-muted font-medium" : ""}`}
+      title={documentName}
+      className={`group/thread relative h-auto my-0.5 py-1 pl-2.75 cursor-pointer overflow-hidden ${isActive ? "bg-muted font-medium" : ""}`}
     >
+      {colorIndex !== undefined && (
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-[2.75%] rounded-tl-sm rounded-bl-sm ${THREAD_COLORS[colorIndex]}`}
+        />
+      )}
+      {isUnlinked && (
+        <Link2Off className="size-3 shrink-0 text-muted-foreground" />
+      )}
       <span className="flex-1 truncate">{title}</span>
       <button
         type="button"
@@ -82,6 +129,7 @@ export function ReaderSidebar({
     const items: Array<{ render: React.ReactNode }> = []
 
     items.push({ render: <ChatThreadsNewButton /> })
+    items.push({ render: <ChatThreadsViewToggle /> })
 
     if (chatPanel.threads) {
       for (const thread of chatPanel.threads) {
@@ -92,6 +140,9 @@ export function ReaderSidebar({
               threadId={thread._id}
               title={thread.title ?? "New chat"}
               isActive={chatPanel.activeThreadId === thread._id}
+              isUnlinked={thread.documentId === undefined}
+              colorIndex={thread.documentColor}
+              documentName={thread.documentName}
             />
           ),
         })

@@ -20,7 +20,7 @@ image = (
         flash_attn_wheel,
         extra_index_url="https://download.pytorch.org/whl/cu126",
     )
-    .run_commands("pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git@4ce5575 xxhash")
+    .run_commands("pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git@b8ec3b4 xxhash")
     .run_commands(
         'python -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\'); snapshot_download(\'Qwen/Qwen3-TTS-Tokenizer-12Hz\')"',
     )
@@ -37,7 +37,7 @@ image = (
 
 app = modal.App("qwen3-tts", image=image)
 
-snapshot_key = "v115"
+snapshot_key = "v116"
 
 with image.imports():
     import sys

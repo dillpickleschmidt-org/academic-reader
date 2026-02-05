@@ -1,13 +1,15 @@
-import { lazy, Suspense, useCallback, useEffect, useRef } from "react"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
+import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { useConversion, type Page } from "./hooks/use-conversion"
 import { useAppConfig } from "./hooks/use-app-config"
 import { useColorAnimation } from "./hooks/use-color-animation"
 import { DocumentProvider } from "./context/DocumentContext"
 import { AudioProvider } from "./context/AudioContext"
 import { AuthDialog } from "./components/AuthDialog"
+import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog"
 import { LandingPage } from "./pages/LandingPage"
 import { resultPageImport } from "./utils/preload"
 
@@ -31,6 +33,10 @@ function App() {
   const conversion = useConversion()
   const { user } = useAppConfig()
   const prevPageRef = useRef<Page>(conversion.page)
+  const [deleteDialog, setDeleteDialog] = useState<{
+    documentId: string
+    filename: string
+  } | null>(null)
 
   // Initialize color cycling animation
   useColorAnimation()
@@ -87,9 +93,50 @@ function App() {
     [recentDocuments, conversion],
   )
 
-  const handleDeleteDocument = useCallback(async (documentId: string) => {
-    await fetch(`/api/saved-documents/${documentId}`, { method: "DELETE" })
-  }, [])
+  const threadCountQuery = useQuery(
+    api.api.chat.countThreadsForDocument,
+    deleteDialog ? { documentId: deleteDialog.documentId as Id<"documents"> } : "skip",
+  )
+
+  // When thread count loads for delete dialog, either show dialog or delete directly
+  useEffect(() => {
+    if (!deleteDialog || threadCountQuery === undefined) return
+
+    if (threadCountQuery === 0) {
+      // No threads, delete directly
+      fetch(
+        `/api/saved-documents/${deleteDialog.documentId}?threadAction=delete`,
+        { method: "DELETE" },
+      )
+      setDeleteDialog(null)
+    }
+  }, [deleteDialog, threadCountQuery])
+
+  const handleDeleteDocument = useCallback(
+    (documentId: string) => {
+      const doc = recentDocuments?.find((d) => d._id === documentId)
+      if (!doc) return
+
+      // Trigger thread count check
+      setDeleteDialog({
+        documentId,
+        filename: doc.filename,
+      })
+    },
+    [recentDocuments],
+  )
+
+  const executeDelete = useCallback(
+    async (threadAction: "keep" | "delete") => {
+      if (!deleteDialog) return
+      await fetch(
+        `/api/saved-documents/${deleteDialog.documentId}?threadAction=${threadAction}`,
+        { method: "DELETE" },
+      )
+      setDeleteDialog(null)
+    },
+    [deleteDialog],
+  )
 
   // Auth dialog for pending conversions - starts conversion on successful auth
   const authDialog = (
@@ -116,12 +163,24 @@ function App() {
   switch (conversion.page) {
     case "landing":
       return (
-        <LandingPage
-          onFileSelect={conversion.uploadFile}
-          recentDocuments={recentDocuments}
-          onViewDocument={handleViewDocument}
-          onDeleteDocument={handleDeleteDocument}
-        />
+        <>
+          <LandingPage
+            onFileSelect={conversion.uploadFile}
+            recentDocuments={recentDocuments}
+            onViewDocument={handleViewDocument}
+            onDeleteDocument={handleDeleteDocument}
+          />
+          <DeleteDocumentDialog
+            open={deleteDialog !== null && (threadCountQuery ?? 0) > 0}
+            onOpenChange={(open) => {
+              if (!open) setDeleteDialog(null)
+            }}
+            filename={deleteDialog?.filename ?? ""}
+            threadCount={threadCountQuery ?? 0}
+            onKeepThreads={() => executeDelete("keep")}
+            onDeleteAll={() => executeDelete("delete")}
+          />
+        </>
       )
 
     case "configure":

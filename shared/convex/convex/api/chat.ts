@@ -83,3 +83,15 @@ export const getThreadMessages = query({
     return { thread, messages }
   },
 })
+
+export const listAllThreads = query({
+  args: {},
+  handler: (ctx) => Chat.listAllThreads(ctx),
+})
+
+export const countThreadsForDocument = query({
+  args: {
+    documentId: v.id("documents"),
+  },
+  handler: (ctx, { documentId }) => Chat.countThreadsForDocument(ctx, documentId),
+})

@@ -118,6 +118,12 @@ savedDocuments.delete(
     const storage = c.get("storage")
     event.documentId = documentId
 
+    // Get threadAction from query param (required)
+    const threadAction = c.req.query("threadAction")
+    if (threadAction !== "keep" && threadAction !== "delete") {
+      return c.json({ error: "threadAction query param required (keep or delete)" }, 400)
+    }
+
     const convex = await createAuthenticatedConvexClient(c.req.raw.headers)
     if (!convex) {
       event.error = {
@@ -147,10 +153,11 @@ savedDocuments.delete(
 
     const storageId = docResult.data.storageId
 
-    // Delete from Convex (handles auth + chunks)
+    // Delete from Convex (handles auth + chunks + threads)
     const removeResult = await tryCatch(
       convex.mutation(api.api.documents.remove, {
         documentId: typedDocumentId,
+        threadAction,
       }),
     )
 

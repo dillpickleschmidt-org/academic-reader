@@ -50,11 +50,15 @@ export function TTSPlaybackBar() {
   const { togglePlayPause, skip, setVoice } = useAudioActions()
   const { voices } = useVoiceSelection(currentVoice, setVoice)
 
-  if (mode === "idle" || mode === "loading") return null
+  if (mode === "idle") return null
 
   return (
     <div className="shrink-0 bg-(--card) border-t border-(--reader-border)">
-      <PlaybackProgress isStreaming={mode === "streaming"} />
+      {mode === "loading" ? (
+        <div className="h-1 bg-(--reader-border)" />
+      ) : (
+        <PlaybackProgress isStreaming={mode === "streaming"} />
+      )}
 
       <div className="relative flex items-center justify-center py-2 md:pr-12">
         <div className="flex items-center gap-1">
@@ -70,15 +74,21 @@ export function TTSPlaybackBar() {
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={togglePlayPause}
-            disabled={!canPause}
-            className="flex items-center justify-center w-9 h-9 rounded-lg text-(--reader-text-muted) hover:text-(--reader-text) hover:bg-(--reader-border) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-          </button>
+          {mode === "loading" ? (
+            <div className="flex items-center justify-center w-9 h-9">
+              <Loader2 size={18} className="animate-spin text-(--reader-text-muted)" />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={togglePlayPause}
+              disabled={!canPause}
+              className="flex items-center justify-center w-9 h-9 rounded-lg text-(--reader-text-muted) hover:text-(--reader-text) hover:bg-(--reader-border) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+          )}
 
           {canSeek && (
             <button

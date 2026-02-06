@@ -71,7 +71,6 @@ export async function addChunksToDocument(
         blockId: chunk.blockId,
         blockType: chunk.blockType,
         html: chunk.html,
-        page: chunk.page,
         section: chunk.section,
         bbox: chunk.bbox,
         includeTts: chunk.includeTts,
@@ -418,11 +417,14 @@ export async function searchChunks(
         c !== null && c.chunk.documentId === documentId,
     )
     .slice(0, limit)
-    .map((c) => ({
-      html: c.chunk.html,
-      blockType: c.chunk.blockType,
-      page: c.chunk.page,
-      section: c.chunk.section,
-      score: c.score,
-    }))
+    .map((c) => {
+      const pageMatch = c.chunk.blockId.match(/^\/page\/(\d+)\//)
+      return {
+        html: c.chunk.html,
+        blockType: c.chunk.blockType,
+        page: pageMatch ? Number(pageMatch[1]) : 0,
+        section: c.chunk.section,
+        score: c.score,
+      }
+    })
 }

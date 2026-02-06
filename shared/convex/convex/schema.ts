@@ -44,7 +44,6 @@ export default defineSchema({
     blockId: v.string(),
     blockType: v.string(), // "Text", "Heading", "ListItem", etc.
     html: v.string(), // HTML content from Marker/CHANDRA
-    page: v.number(),
     section: v.optional(v.string()), // Section hierarchy flattened
     bbox: v.array(v.number()), // [x1, y1, x2, y2] bounding box coordinates
     includeTts: v.optional(v.boolean()), // Whether block should be read aloud by TTS

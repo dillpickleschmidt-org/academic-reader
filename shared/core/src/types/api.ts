@@ -32,7 +32,6 @@ export interface ChunkBlock {
   id: string
   block_type: string
   html: string
-  page: number
   polygon: number[][]
   bbox: number[]
   includeTts?: boolean

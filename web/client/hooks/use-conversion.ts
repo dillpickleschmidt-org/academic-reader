@@ -353,13 +353,11 @@ export function useConversion() {
             blockId: string
             blockType: string
             html: string
-            page: number
             includeTts?: boolean
           }) => ({
             id: c.blockId,
             block_type: c.blockType,
             html: c.html,
-            page: c.page,
             polygon: [],
             bbox: [],
             includeTts: c.includeTts,

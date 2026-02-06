@@ -28,7 +28,6 @@ export interface ChunkInput {
   blockId: string
   blockType: string
   html: string
-  page: number
   section?: string
   bbox: number[]
   includeTts?: boolean

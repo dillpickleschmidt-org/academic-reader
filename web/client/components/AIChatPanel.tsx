@@ -10,15 +10,17 @@ import {
 import "katex/dist/katex.min.css"
 import { DefaultChatTransport, type UIMessage, type ChatStatus } from "ai"
 import { useChat } from "@ai-sdk/react"
-import { useQuery } from "convex/react"
+import { useQuery, useMutation } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
 import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
-import { Bot, LogIn, X, Loader2 } from "lucide-react"
+import { Bot, LogIn, X, Loader2, Copy, Check, RefreshCw, Pencil } from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
 import {
   Message,
   MessageContent,
   MessageResponse,
+  MessageActions,
+  MessageAction,
 } from "@repo/core/ui/ai-elements/message"
 import {
   PromptInput,
@@ -46,8 +48,39 @@ function convertLatex(text: string): string {
   return text.replace(/(?<!\$)\$(?!\$)([^$]+?)\$(?!\$)/g, "$$$$$1$$$$")
 }
 
+function CopyAction({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }, () => {})
+  }, [text])
+
+  return (
+    <MessageAction tooltip="Copy" onClick={handleCopy}>
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </MessageAction>
+  )
+}
+
+interface ChatMessageProps {
+  message: UIMessage
+  isLastAssistant?: boolean
+  isActive?: boolean
+  onRetry?: (message: UIMessage) => void
+  onEdit?: (message: UIMessage) => void
+}
+
 const ChatMessage = memo(
-  function ChatMessage({ message }: { message: UIMessage }) {
+  function ChatMessage({
+    message,
+    isLastAssistant,
+    isActive,
+    onRetry,
+    onEdit,
+  }: ChatMessageProps) {
     return (
       <div>
         {message.parts.map((part, i) => {
@@ -58,6 +91,27 @@ const ChatMessage = memo(
                   <MessageContent className="md:text-[15px]">
                     <MessageResponse>{convertLatex(part.text)}</MessageResponse>
                   </MessageContent>
+                  <MessageActions className="opacity-0 transition-opacity group-hover:opacity-100 group-[.is-user]:ml-auto">
+                    <CopyAction text={part.text} />
+                    {message.role === "assistant" && isLastAssistant && onRetry && (
+                      <MessageAction
+                        tooltip="Retry"
+                        onClick={() => onRetry(message)}
+                        disabled={isActive}
+                      >
+                        <RefreshCw className="size-3.5" />
+                      </MessageAction>
+                    )}
+                    {message.role === "user" && onEdit && (
+                      <MessageAction
+                        tooltip="Edit"
+                        onClick={() => onEdit(message)}
+                        disabled={isActive}
+                      >
+                        <Pencil className="size-3.5" />
+                      </MessageAction>
+                    )}
+                  </MessageActions>
                 </Message>
               )
             case "tool-invocation":
@@ -81,7 +135,9 @@ const ChatMessage = memo(
   },
   (prev, next) =>
     prev.message.id === next.message.id &&
-    prev.message.parts === next.message.parts,
+    prev.message.parts === next.message.parts &&
+    prev.isLastAssistant === next.isLastAssistant &&
+    prev.isActive === next.isActive,
 )
 
 function AuthPrompt({ onSignIn }: { onSignIn: () => void }) {
@@ -121,27 +177,32 @@ function convexMessagesToUI(messages: Doc<"chatMessages">[]): UIMessage[] {
 }
 
 const ChatPromptInput = memo(function ChatPromptInput({
+  input,
+  onInputChange,
   onSendMessage,
   embeddingsReady,
   status,
 }: {
+  input: string
+  onInputChange: (value: string) => void
   onSendMessage: (text: string) => void
   embeddingsReady: boolean
   status: ChatStatus
 }) {
-  const [input, setInput] = useState("")
-
-  const handleChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-  }, [])
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
+      onInputChange(e.target.value)
+    },
+    [onInputChange],
+  )
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
       if (!message.text) return
       onSendMessage(message.text)
-      setInput("")
+      onInputChange("")
     },
-    [onSendMessage],
+    [onSendMessage, onInputChange],
   )
 
   return (
@@ -151,7 +212,6 @@ const ChatPromptInput = memo(function ChatPromptInput({
           <PromptInputTextarea
             value={input}
             onChange={handleChange}
-            // className="md:text-[15px]"
             placeholder={
               embeddingsReady
                 ? "Ask a follow-up question..."
@@ -174,6 +234,7 @@ const ChatPromptInput = memo(function ChatPromptInput({
 })
 
 export function AIChatPanel({ onClose }: Props) {
+  const [chatInput, setChatInput] = useState("")
   const [embeddingsReady, setEmbeddingsReady] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
   const embeddingsTriggeredRef = useRef(new Set<string>())
@@ -198,6 +259,8 @@ export function AIChatPanel({ onClose }: Props) {
     activeThread?.isStreaming ?? false,
     false,
   )
+
+  const deleteMessagesFrom = useMutation(api.api.chat.deleteMessagesFrom)
 
   // Refs for transport closure
   const documentIdRef = useRef(documentId)
@@ -232,16 +295,17 @@ export function AIChatPanel({ onClose }: Props) {
   const sendMessageRef = useRef(sendMessage)
   sendMessageRef.current = sendMessage
 
-  // Sync persisted messages into useChat when thread changes
+  // Sync persisted messages into useChat when idle (during streaming, useChat is the authority)
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([])
       return
     }
+    if (status !== "ready") return
     if (persistedMessages) {
       setMessages(convexMessagesToUI(persistedMessages))
     }
-  }, [activeThreadId, persistedMessages, setMessages])
+  }, [activeThreadId, persistedMessages, setMessages, status])
 
   // Generate embeddings when a thread is first opened
   const hasDocument = !!documentId
@@ -287,6 +351,68 @@ export function AIChatPanel({ onClose }: Props) {
       sendMessage({ text })
     },
     [sendMessage],
+  )
+
+  const isActive = status === "streaming" || status === "submitted"
+
+  const lastAssistantId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") return messages[i].id
+    }
+    return undefined
+  }, [messages])
+
+  const handleRetry = useCallback(
+    async (assistantMessage: UIMessage) => {
+      if (!activeThreadId || isActive) return
+
+      const assistantIndex = messages.findIndex(
+        (m) => m.id === assistantMessage.id,
+      )
+      if (assistantIndex === -1) return
+
+      const userMessage = messages[assistantIndex - 1]
+      if (!userMessage || userMessage.role !== "user") return
+
+      const userText = userMessage.parts.find((p) => p.type === "text")
+      if (!userText || userText.type !== "text") return
+
+      setMessages(messages.slice(0, assistantIndex - 1))
+      try {
+        await deleteMessagesFrom({
+          threadId: activeThreadId as Id<"chatThreads">,
+          messageId: userMessage.id as Id<"chatMessages">,
+        })
+      } catch {
+        return
+      }
+      sendMessage({ text: userText.text })
+    },
+    [activeThreadId, isActive, messages, setMessages, deleteMessagesFrom, sendMessage],
+  )
+
+  const handleEdit = useCallback(
+    async (message: UIMessage) => {
+      if (!activeThreadId || isActive) return
+
+      const targetIndex = messages.findIndex((m) => m.id === message.id)
+      if (targetIndex === -1) return
+
+      const text = message.parts.find((p) => p.type === "text")
+      if (!text || text.type !== "text") return
+
+      setMessages(messages.slice(0, targetIndex))
+      try {
+        await deleteMessagesFrom({
+          threadId: activeThreadId as Id<"chatThreads">,
+          messageId: message.id as Id<"chatMessages">,
+        })
+      } catch {
+        return
+      }
+      setChatInput(text.text)
+    },
+    [activeThreadId, isActive, messages, setMessages, deleteMessagesFrom],
   )
 
   // Reversed messages for flex-col-reverse layout (memoized separately from streaming)
@@ -378,7 +504,13 @@ export function AIChatPanel({ onClose }: Props) {
                     : undefined
                 }
               >
-                <ChatMessage message={message} />
+                <ChatMessage
+                  message={message}
+                  isLastAssistant={message.id === lastAssistantId}
+                  isActive={isActive}
+                  onRetry={handleRetry}
+                  onEdit={handleEdit}
+                />
               </div>
             ))}
             {summary === undefined && documentId && (
@@ -399,6 +531,8 @@ export function AIChatPanel({ onClose }: Props) {
           </div>
 
           <ChatPromptInput
+            input={chatInput}
+            onInputChange={setChatInput}
             onSendMessage={handleSendMessage}
             embeddingsReady={embeddingsReady}
             status={status}

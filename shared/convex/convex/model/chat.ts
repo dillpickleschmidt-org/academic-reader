@@ -60,6 +60,30 @@ export async function updateThread(
   await ctx.db.patch(threadId, fields)
 }
 
+export async function deleteMessagesFrom(
+  ctx: MutationCtx,
+  threadId: Id<"chatThreads">,
+  messageId: Id<"chatMessages">,
+) {
+  const user = await requireAuth(ctx)
+  const thread = await ctx.db.get(threadId)
+
+  if (!thread) throw new Error("Thread not found")
+  if (thread.userId !== user._id) throw new Error("Unauthorized")
+
+  const messages = await ctx.db
+    .query("chatMessages")
+    .withIndex("by_thread", (q) => q.eq("threadId", threadId))
+    .order("asc")
+    .collect()
+
+  const targetIndex = messages.findIndex((m) => m._id === messageId)
+  if (targetIndex === -1) throw new Error("Message not found")
+
+  const toDelete = messages.slice(targetIndex)
+  await Promise.all(toDelete.map((m) => ctx.db.delete(m._id)))
+}
+
 export async function addMessage(
   ctx: MutationCtx,
   threadId: Id<"chatThreads">,

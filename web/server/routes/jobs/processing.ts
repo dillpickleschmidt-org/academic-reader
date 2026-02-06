@@ -51,7 +51,6 @@ interface MarkerChunkBlock {
   id: string
   block_type: string
   html: string
-  page: number
   bbox: number[]
   section_hierarchy?: Record<string, string>
 }
@@ -61,7 +60,6 @@ interface ChandraChunkBlock {
   label: string
   content: string
   bbox: number[]
-  page: number
 }
 
 type WorkerChunkBlock = MarkerChunkBlock | ChandraChunkBlock
@@ -138,7 +136,6 @@ function normalizeChunk(
       id: block.id,
       block_type: block.block_type,
       html: block.html,
-      page: block.page,
       bbox: block.bbox,
       polygon: [],
       section_hierarchy: block.section_hierarchy,
@@ -148,7 +145,6 @@ function normalizeChunk(
     id: `chandra-${index}`,
     block_type: block.label,
     html: block.content,
-    page: block.page,
     bbox: block.bbox,
     polygon: [],
   }
@@ -161,7 +157,6 @@ function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
       blockId: chunk.id,
       blockType: chunk.block_type,
       html: chunk.html,
-      page: chunk.page,
       section: chunk.section_hierarchy
         ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
         : undefined,

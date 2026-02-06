@@ -18,6 +18,15 @@ export const deleteThread = mutation({
   handler: (ctx, { threadId }) => Chat.deleteThread(ctx, threadId),
 })
 
+export const deleteMessagesFrom = mutation({
+  args: {
+    threadId: v.id("chatThreads"),
+    messageId: v.id("chatMessages"),
+  },
+  handler: (ctx, { threadId, messageId }) =>
+    Chat.deleteMessagesFrom(ctx, threadId, messageId),
+})
+
 export const setStreaming = mutation({
   args: {
     threadId: v.id("chatThreads"),

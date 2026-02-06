@@ -48,12 +48,12 @@ export default defineSchema({
     section: v.optional(v.string()), // Section hierarchy flattened
     bbox: v.array(v.number()), // [x1, y1, x2, y2] bounding box coordinates
     includeTts: v.optional(v.boolean()), // Whether block should be read aloud by TTS
-    embedding: v.optional(v.array(v.float64())), // 768-dim Gemini embedding (added when AI chat opens)
+    embedding: v.optional(v.array(v.float64())), // 3072-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: 768, // Gemini text-embedding-004
+      dimensions: 3072, // Gemini gemini-embedding-001
       filterFields: ["documentId"], // Scope vector search to specific document
     }),
 

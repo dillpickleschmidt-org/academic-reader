@@ -13,7 +13,7 @@ import {
 } from "../backends/tts/registry"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 import { createChatModel } from "../providers/models"
-import { stripHtmlForEmbedding } from "../services/embeddings"
+import { stripHtml } from "../utils/sanitize"
 import { env } from "../env"
 import { activateWorker, WORKERS } from "../workers/registry"
 
@@ -179,7 +179,7 @@ tts.post("/tts/synthesize", async (c) => {
         } else {
           sendEvent({ type: "progress", stage: "rewriting" })
 
-          const plainText = stripHtmlForEmbedding(chunkHtml)
+          const plainText = stripHtml(chunkHtml)
 
           if (!plainText.trim()) {
             sendEvent({ type: "error", error: "No text content to synthesize" })
@@ -445,7 +445,7 @@ tts.post("/tts/prefetch", async (c) => {
   if (existingTextResult.success && existingTextResult.data) {
     variationText = existingTextResult.data
   } else {
-    const plainText = stripHtmlForEmbedding(chunkHtml)
+    const plainText = stripHtml(chunkHtml)
 
     if (!plainText.trim()) {
       return c.json({ error: "No text content" }, 400)

@@ -1,6 +1,7 @@
 /**
  * Sanitization utilities for user input and file handling.
  */
+import { load } from "cheerio"
 
 /**
  * Escape HTML special characters to prevent XSS.
@@ -64,4 +65,8 @@ export function contentDisposition(
   const ascii = toAsciiFilename(filename)
   const encoded = encodeURIComponent(filename)
   return `${type}; filename="${ascii}"; filename*=UTF-8''${encoded}`
+}
+
+export function stripHtml(html: string): string {
+  return load(html).text().replace(/\s+/g, " ").trim()
 }

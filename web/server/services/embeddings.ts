@@ -1,6 +1,6 @@
 /**
  * Embedding service for generating vector embeddings.
- * Uses Google's text-embedding-004 model (768 dimensions).
+ * Uses Google's gemini-embedding-001 model (3072 dimensions).
  */
 
 import { embed, embedMany } from "ai"
@@ -53,16 +53,4 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   return allEmbeddings
-}
-
-/**
- * Strip HTML tags from content for embedding.
- * Embeddings work better on clean text.
- */
-export function stripHtmlForEmbedding(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ") // Remove HTML tags
-    .replace(/&[^;]+;/g, " ") // Remove HTML entities
-    .replace(/\s+/g, " ") // Collapse whitespace
-    .trim()
 }

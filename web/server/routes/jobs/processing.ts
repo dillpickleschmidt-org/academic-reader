@@ -155,17 +155,19 @@ function normalizeChunk(
 }
 
 function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
-  return chunks.map((chunk) => ({
-    blockId: chunk.id,
-    blockType: chunk.block_type,
-    html: chunk.html,
-    page: chunk.page,
-    section: chunk.section_hierarchy
-      ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
-      : undefined,
-    bbox: chunk.bbox,
-    includeTts: chunk.includeTts,
-  }))
+  return chunks
+    .filter((chunk) => chunk.html.trim().length > 0)
+    .map((chunk) => ({
+      blockId: chunk.id,
+      blockType: chunk.block_type,
+      html: chunk.html,
+      page: chunk.page,
+      section: chunk.section_hierarchy
+        ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
+        : undefined,
+      bbox: chunk.bbox,
+      includeTts: chunk.includeTts,
+    }))
 }
 
 /**

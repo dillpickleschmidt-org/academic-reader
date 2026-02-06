@@ -8,7 +8,7 @@
 import * as mupdf from "mupdf"
 import { generateText, Output } from "ai"
 import { z } from "zod"
-import { createChatModel } from "../providers/models"
+import { createProcessingModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
 import type { TocSection, TocResult } from "@repo/core/types/api"
 
@@ -241,7 +241,7 @@ interface TocAIResult {
  * Use AI to generate structured TOC from extracted text.
  */
 async function generateTocWithAI(tocText: string): Promise<TocAIResult> {
-  const model = createChatModel()
+  const model = createProcessingModel()
 
   const result = await tryCatch(
     generateText({

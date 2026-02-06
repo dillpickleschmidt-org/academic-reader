@@ -11,7 +11,7 @@ import type { ConvexHttpClient } from "convex/browser"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { api } from "@repo/convex/convex/_generated/api"
 import { createChatModel } from "../providers/models"
-import { generateEmbedding, stripHtmlForEmbedding } from "../services/embeddings"
+import { generateEmbedding } from "../services/embeddings"
 import { createAuthenticatedConvexClient } from "../services/convex"
 import { requireAuth } from "../middleware/auth"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
@@ -66,7 +66,7 @@ function createSearchTool(
               c: { html: string; page: number; section?: string },
               i: number,
             ) =>
-              `[${i + 1}] (Page ${c.page}${c.section ? `, ${c.section}` : ""}): ${stripHtmlForEmbedding(c.html)}`,
+              `[${i + 1}] (Page ${c.page}${c.section ? `, ${c.section}` : ""}): ${c.html}`,
           )
           .join("\n\n")
       } catch (error) {

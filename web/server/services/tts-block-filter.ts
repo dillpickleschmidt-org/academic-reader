@@ -1,6 +1,6 @@
 import { generateText, Output } from "ai"
 import { z } from "zod"
-import { createChatModel } from "../providers/models"
+import { createProcessingModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
 
 const BlockFilterElement = z.object({
@@ -133,7 +133,7 @@ export async function filterBlocksForTTS(
     .map((b) => `[${b.id}]\n${b.html}`)
     .join("\n\n---\n\n")
 
-  const model = createChatModel()
+  const model = createProcessingModel()
 
   const result = await tryCatch(
     generateText({

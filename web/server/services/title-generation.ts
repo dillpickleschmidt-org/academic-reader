@@ -1,5 +1,5 @@
 import { generateText } from "ai"
-import { createChatModel } from "../providers/models"
+import { createProcessingModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
 
 const SYSTEM_PROMPT = `Generate a concise title (5-8 words) for this chat conversation.
@@ -12,7 +12,7 @@ export async function generateChatTitle(
   userMessage: string,
   assistantMessage: string,
 ): Promise<string> {
-  const model = createChatModel()
+  const model = createProcessingModel()
 
   const result = await tryCatch(
     generateText({

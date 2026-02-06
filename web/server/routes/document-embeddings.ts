@@ -6,7 +6,7 @@ import { Hono } from "hono"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { api } from "@repo/convex/convex/_generated/api"
 import { requireAuth } from "../middleware/auth"
-import { generateEmbeddings, stripHtmlForEmbedding } from "../services/embeddings"
+import { generateEmbeddings } from "../services/embeddings"
 import { createAuthenticatedConvexClient } from "../services/convex"
 import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
@@ -88,9 +88,9 @@ documentEmbeddings.post("/documents/:documentId/embeddings", requireAuth, async 
     return c.json({ error: "No chunks found for document" }, 404)
   }
 
-  // 3. Generate embeddings (strip HTML at runtime)
+  // 3. Generate embeddings
   const embedResult = await tryCatch(
-    generateEmbeddings(chunks.map((c) => stripHtmlForEmbedding(c.html))),
+    generateEmbeddings(chunks.map((c) => c.html)),
   )
 
   if (!embedResult.success) {

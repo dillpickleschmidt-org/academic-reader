@@ -566,7 +566,7 @@ export function ConfigureProcessingPage({
                     <Button
                       onClick={onStartConversion}
                       disabled={!uploadComplete}
-                      className="flex-1 h-10 primary-animated-gradient text-white border-0 hover:opacity-90"
+                      className="flex-1 h-10 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-end)] text-white border-0 hover:opacity-90"
                     >
                       {uploadComplete ? (
                         "Convert"

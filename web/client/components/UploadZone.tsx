@@ -98,18 +98,13 @@ export function UploadZone({ onFileSelect, className }: Props) {
         tabIndex={0}
         aria-label="Upload document"
         className={cn(
-          "bg-transparent rounded-xl primary-animated",
+          "bg-transparent rounded-xl border-dashed border-[1.5px] border-primary/75 dark:border-primary/40",
           "py-9 px-6 grid grid-cols-[1fr_auto] gap-6 items-center",
           "cursor-pointer",
           "hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "max-sm:grid-cols-1 max-sm:text-center max-sm:py-9 max-sm:px-4",
           isDragging && "bg-primary/5 dark:bg-primary/10",
         )}
-        style={{
-          borderWidth: "1.5px",
-          borderStyle: "dashed",
-          borderColor: "var(--primary-animated-muted)",
-        }}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -134,12 +129,12 @@ export function UploadZone({ onFileSelect, className }: Props) {
           <div className="w-10 h-10 mx-auto mb-2 text-muted-foreground">
             <FileUp className="w-full h-full" strokeWidth={1.375} />
           </div>
-          <p className="text-base font-medium text-foreground mb-0.5">
+          <p className="text-base font-medium text-foreground/60 mb-0.5">
             Drag and drop your document
           </p>
           <p className="text-sm text-muted-foreground">
             or{" "}
-            <span className="underline cursor-pointer hover:text-foreground">
+            <span className="underline cursor-pointer hover:text-foreground/60">
               click to browse
             </span>
           </p>
@@ -152,7 +147,7 @@ export function UploadZone({ onFileSelect, className }: Props) {
             "max-sm:pl-0 max-sm:pt-4 max-sm:border-l-0 max-sm:border-t",
           )}
         >
-          <div className="text-xs font-medium text-foreground mb-2">
+          <div className="text-xs font-medium text-foreground/60 mb-2">
             Supported formats
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-y-0.5 gap-x-3 text-xs">

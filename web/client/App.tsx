@@ -5,7 +5,7 @@ import { api } from "@repo/convex/convex/_generated/api"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import { useConversion, type Page } from "./hooks/use-conversion"
 import { useAppConfig } from "./hooks/use-app-config"
-import { useColorAnimation } from "./hooks/use-color-animation"
+
 import { DocumentProvider } from "./context/DocumentContext"
 import { AudioProvider } from "./context/AudioContext"
 import { AuthDialog } from "./components/AuthDialog"
@@ -37,9 +37,6 @@ function App() {
     documentId: string
     filename: string
   } | null>(null)
-
-  // Initialize color cycling animation
-  useColorAnimation()
 
   // History API for back button support
   useEffect(() => {

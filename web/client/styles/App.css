@@ -976,6 +976,16 @@
   }
 }
 
+@keyframes waveform-pulse {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
 .botanical-svg :is(path, line, circle) {
   stroke-dasharray: var(--path-length, 200);
   stroke-dashoffset: var(--path-length, 200);

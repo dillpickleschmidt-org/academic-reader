@@ -191,7 +191,7 @@ services:
   # Self-hosted Convex backend
   # Profiles: all dev modes (local, datalab, modal)
   convex-backend:
-    image: ghcr.io/get-convex/convex-backend:00bd92723422f3bff968230c94ccdeb8c1719832
+    image: ghcr.io/get-convex/convex-backend@sha256:2870f96be3b1c9028ec34242d6fb2e688f24ee71d5fe4ff2a28f447dc9169361
     profiles: ["local", "datalab", "modal"]
     ports:
       - "3210:3210"

@@ -11,6 +11,7 @@ export const WORKERS = {
   marker: { url: "http://marker:8000", category: "conversion" },
   lightonocr: { url: "http://lightonocr:8001", category: "conversion" },
   qwen3: { url: env.QWEN3_TTS_WORKER_URL, category: "tts" },
+  kokoro: { url: env.KOKORO_TTS_WORKER_URL, category: "tts" },
 } as const
 
 export type WorkerName = keyof typeof WORKERS

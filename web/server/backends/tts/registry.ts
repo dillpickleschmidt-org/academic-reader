@@ -1,6 +1,6 @@
 import { env } from "../../env"
 
-export type TTSEngine = "qwen3"
+export type TTSEngine = "qwen3" | "kokoro"
 
 export interface VoiceDefinition {
   id: string
@@ -19,12 +19,26 @@ export const VOICE_REGISTRY: Record<string, VoiceDefinition> = {
     displayName: "Male 1",
     engine: "qwen3",
   },
+  female_1: {
+    id: "female_1",
+    displayName: "Female 1",
+    engine: "kokoro",
+  },
+  female_2: {
+    id: "female_2",
+    displayName: "Female 2",
+    engine: "kokoro",
+  },
 }
 
 export const ENGINE_REGISTRY: Record<TTSEngine, EngineConfig> = {
   qwen3: {
     getLocalUrl: () => env.QWEN3_TTS_WORKER_URL,
     getModalUrl: () => env.MODAL_QWEN3_TTS_URL,
+  },
+  kokoro: {
+    getLocalUrl: () => env.KOKORO_TTS_WORKER_URL,
+    getModalUrl: () => env.MODAL_KOKORO_TTS_URL,
   },
 }
 

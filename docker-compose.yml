@@ -35,14 +35,14 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # GPU worker for local Chatterbox TTS (male_2, female_1)
+  # GPU worker for local Kokoro TTS (female_1, female_2)
   # Profile: local
-  chatterbox-tts:
-    build: ./workers/chatterbox-tts
+  kokoro-tts:
+    build: ./workers/kokoro-tts
     profiles: ["local"]
     volumes:
-      - ./workers/chatterbox-tts/app:/app/app
-      - ./workers/chatterbox-tts/voices:/app/voices
+      - ./workers/kokoro-tts/app:/app/app
+      - ./workers/kokoro-tts/core:/app/core
     deploy:
       resources:
         reservations:
@@ -98,7 +98,7 @@ services:
       - BACKEND_MODE=${BACKEND_MODE}
       - CONVEX_HTTP_URL=http://convex-backend:3211
       - CONVEX_SITE_URL=http://convex-backend:3210
-      - CHATTERBOX_TTS_WORKER_URL=http://chatterbox-tts:8001
+      - KOKORO_TTS_WORKER_URL=http://kokoro-tts:8001
       - QWEN3_TTS_WORKER_URL=http://qwen3-tts:8002
       - S3_ENDPOINT=http://minio:9000
       - S3_PUBLIC_URL=http://localhost:9000/academic-reader
@@ -120,7 +120,7 @@ services:
       lightonocr:
         condition: service_started
         required: false
-      chatterbox-tts:
+      kokoro-tts:
         condition: service_started
         required: false
       qwen3-tts:

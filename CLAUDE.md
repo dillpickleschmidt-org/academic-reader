@@ -49,7 +49,7 @@ Don't ever commit or push code to git unless I explicitly ask. If I allow you to
 - `web/server/` - Hono API server
 - `shared/convex/` - Convex functions + better-auth
 - `shared/core/` - Shared UI components (shadcn/ui)
-- `workers/` - GPU workers (marker, lightonocr, chandra, chatterbox-tts, qwen3-tts)
+- `workers/` - GPU workers (marker, lightonocr, chandra, kokoro-tts, qwen3-tts)
 
 ### File Organization
 

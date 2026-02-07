@@ -37,8 +37,9 @@ const baseSchema = z.object({
   // Backend mode
   BACKEND_MODE: backendModeSchema,
 
-  // Local TTS worker URL (Docker)
+  // Local TTS worker URLs (Docker)
   QWEN3_TTS_WORKER_URL: z.url().default("http://qwen3-tts:8002"),
+  KOKORO_TTS_WORKER_URL: z.url().default("http://kokoro-tts:8001"),
 
   // DataLab backend
   DATALAB_API_KEY: z.string().optional(),
@@ -48,8 +49,9 @@ const baseSchema = z.object({
   MODAL_LIGHTONOCR_URL: z.url().optional(),
   MODAL_CHANDRA_URL: z.url().optional(),
 
-  // Modal backend - TTS worker
+  // Modal backend - TTS workers
   MODAL_QWEN3_TTS_URL: z.url().optional(),
+  MODAL_KOKORO_TTS_URL: z.url().optional(),
 
   // Observability
   OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
@@ -90,12 +92,19 @@ const envSchema = baseSchema.superRefine((data, ctx) => {
         path: ["MODAL_MARKER_URL"],
       })
     }
-    // TTS on Modal requires qwen3 endpoint
+    // TTS on Modal requires both TTS endpoints
     if (!data.MODAL_QWEN3_TTS_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "MODAL_QWEN3_TTS_URL required when BACKEND_MODE=modal",
         path: ["MODAL_QWEN3_TTS_URL"],
+      })
+    }
+    if (!data.MODAL_KOKORO_TTS_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "MODAL_KOKORO_TTS_URL required when BACKEND_MODE=modal",
+        path: ["MODAL_KOKORO_TTS_URL"],
       })
     }
   }

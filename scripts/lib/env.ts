@@ -18,7 +18,8 @@ export const devEnvRules: EnvRule[] = [
   { key: "GOOGLE_API_KEY", required: (env) => env.BACKEND_MODE !== "datalab" },
   { key: "DATALAB_API_KEY", required: (env) => env.BACKEND_MODE === "datalab" },
   { key: "MODAL_MARKER_URL", required: (env) => env.BACKEND_MODE === "modal" },
-  { key: "MODAL_CHATTERBOX_TTS_URL", required: (env) => env.BACKEND_MODE === "modal" && !env.MODAL_QWEN3_TTS_URL, message: "At least one Modal TTS endpoint required (MODAL_CHATTERBOX_TTS_URL or MODAL_QWEN3_TTS_URL)" },
+  { key: "MODAL_QWEN3_TTS_URL", required: (env) => env.BACKEND_MODE === "modal" },
+  { key: "MODAL_KOKORO_TTS_URL", required: (env) => env.BACKEND_MODE === "modal" },
 ];
 
 // =============================================================================

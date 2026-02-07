@@ -2,7 +2,7 @@ import type { TTSBackend, VoiceInfo, SynthesizeResult, StreamChunk } from "./int
 import { parseNdjsonStream } from "./interface"
 
 interface ModalTTSConfig {
-  qwen3Url?: string
+  baseUrl?: string
 }
 
 export class ModalTTSBackend implements TTSBackend {
@@ -18,11 +18,11 @@ export class ModalTTSBackend implements TTSBackend {
       throw new Error("Empty text")
     }
 
-    if (!this.config.qwen3Url) {
+    if (!this.config.baseUrl) {
       throw new Error("No endpoint configured for TTS")
     }
 
-    const res = await fetch(`${this.config.qwen3Url}/synthesize`, {
+    const res = await fetch(`${this.config.baseUrl}/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voiceId }),
@@ -41,11 +41,11 @@ export class ModalTTSBackend implements TTSBackend {
       throw new Error("Empty text")
     }
 
-    if (!this.config.qwen3Url) {
+    if (!this.config.baseUrl) {
       throw new Error("No endpoint configured for TTS")
     }
 
-    const res = await fetch(`${this.config.qwen3Url}/synthesize/stream`, {
+    const res = await fetch(`${this.config.baseUrl}/synthesize/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voice_id: voiceId }),
@@ -64,10 +64,10 @@ export class ModalTTSBackend implements TTSBackend {
   }
 
   async listVoices(): Promise<VoiceInfo[]> {
-    if (!this.config.qwen3Url) return []
+    if (!this.config.baseUrl) return []
 
     try {
-      const res = await fetch(`${this.config.qwen3Url}/voices`, {
+      const res = await fetch(`${this.config.baseUrl}/voices`, {
         signal: AbortSignal.timeout(10_000),
       })
       if (res.ok) {
@@ -82,10 +82,10 @@ export class ModalTTSBackend implements TTSBackend {
   }
 
   async healthCheck(): Promise<boolean> {
-    if (!this.config.qwen3Url) return false
+    if (!this.config.baseUrl) return false
 
     try {
-      const res = await fetch(`${this.config.qwen3Url}/health`, {
+      const res = await fetch(`${this.config.baseUrl}/health`, {
         signal: AbortSignal.timeout(5_000),
       })
       return res.ok
@@ -95,10 +95,10 @@ export class ModalTTSBackend implements TTSBackend {
   }
 }
 
-export function createModalTTSBackend(env: {
-  MODAL_QWEN3_TTS_URL?: string
+export function createModalTTSBackend(config: {
+  baseUrl?: string
 }): ModalTTSBackend {
   return new ModalTTSBackend({
-    qwen3Url: env.MODAL_QWEN3_TTS_URL,
+    baseUrl: config.baseUrl,
   })
 }

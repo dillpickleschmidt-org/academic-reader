@@ -28,8 +28,8 @@ jobs:
       - name: Deploy CHANDRA worker
         run: modal deploy workers/chandra/modal_app.py
 
-      - name: Deploy Chatterbox TTS worker
-        run: modal deploy workers/chatterbox-tts/modal_app.py
+      - name: Deploy Kokoro TTS worker
+        run: modal deploy workers/kokoro-tts/modal_app.py
 
       - name: Deploy Qwen3 TTS worker
         run: modal deploy workers/qwen3-tts/modal_app.py

@@ -17,7 +17,7 @@ export function createTTSBackend(voiceId: string): TTSBackend {
     case "datalab":
     case "modal": {
       return createModalTTSBackend({
-        MODAL_QWEN3_TTS_URL: env.MODAL_QWEN3_TTS_URL,
+        baseUrl: engineConfig.getModalUrl(),
       })
     }
   }

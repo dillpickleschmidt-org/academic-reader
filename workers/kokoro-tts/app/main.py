@@ -1,60 +1,50 @@
-"""FastAPI application for TTS synthesis."""
+"""FastAPI application for Kokoro TTS synthesis."""
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .synthesis import synthesize
-from .voices import list_voices, VOICES
+from core.voices import VOICES, list_voices
+from core.synthesis import synthesize, synthesize_streaming_ndjson
+from .models import get_or_create_model
 
-app = FastAPI(title="TTS Worker", version="1.0.0")
+app = FastAPI(title="Kokoro-TTS Worker", version="1.0.0")
 
 
 class SynthesizeRequest(BaseModel):
-    """Request body for synthesis endpoint."""
-
     text: str
-    voiceId: str = "male_1"
+    voiceId: str = "female_1"
 
 
-class WordTimestamp(BaseModel):
-    """Word-level timestamp for text highlighting."""
-
-    word: str
-    startMs: float
-    endMs: float
+class StreamRequest(BaseModel):
+    text: str
+    voice_id: str = "female_1"
 
 
 class SynthesizeResponse(BaseModel):
-    """Response body for synthesis endpoint."""
-
-    audio: str  # Base64 encoded WAV
+    audio: str
     sampleRate: int
     durationMs: float
-    wordTimestamps: list[WordTimestamp]
+    wordTimestamps: list[dict] = []
 
 
 class VoiceInfo(BaseModel):
-    """Voice information."""
-
     id: str
     displayName: str
 
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
     return {"status": "ok"}
 
 
 @app.get("/voices", response_model=list[VoiceInfo])
 async def get_voices():
-    """List available voices."""
     return list_voices()
 
 
 @app.post("/synthesize", response_model=SynthesizeResponse)
 async def synthesize_endpoint(request: SynthesizeRequest):
-    """Synthesize speech from text."""
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -65,24 +55,49 @@ async def synthesize_endpoint(request: SynthesizeRequest):
         )
 
     try:
+        model = get_or_create_model()
         audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
-            request.text, request.voiceId
+            request.text, request.voiceId, model
         )
         return SynthesizeResponse(
             audio=audio_base64,
             sampleRate=sample_rate,
             durationMs=duration_ms,
-            wordTimestamps=[WordTimestamp(**wt) for wt in word_timestamps],
+            wordTimestamps=word_timestamps,
         )
     except Exception as e:
         print(f"[error] Synthesis failed: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/synthesize/stream")
+async def synthesize_stream(request: StreamRequest):
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    if request.voice_id not in VOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown voice: {request.voice_id}. Available: {list(VOICES.keys())}",
+        )
+
+    model = get_or_create_model()
+
+    return StreamingResponse(
+        synthesize_streaming_ndjson(request.text, request.voice_id, model),
+        media_type="application/x-ndjson",
+        headers={
+            "Transfer-Encoding": "chunked",
+            "X-Audio-Sample-Rate": "24000",
+            "X-Audio-Channels": "1",
+            "X-Audio-Format": "s16le",
+        },
+    )
+
+
 @app.post("/load")
 async def load():
-    """Load TTS model. Idempotent - instant if already loaded."""
-    from .models import get_or_create_model, _model_cache
+    from .models import _model_cache
 
     if _model_cache is not None:
         return {"status": "already_loaded"}
@@ -92,7 +107,6 @@ async def load():
 
 @app.post("/unload")
 async def unload():
-    """Unload TTS model to free GPU memory."""
     from .models import unload_model
 
     unloaded = unload_model()

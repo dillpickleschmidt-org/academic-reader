@@ -33,8 +33,8 @@ Set `BACKEND_MODE` in `.env.local` for development.
 │  - Docker: marker         │  - Datalab API           │  - Modal: marker     │
 │  - Docker: lightonocr     │                          │  - Modal: lightonocr │
 │  LocalTTSBackend          │  ModalTTSBackend         │  - Modal: chandra    │
-│  - Docker: chatterbox     │  - Modal: chatterbox     │  ModalTTSBackend     │
-│  - Docker: qwen3          │  - Modal: qwen3          │  - Modal: chatterbox │
+│  - Docker: kokoro         │  - Modal: kokoro         │  ModalTTSBackend     │
+│  - Docker: qwen3          │  - Modal: qwen3          │  - Modal: kokoro     │
 │                           │                          │  - Modal: qwen3      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -43,8 +43,8 @@ Set `BACKEND_MODE` in `.env.local` for development.
 - `marker` - Fast PDF/document conversion (Marker)
 - `lightonocr` - Balanced OCR conversion (LightOnOCR + vLLM)
 - `chandra` - Aggressive OCR conversion (CHANDRA + vLLM)
-- `chatterbox` - TTS synthesis (Chatterbox)
-- `qwen3` - TTS synthesis (Qwen3-TTS)
+- `kokoro` - TTS synthesis (Kokoro - female voices)
+- `qwen3` - TTS synthesis (Qwen3-TTS - male voices)
 
 ## Deployment Architecture
 
@@ -221,7 +221,7 @@ For structured logging via Grafana/Loki:
 | `MODAL_MARKER_URL`         | modal        | Modal marker endpoint URL              |
 | `MODAL_LIGHTONOCR_URL`     | modal        | Modal lightonocr endpoint URL          |
 | `MODAL_CHANDRA_URL`        | modal        | Modal chandra endpoint URL             |
-| `MODAL_CHATTERBOX_TTS_URL` | modal        | Modal chatterbox TTS endpoint URL      |
+| `MODAL_KOKORO_TTS_URL`     | modal        | Modal kokoro TTS endpoint URL          |
 | `MODAL_QWEN3_TTS_URL`      | modal        | Modal qwen3 TTS endpoint URL           |
 | `GOOGLE_API_KEY`           | local/modal  | For Gemini API                         |
 

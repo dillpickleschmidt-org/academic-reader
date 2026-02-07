@@ -9,17 +9,16 @@
 
 .reader-output {
   --reader-text-heading: oklch(0.145 0 0);
-  --reader-text-heading-accent: #f59e0b;
   --reader-text-heading-h2: oklch(from var(--reader-link) L calc(C * 0.85) H);
 }
 
 /* Green link/h2 colors for basic theme (matches downloaded HTML) */
 [data-color-theme="basic"] .reader-output {
-  --reader-link: oklch(0.6 0.13 163);
+  --reader-link: var(--brand);
 }
 
 [data-color-theme="basic"]:is([data-reader-mode="dark"], :has(#theme-dark:checked)) .reader-output {
-  --reader-link: oklch(0.7 0.15 162);
+  --reader-link: var(--brand);
 }
 
 /* Brighter links for rose-quartz dark mode */

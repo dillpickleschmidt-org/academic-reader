@@ -67,10 +67,10 @@ body {
   --card-foreground: var(--theme-light-card-foreground, oklch(0.145 0 0));
   --popover: var(--theme-light-popover, oklch(1 0 0));
   --popover-foreground: var(--theme-light-popover-foreground, oklch(0.145 0 0));
-  --primary: var(--theme-light-primary, oklch(0.705 0.213 47.604));
+  --primary: var(--theme-light-primary, #7c9a6e);
   --primary-foreground: var(
     --theme-light-primary-foreground,
-    oklch(0.98 0.03 47.604)
+    oklch(0.98 0.016 163)
   );
   --secondary: var(--theme-light-secondary, oklch(0.97 0 0));
   --secondary-foreground: var(
@@ -96,10 +96,10 @@ body {
   --card-foreground: var(--theme-dark-card-foreground, oklch(0.985 0 0));
   --popover: var(--theme-dark-popover, oklch(0.269 0 0));
   --popover-foreground: var(--theme-dark-popover-foreground, oklch(0.985 0 0));
-  --primary: var(--theme-dark-primary, oklch(0.73 0.19 47.604));
+  --primary: var(--theme-dark-primary, #7c9a6e);
   --primary-foreground: var(
     --theme-dark-primary-foreground,
-    oklch(0.25 0.05 47.604)
+    oklch(0.98 0.016 163)
   );
   --secondary: var(--theme-dark-secondary, oklch(0.269 0 0));
   --secondary-foreground: var(
@@ -125,8 +125,8 @@ body {
   --card-foreground: #3d3632;
   --popover: #ebe6db;
   --popover-foreground: #3d3632;
-  --primary: #1a5f8a;
-  --primary-foreground: #f5f1e8;
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.98 0.03 145);
   --secondary: #e0d9cc;
   --secondary-foreground: #3d3632;
   --muted: #e0d9cc;
@@ -136,7 +136,7 @@ body {
   --destructive: #c45d4c;
   --border: #d4cbbf;
   --input: #e0d9cc;
-  --ring: #1a5f8a;
+  --ring: var(--brand);
 }
 
 /* Reader-specific aliases (derive from shadcn variables above) */

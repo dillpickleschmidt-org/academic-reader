@@ -15,6 +15,12 @@
    All themes use these to map palette → semantic variables
    ======================================== */
 
+/* Brand green — single source of truth for the app-wide accent */
+[data-color-theme] {
+  --brand: #7c9a6e;
+  --brand-end: #5b8a5a;
+}
+
 /* Light mode: map --theme-light-* to semantic variables */
 [data-color-theme] {
   --background: var(--theme-light-background);
@@ -23,8 +29,8 @@
   --card-foreground: var(--theme-light-card-foreground);
   --popover: var(--theme-light-popover);
   --popover-foreground: var(--theme-light-popover-foreground);
-  --primary: #7c9a6e;
-  --primary-end: #5b8a5a;
+  --primary: var(--brand);
+  --primary-end: var(--brand-end);
   --primary-foreground: var(--theme-light-primary-foreground);
   --secondary: var(--theme-light-secondary);
   --secondary-foreground: var(--theme-light-secondary-foreground);
@@ -46,8 +52,8 @@
   --card-foreground: var(--theme-dark-card-foreground);
   --popover: var(--theme-dark-popover);
   --popover-foreground: var(--theme-dark-popover-foreground);
-  --primary: #7c9a6e;
-  --primary-end: #5b8a5a;
+  --primary: var(--brand);
+  --primary-end: var(--brand-end);
   --primary-foreground: var(--theme-dark-primary-foreground);
   --secondary: var(--theme-dark-secondary);
   --secondary-foreground: var(--theme-dark-secondary-foreground);
@@ -72,8 +78,8 @@
   --theme-light-card-foreground: oklch(0.145 0 0);
   --theme-light-popover: oklch(1 0 0);
   --theme-light-popover-foreground: oklch(0.145 0 0);
-  --theme-light-primary: oklch(0.705 0.213 47.604);
-  --theme-light-primary-foreground: oklch(0.98 0.03 47.604);
+  --theme-light-primary: var(--brand);
+  --theme-light-primary-foreground: oklch(0.98 0.03 145);
   --theme-light-secondary: oklch(0.97 0 0);
   --theme-light-secondary-foreground: oklch(0.205 0 0);
   --theme-light-muted: oklch(0.97 0 0);
@@ -92,8 +98,8 @@
   --theme-dark-card-foreground: oklch(0.985 0 0);
   --theme-dark-popover: oklch(0.269 0 0);
   --theme-dark-popover-foreground: oklch(0.985 0 0);
-  --theme-dark-primary: oklch(0.73 0.19 47.604);
-  --theme-dark-primary-foreground: oklch(0.25 0.05 47.604);
+  --theme-dark-primary: var(--brand);
+  --theme-dark-primary-foreground: oklch(0.98 0.03 145);
   --theme-dark-secondary: oklch(0.269 0 0);
   --theme-dark-secondary-foreground: oklch(0.985 0 0);
   --theme-dark-muted: oklch(0.269 0 0);
@@ -116,8 +122,8 @@
   /* Sidebar (always follows system mode) */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #7c9a6e;
-  --sidebar-primary-foreground: oklch(0.98 0.03 47.604);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.98 0.03 145);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
@@ -133,8 +139,8 @@
 [data-color-theme="basic"].dark {
   --sidebar: oklch(0.175 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #7c9a6e;
-  --sidebar-primary-foreground: oklch(0.25 0.05 47.604);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.98 0.03 145);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.275 0 0);
@@ -847,9 +853,9 @@
   --input: #d4cfc3;
   --accent: #e6e0d2;
   --accent-foreground: #1a2e1a;
-  --primary: #7c9a6e;
-  --primary-end: #5b8a5a;
-  --ring: #7c9a6e;
+  --primary: var(--brand);
+  --primary-end: var(--brand-end);
+  --ring: var(--brand);
   --font-sans: "Outfit Variable", sans-serif;
   --font-serif: "Fraunces Variable", serif;
   --blob-1: rgba(124, 154, 110, 0.18);

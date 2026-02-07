@@ -32,6 +32,7 @@ function ChatThreadsViewToggle() {
         size="sm"
         checked={viewMode === "all"}
         onCheckedChange={(checked) => setViewMode(checked ? "all" : "document")}
+        className="data-checked:bg-sidebar-primary"
       />
     </div>
   )

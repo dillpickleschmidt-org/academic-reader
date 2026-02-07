@@ -58,13 +58,22 @@ function Header({ user }: { user: unknown }) {
           Academic Reader
         </span>
       </div>
-      {user ? (
-        <Button variant="ghost" size="sm" onClick={() => authClient.signOut()}>
-          Logout
-        </Button>
-      ) : (
-        <AuthDialog />
-      )}
+      <div className="flex items-center gap-2">
+        <a
+          href="/pricing"
+          className="text-sm text-foreground/60 hover:text-foreground transition-colors px-3 py-1.5"
+          style={{ fontWeight: 400 }}
+        >
+          Pricing
+        </a>
+        {user ? (
+          <Button variant="ghost" size="sm" onClick={() => authClient.signOut()}>
+            Logout
+          </Button>
+        ) : (
+          <AuthDialog />
+        )}
+      </div>
     </header>
   )
 }

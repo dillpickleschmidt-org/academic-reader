@@ -122,7 +122,7 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
                 <ResizableHandle withHandle />
                 <ResizablePanel
                   id="chat-panel"
-                  defaultSize="30%"
+                  defaultSize="40%"
                   minSize="20%"
                   maxSize="50%"
                 >

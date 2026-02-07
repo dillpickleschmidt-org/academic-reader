@@ -11,6 +11,7 @@ import { AudioProvider } from "./context/AudioContext"
 import { AuthDialog } from "./components/AuthDialog"
 import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog"
 import { LandingPage } from "./pages/LandingPage"
+import { PricingPage } from "./pages/PricingPage"
 import { resultPageImport } from "./utils/preload"
 
 const PageLoader = () => (
@@ -92,7 +93,9 @@ function App() {
 
   const threadCountQuery = useQuery(
     api.api.chat.countThreadsForDocument,
-    deleteDialog ? { documentId: deleteDialog.documentId as Id<"documents"> } : "skip",
+    deleteDialog
+      ? { documentId: deleteDialog.documentId as Id<"documents"> }
+      : "skip",
   )
 
   // When thread count loads for delete dialog, either show dialog or delete directly
@@ -155,6 +158,10 @@ function App() {
   // Show loader while resuming OAuth flow
   if (conversion.hasPendingOAuthResume) {
     return <PageLoader />
+  }
+
+  if (window.location.pathname === "/pricing") {
+    return <PricingPage />
   }
 
   switch (conversion.page) {

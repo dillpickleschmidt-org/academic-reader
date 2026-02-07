@@ -24,6 +24,7 @@ const baseSchema = z.object({
   // AI - shared keys
   GOOGLE_API_KEY: z.string().min(1),
   OPENROUTER_API_KEY: z.string().optional(),
+  EXA_API_KEY: z.string().min(1),
 
   // AI - chat model (chatbot, summary, title generation)
   CHAT_PROVIDER: z.enum(["google", "openrouter"]).default("google"),

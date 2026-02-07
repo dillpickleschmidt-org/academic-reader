@@ -1,6 +1,59 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
 
+const toolBase = {
+  toolCallId: v.string(),
+  state: v.literal("output-available"),
+}
+
+const nullableString = v.optional(v.nullable(v.string()))
+
+const exaSearchResultValidator = v.object({
+  title: v.string(),
+  url: v.string(),
+  id: nullableString,
+  publishedDate: nullableString,
+  author: nullableString,
+  image: nullableString,
+  favicon: nullableString,
+  text: nullableString,
+  highlights: v.optional(v.nullable(v.array(v.string()))),
+  highlightScores: v.optional(v.nullable(v.array(v.number()))),
+  summary: nullableString,
+})
+
+const exaResponseValidator = v.object({
+  results: v.array(exaSearchResultValidator),
+  requestId: v.optional(v.string()),
+  resolvedSearchType: v.optional(v.string()),
+  searchTime: v.optional(v.number()),
+  costDollars: v.optional(v.any()),
+  effectiveFilters: v.optional(v.any()),
+  requestTags: v.optional(v.any()),
+})
+
+export const messagePartValidator = v.union(
+  v.object({ type: v.literal("text"), text: v.string() }),
+  v.object({
+    type: v.literal("tool-searchDocument"),
+    ...toolBase,
+    input: v.object({ query: v.string() }),
+    output: v.string(),
+  }),
+  v.object({
+    type: v.literal("tool-webSearch"),
+    ...toolBase,
+    input: v.object({ query: v.string() }),
+    output: exaResponseValidator,
+  }),
+  v.object({
+    type: v.literal("tool-extractPage"),
+    ...toolBase,
+    input: v.object({ url: v.string() }),
+    output: v.string(),
+  }),
+)
+
 const tocSectionValidator = v.object({
   id: v.string(),
   title: v.string(),
@@ -72,10 +125,9 @@ export default defineSchema({
   chatMessages: defineTable({
     threadId: v.id("chatThreads"),
     role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
+    parts: v.array(messagePartValidator),
     createdAt: v.number(),
-  })
-    .index("by_thread", ["threadId"]),
+  }).index("by_thread", ["threadId"]),
 
   // TTS audio cache - stores synthesized audio metadata for reuse
   ttsAudio: defineTable({

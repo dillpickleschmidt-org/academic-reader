@@ -8,8 +8,9 @@ import {
 } from "ai"
 import { z } from "zod"
 import type { ConvexHttpClient } from "convex/browser"
-import type { Id } from "@repo/convex/convex/_generated/dataModel"
+import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
 import { api } from "@repo/convex/convex/_generated/api"
+import { webSearch, type ExaSearchResult } from "@exalabs/ai-sdk"
 import { createChatModel } from "../providers/models"
 import { generateEmbedding } from "../services/embeddings"
 import { createAuthenticatedConvexClient } from "../services/convex"
@@ -18,6 +19,7 @@ import { tryCatch, getErrorMessage } from "../utils/try-catch"
 import { emitStreamingEvent } from "../middleware/wide-event-middleware"
 import { publishStreamMessage } from "../services/redis"
 import { generateChatTitle } from "../services/title-generation"
+import { env } from "../env"
 
 interface DocumentContext {
   documentId?: string
@@ -62,10 +64,7 @@ function createSearchTool(
 
         return chunks
           .map(
-            (
-              c: { html: string; page: number; section?: string },
-              i: number,
-            ) =>
+            (c: { html: string; page: number; section?: string }, i: number) =>
               `[${i + 1}] (Page ${c.page}${c.section ? `, ${c.section}` : ""}): ${c.html}`,
           )
           .join("\n\n")
@@ -75,6 +74,62 @@ function createSearchTool(
       }
     },
   })
+}
+
+function stripExaResponse({
+  results,
+  requestId,
+  resolvedSearchType,
+  searchTime,
+  costDollars,
+  effectiveFilters,
+  requestTags,
+}: {
+  // ExaApiResponse isn't exported from the sdk so just defining what we know + allow additional
+  results: ExaSearchResult[]
+  requestId?: string
+  resolvedSearchType?: string
+  searchTime?: number
+  costDollars?: unknown
+  effectiveFilters?: unknown
+  requestTags?: unknown
+  [k: string]: unknown
+}) {
+  return {
+    results: results.map(
+      ({
+        title,
+        url,
+        id,
+        publishedDate,
+        author,
+        image,
+        favicon,
+        text,
+        highlights,
+        highlightScores,
+        summary,
+      }) => ({
+        title,
+        url,
+        id,
+        publishedDate,
+        author,
+        image,
+        favicon,
+        text,
+        highlights,
+        highlightScores,
+        summary,
+      }),
+    ),
+    requestId,
+    resolvedSearchType,
+    searchTime,
+    costDollars,
+    effectiveFilters,
+    requestTags,
+  }
 }
 
 function extractUserMessage(messages: UIMessage[]): string | undefined {
@@ -148,7 +203,7 @@ chat.post("/chat", async (c) => {
     await tryCatch(
       convex.mutation(api.api.chat.addMessageAndStartStreaming, {
         threadId: threadId as Id<"chatThreads">,
-        content: userText,
+        parts: [{ type: "text", text: userText }],
       }),
     )
   } else {
@@ -191,7 +246,12 @@ The user has a document loaded and may ask questions about it. When answering:
 4. If the search doesn't return relevant results, say so honestly
 5. Be concise and directly answer what was asked
 
-If the user asks a general question not about the document, answer normally without searching.`
+You also have web search tools available:
+- Use the webSearch tool to find information online when the user asks about cited papers, external concepts, related work, or anything not in the document
+- Use the extractPage tool to read the full content of a specific URL from search results when you need more detail
+- When using web search results, cite the source URLs
+
+Do not narrate or announce tool usage. Just use tools silently and provide the answer.`
 
   let model
   try {
@@ -206,7 +266,45 @@ If the user asks a general question not about the document, answer normally with
     return c.json({ error: "Server configuration error" }, 500)
   }
 
-  const tools = { searchDocument: createSearchTool(documentContext.documentId, convex) }
+  const tools: Record<string, any> = {
+    // @exalabs/ai-sdk webSearch tool is incompatible with ToolSet
+    searchDocument: createSearchTool(documentContext.documentId, convex),
+    webSearch: webSearch({
+      apiKey: env.EXA_API_KEY,
+      numResults: 10,
+      contents: {
+        highlights: {
+          numSentences: 5,
+          highlightsPerUrl: 3,
+        },
+      },
+    }),
+    extractPage: tool({
+      description:
+        "Extract the full content of a specific web page URL for detailed reading",
+      inputSchema: z.object({
+        url: z.url().describe("The URL to extract content from"),
+      }),
+      execute: async ({ url }) => {
+        const res = await fetch("https://api.exa.ai/contents", {
+          method: "POST",
+          headers: {
+            "x-api-key": env.EXA_API_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ urls: [url], text: true }),
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (!res.ok) return "Could not extract content from this URL."
+        const data = (await res.json()) as {
+          results?: { title?: string; url: string; text?: string }[]
+        }
+        const result = data.results?.[0]
+        if (!result?.text) return "Could not extract content from this URL."
+        return `# ${result.title ?? "Untitled"}\n${result.url}\n\n${result.text}`
+      },
+    }),
+  }
 
   const abortController = new AbortController()
   activeStreams.set(threadId, abortController)
@@ -258,10 +356,32 @@ If the user asks a general question not about the document, answer normally with
         const fallbackTitle = isFirstMessage
           ? userText!.slice(0, 20)
           : undefined
+
+        // Build parts array matching what useChat sees during streaming
+        const parts: Doc<"chatMessages">["parts"] = []
+        for (const step of steps) {
+          for (const result of step.toolResults) {
+            const isWebSearch = result.toolName === "webSearch"
+            const output = isWebSearch
+              ? stripExaResponse(
+                  result.output as Parameters<typeof stripExaResponse>[0],
+                )
+              : result.output
+            parts.push({
+              type: `tool-${result.toolName}`,
+              toolCallId: result.toolCallId,
+              state: "output-available",
+              input: result.input,
+              output,
+            } as Doc<"chatMessages">["parts"][number])
+          }
+        }
+        parts.push({ type: "text", text })
+
         await tryCatch(
           convex.mutation(api.api.chat.finishStreaming, {
             threadId: threadId as Id<"chatThreads">,
-            assistantContent: text,
+            parts,
             title: fallbackTitle,
           }),
         )

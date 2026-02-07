@@ -1,5 +1,6 @@
 import { v } from "convex/values"
 import { mutation, query } from "../_generated/server"
+import { messagePartValidator } from "../schema"
 import * as Chat from "../model/chat"
 
 // ===== Mutations =====
@@ -39,10 +40,10 @@ export const setStreaming = mutation({
 export const addMessageAndStartStreaming = mutation({
   args: {
     threadId: v.id("chatThreads"),
-    content: v.string(),
+    parts: v.array(messagePartValidator),
   },
-  handler: async (ctx, { threadId, content }) => {
-    await Chat.addMessage(ctx, threadId, "user", content)
+  handler: async (ctx, { threadId, parts }) => {
+    await Chat.addMessage(ctx, threadId, "user", parts)
     await Chat.updateThread(ctx, threadId, {
       updatedAt: Date.now(),
       isStreaming: true,
@@ -53,11 +54,11 @@ export const addMessageAndStartStreaming = mutation({
 export const finishStreaming = mutation({
   args: {
     threadId: v.id("chatThreads"),
-    assistantContent: v.string(),
+    parts: v.array(messagePartValidator),
     title: v.optional(v.string()),
   },
-  handler: async (ctx, { threadId, assistantContent, title }) => {
-    await Chat.addMessage(ctx, threadId, "assistant", assistantContent)
+  handler: async (ctx, { threadId, parts, title }) => {
+    await Chat.addMessage(ctx, threadId, "assistant", parts)
     await Chat.updateThread(ctx, threadId, {
       updatedAt: Date.now(),
       isStreaming: false,

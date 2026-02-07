@@ -13,7 +13,17 @@ import { useChat } from "@ai-sdk/react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@repo/convex/convex/_generated/api"
 import type { Id, Doc } from "@repo/convex/convex/_generated/dataModel"
-import { Bot, LogIn, X, Loader2, Copy, Check, RefreshCw, Pencil } from "lucide-react"
+
+import {
+  Bot,
+  LogIn,
+  X,
+  Loader2,
+  Copy,
+  Check,
+  RefreshCw,
+  Pencil,
+} from "lucide-react"
 import { Button } from "@repo/core/ui/primitives/button"
 import {
   Message,
@@ -32,11 +42,22 @@ import {
   PromptInputTools,
 } from "@repo/core/ui/ai-elements/prompt-input"
 import { Loader } from "@repo/core/ui/ai-elements/loader"
+import {
+  Sources,
+  SourcesTrigger,
+  SourcesContent,
+  Source,
+} from "@repo/core/ui/ai-elements/sources"
 import { useAppConfig } from "@/hooks/use-app-config"
 import { useDocumentContext } from "@/context/DocumentContext"
 import { useChatPanel } from "@/context/ChatPanelContext"
 import { useStreamSubscription } from "@/hooks/use-stream-subscription"
 import { authClient } from "@repo/convex/auth-client"
+
+type ToolPart = Extract<
+  Doc<"chatMessages">["parts"][number],
+  { toolCallId: string }
+>
 
 interface Props {
   onClose: () => void
@@ -52,10 +73,13 @@ function CopyAction({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }, () => {})
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      },
+      () => {},
+    )
   }, [text])
 
   return (
@@ -91,17 +115,19 @@ const ChatMessage = memo(
                   <MessageContent className="md:text-[15px]">
                     <MessageResponse>{convertLatex(part.text)}</MessageResponse>
                   </MessageContent>
-                  <MessageActions className="opacity-0 transition-opacity group-hover:opacity-100 group-[.is-user]:ml-auto">
+                  <MessageActions className="group-[.is-user]:ml-auto">
                     <CopyAction text={part.text} />
-                    {message.role === "assistant" && isLastAssistant && onRetry && (
-                      <MessageAction
-                        tooltip="Retry"
-                        onClick={() => onRetry(message)}
-                        disabled={isActive}
-                      >
-                        <RefreshCw className="size-3.5" />
-                      </MessageAction>
-                    )}
+                    {message.role === "assistant" &&
+                      isLastAssistant &&
+                      onRetry && (
+                        <MessageAction
+                          tooltip="Retry"
+                          onClick={() => onRetry(message)}
+                          disabled={isActive}
+                        >
+                          <RefreshCw className="size-3.5" />
+                        </MessageAction>
+                      )}
                     {message.role === "user" && onEdit && (
                       <MessageAction
                         tooltip="Edit"
@@ -114,20 +140,64 @@ const ChatMessage = memo(
                   </MessageActions>
                 </Message>
               )
-            case "tool-invocation":
-              if ("toolName" in part && part.toolName === "searchDocument") {
+            default: {
+              const toolPart = part as ToolPart
+              if (toolPart.type === "tool-searchDocument") {
                 return (
                   <div
                     key={`${message.id}-${i}`}
-                    className="px-4 py-2 text-sm text-muted-foreground"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground"
                   >
+                    {toolPart.state !== "output-available" && (
+                      <Loader size={14} />
+                    )}
                     Searching document...
                   </div>
                 )
               }
+              if (toolPart.type === "tool-webSearch") {
+                const query = toolPart.input?.query
+                if (toolPart.state === "output-available") {
+                  const { results } = toolPart.output
+                  return (
+                    <div key={`${message.id}-${i}`} className="px-4 py-2">
+                      <Sources>
+                        <SourcesTrigger count={results.length} />
+                        <SourcesContent>
+                          {results.map((r) => (
+                            <Source key={r.url} href={r.url} title={r.title} />
+                          ))}
+                        </SourcesContent>
+                      </Sources>
+                    </div>
+                  )
+                }
+                return (
+                  <div
+                    key={`${message.id}-${i}`}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground"
+                  >
+                    <Loader size={14} />
+                    {query ? `Searching "${query}"...` : "Searching the web..."}
+                  </div>
+                )
+              }
+              if (toolPart.type === "tool-extractPage") {
+                if (toolPart.state !== "output-available") {
+                  return (
+                    <div
+                      key={`${message.id}-${i}`}
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-muted-foreground"
+                    >
+                      <Loader size={14} />
+                      Reading page...
+                    </div>
+                  )
+                }
+                return null
+              }
               return null
-            default:
-              return null
+            }
           }
         })}
       </div>
@@ -172,7 +242,7 @@ function convexMessagesToUI(messages: Doc<"chatMessages">[]): UIMessage[] {
   return messages.map((m) => ({
     id: m._id,
     role: m.role,
-    parts: [{ type: "text" as const, text: m.content }],
+    parts: m.parts as UIMessage["parts"],
   }))
 }
 
@@ -253,13 +323,6 @@ export function AIChatPanel({ onClose }: Props) {
   const activeThread = threadData?.thread
   const persistedMessages = threadData?.messages
 
-  // Cross-device streaming subscription
-  const streamingText = useStreamSubscription(
-    activeThreadId,
-    activeThread?.isStreaming ?? false,
-    false,
-  )
-
   const deleteMessagesFrom = useMutation(api.api.chat.deleteMessagesFrom)
 
   // Refs for transport closure
@@ -286,6 +349,13 @@ export function AIChatPanel({ onClose }: Props) {
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: transportRef.current,
   })
+
+  // Cross-device streaming subscription
+  const streamingText = useStreamSubscription(
+    activeThreadId,
+    activeThread?.isStreaming ?? false,
+    status !== "ready",
+  )
 
   // Keep refs in sync
   documentIdRef.current = documentId
@@ -388,7 +458,14 @@ export function AIChatPanel({ onClose }: Props) {
       }
       sendMessage({ text: userText.text })
     },
-    [activeThreadId, isActive, messages, setMessages, deleteMessagesFrom, sendMessage],
+    [
+      activeThreadId,
+      isActive,
+      messages,
+      setMessages,
+      deleteMessagesFrom,
+      sendMessage,
+    ],
   )
 
   const handleEdit = useCallback(
@@ -484,14 +561,14 @@ export function AIChatPanel({ onClose }: Props) {
               <div className="p-4">{conversationFooter}</div>
             )}
             {ephemeralMessage && (
-              <div key={ephemeralMessage.id} className="p-4">
+              <div key={ephemeralMessage.id} className="px-4 pt-4">
                 <ChatMessage message={ephemeralMessage} />
               </div>
             )}
             {reversedMessages.map((message) => (
               <div
                 key={message.id}
-                className="p-4"
+                className="px-4 pt-4"
                 style={
                   reversedMessages.length > 50
                     ? {

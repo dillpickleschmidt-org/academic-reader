@@ -1,6 +1,10 @@
+import type { Infer } from "convex/values"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
+import type { messagePartValidator } from "../schema"
 import { requireAuth } from "./auth"
+
+type MessagePart = Infer<typeof messagePartValidator>
 
 // ===== Mutation Helpers =====
 
@@ -88,7 +92,7 @@ export async function addMessage(
   ctx: MutationCtx,
   threadId: Id<"chatThreads">,
   role: "user" | "assistant",
-  content: string,
+  parts: MessagePart[],
 ) {
   const user = await requireAuth(ctx)
   const thread = await ctx.db.get(threadId)
@@ -99,7 +103,7 @@ export async function addMessage(
   return ctx.db.insert("chatMessages", {
     threadId,
     role,
-    content,
+    parts,
     createdAt: Date.now(),
   })
 }

@@ -6,7 +6,7 @@ import {
   CollapsibleTrigger,
 } from "../primitives/collapsible"
 import { cn } from "../../lib/utils"
-import { BookIcon, ChevronDownIcon } from "lucide-react"
+import { ChevronDownIcon } from "lucide-react"
 import type { ComponentProps } from "react"
 
 export type SourcesProps = ComponentProps<"div">
@@ -59,19 +59,28 @@ export const SourcesContent = ({
 
 export type SourceProps = ComponentProps<"a">
 
-export const Source = ({ href, title, children, ...props }: SourceProps) => (
-  <a
-    className="flex items-center gap-2"
-    href={href}
-    rel="noreferrer"
-    target="_blank"
-    {...props}
-  >
-    {children ?? (
-      <>
-        <BookIcon className="h-4 w-4" />
-        <span className="block font-medium">{title}</span>
-      </>
-    )}
-  </a>
-)
+export const Source = ({ href, title, children, ...props }: SourceProps) => {
+  const domain = href ? new URL(href).hostname : undefined
+  const faviconUrl = domain
+    ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+    : undefined
+
+  return (
+    <a
+      className="flex items-center gap-2"
+      href={href}
+      rel="noreferrer"
+      target="_blank"
+      {...props}
+    >
+      {children ?? (
+        <>
+          {faviconUrl ? (
+            <img src={faviconUrl} alt="" className="size-4" />
+          ) : null}
+          <span className="block font-medium">{title}</span>
+        </>
+      )}
+    </a>
+  )
+}

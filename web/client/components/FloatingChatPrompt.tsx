@@ -15,7 +15,7 @@ import { useChatPanel } from "@/context/ChatPanelContext"
 
 const SUGGESTIONS = [
   "What's the main argument of this paper?",
-  "Explain this to me as if I have low IQ.",
+  "Explain this paper for dummies.",
   "Who should read this paper and why?",
 ]
 

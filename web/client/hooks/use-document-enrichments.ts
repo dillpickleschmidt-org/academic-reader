@@ -5,7 +5,7 @@ import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import type { ChunkBlock, TocResult } from "@repo/core/types/api"
 
 /**
- * Subscribe to deferred document enrichments (TOC + TTS flags) via Convex.
+ * Subscribe to deferred document enrichments (TOC, TTS, summary) via Convex.
  * Skips the chunks subscription when prop data already has includeTts populated
  * (i.e. saved documents with completed enrichments).
  */
@@ -20,13 +20,13 @@ export function useDocumentEnrichments(
     typedId ? { documentId: typedId } : "skip",
   )
 
-  // Only subscribe to TTS flags when enrichment hasn't completed yet
+  // Only subscribe to TTS enrichments when enrichment hasn't completed yet
   const needsTtsSubscription = propChunks?.length
     ? propChunks.every((c) => c.includeTts === undefined)
     : false
 
-  const ttsFlags = useQuery(
-    api.api.documents.getTtsFlags,
+  const ttsEnrichments = useQuery(
+    api.api.documents.getTtsEnrichments,
     typedId && needsTtsSubscription ? { documentId: typedId } : "skip",
   )
 
@@ -35,10 +35,10 @@ export function useDocumentEnrichments(
 
   const ttsMap = useMemo(() => {
     // Prefer Convex subscription data when available, otherwise use prop chunks
-    if (ttsFlags) {
-      if (ttsFlags.every((f) => f.includeTts === undefined)) return undefined
+    if (ttsEnrichments) {
+      if (ttsEnrichments.every((f) => f.includeTts === undefined)) return undefined
       const map = new Map<string, boolean>()
-      for (const f of ttsFlags) {
+      for (const f of ttsEnrichments) {
         map.set(f.blockId, f.includeTts ?? true)
       }
       return map
@@ -51,7 +51,24 @@ export function useDocumentEnrichments(
       map.set(c.id, c.includeTts ?? true)
     }
     return map
-  }, [ttsFlags, propChunks])
+  }, [ttsEnrichments, propChunks])
 
-  return { toc, ttsMap, summary }
+  const ttsTextMap = useMemo(() => {
+    if (ttsEnrichments) {
+      const map = new Map<string, string>()
+      for (const f of ttsEnrichments) {
+        if (f.ttsText) map.set(f.blockId, f.ttsText)
+      }
+      return map.size > 0 ? map : undefined
+    }
+
+    if (!propChunks?.length) return undefined
+    const map = new Map<string, string>()
+    for (const c of propChunks) {
+      if (c.ttsText) map.set(c.id, c.ttsText)
+    }
+    return map.size > 0 ? map : undefined
+  }, [ttsEnrichments, propChunks])
+
+  return { toc, ttsMap, ttsTextMap, summary }
 }

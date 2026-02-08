@@ -13,7 +13,6 @@ export interface WordTimestamp {
 }
 
 export interface AudioRecord {
-  text: string
   storagePath: string
   durationMs: number
   sampleRate: number
@@ -24,7 +23,6 @@ export interface CreateAudioInput {
   documentId: Id<"documents">
   blockId: string
   voiceId: string
-  text: string
   storagePath: string
   durationMs: number
   sampleRate: number
@@ -57,7 +55,6 @@ export async function getBlockAudio(
   if (!record) return null
 
   return {
-    text: record.text,
     storagePath: record.storagePath,
     durationMs: record.durationMs,
     sampleRate: record.sampleRate,
@@ -66,32 +63,8 @@ export async function getBlockAudio(
 }
 
 /**
- * Get variation text for a block (any voice).
- * Used to reuse LLM-generated text across different voices.
- */
-export async function getBlockVariationText(
-  ctx: QueryCtx,
-  documentId: Id<"documents">,
-  blockId: string,
-): Promise<string | null> {
-  const user = await requireAuth(ctx)
-  const doc = await ctx.db.get(documentId)
-
-  if (!doc) throw new Error("Document not found")
-  if (doc.userId !== user._id) throw new Error("Unauthorized")
-
-  const record = await ctx.db
-    .query("ttsAudio")
-    .withIndex("by_document_block_voice", (q) =>
-      q.eq("documentId", documentId).eq("blockId", blockId),
-    )
-    .first()
-
-  return record?.text ?? null
-}
-
-/**
- * Create a new audio cache record.
+ * Create or overwrite an audio cache record.
+ * Deletes any existing record for the same document+block+voice before inserting.
  */
 export async function createAudio(
   ctx: MutationCtx,
@@ -103,16 +76,49 @@ export async function createAudio(
   if (!doc) throw new Error("Document not found")
   if (doc.userId !== user._id) throw new Error("Unauthorized")
 
+  const existing = await ctx.db
+    .query("ttsAudio")
+    .withIndex("by_document_block_voice", (q) =>
+      q.eq("documentId", input.documentId).eq("blockId", input.blockId).eq("voiceId", input.voiceId),
+    )
+    .first()
+
+  if (existing) {
+    await ctx.db.delete(existing._id)
+  }
+
   return ctx.db.insert("ttsAudio", {
     documentId: input.documentId,
     blockId: input.blockId,
     voiceId: input.voiceId,
-    text: input.text,
     storagePath: input.storagePath,
     durationMs: input.durationMs,
     sampleRate: input.sampleRate,
     wordTimestamps: input.wordTimestamps,
   })
+}
+
+/**
+ * Check if any audio exists for a document+voice combination.
+ */
+export async function hasDocumentAudio(
+  ctx: QueryCtx,
+  documentId: Id<"documents">,
+  voiceId: string,
+): Promise<boolean> {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+
+  if (!doc) return false
+  if (doc.userId !== user._id) return false
+
+  const record = await ctx.db
+    .query("ttsAudio")
+    .withIndex("by_document_block_voice", (q) => q.eq("documentId", documentId))
+    .filter((q) => q.eq(q.field("voiceId"), voiceId))
+    .first()
+
+  return record !== null
 }
 
 /**

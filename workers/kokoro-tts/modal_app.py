@@ -38,7 +38,7 @@ with image.imports():
     sys.path.insert(0, "/root")
 
     from core.voices import VOICES, list_voices
-    from core.synthesis import synthesize as core_synthesize, synthesize_streaming_ndjson
+    from core.synthesis import synthesize as core_synthesize, synthesize_streaming_ndjson, synthesize_batch_ndjson
 
 
 @app.cls(
@@ -46,6 +46,7 @@ with image.imports():
     cpu=2.0,
     memory=8192,
     timeout=300,
+    scaledown_window=5,
     enable_memory_snapshot=True,
     experimental_options={"enable_gpu_snapshot": True},
 )
@@ -105,6 +106,11 @@ class KokoroTTS:
             "wordTimestamps": word_timestamps,
         }
 
+    @modal.method()
+    def synthesize_batch(self, blocks: list[dict]):
+        """Generator that yields NDJSON lines for batch synthesis."""
+        yield from synthesize_batch_ndjson(blocks, self)
+
 
 @app.function()
 @modal.asgi_app()
@@ -155,6 +161,39 @@ def api():
                 "X-Audio-Channels": "1",
                 "X-Audio-Format": "s16le",
             },
+        )
+
+    class BatchBlock(BaseModel):
+        blockId: str
+        text: str
+        voiceId: str = "female_1"
+
+    class BatchRequest(BaseModel):
+        blocks: list[BatchBlock]
+
+    @web.post("/synthesize/batch")
+    async def synthesize_batch(req: BatchRequest):
+        import asyncio
+
+        blocks_data = [b.model_dump() for b in req.blocks]
+
+        async def ndjson_generator():
+            gen = worker.synthesize_batch.remote_gen.aio(blocks_data)
+            try:
+                async for line in gen:
+                    yield line
+            except asyncio.CancelledError:
+                return
+            finally:
+                try:
+                    await gen.aclose()
+                except Exception:
+                    pass
+
+        return StreamingResponse(
+            ndjson_generator(),
+            media_type="application/x-ndjson",
+            headers={"Transfer-Encoding": "chunked"},
         )
 
     @web.get("/voices")

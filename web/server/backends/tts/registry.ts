@@ -2,10 +2,16 @@ import { env } from "../../env"
 
 export type TTSEngine = "qwen3" | "kokoro"
 
+export interface VoiceCapabilities {
+  perBlock: boolean
+  fullDocument: boolean
+}
+
 export interface VoiceDefinition {
   id: string
   displayName: string
   engine: TTSEngine
+  capabilities: VoiceCapabilities
 }
 
 export interface EngineConfig {
@@ -18,16 +24,19 @@ export const VOICE_REGISTRY: Record<string, VoiceDefinition> = {
     id: "male_1",
     displayName: "Male 1",
     engine: "qwen3",
+    capabilities: { perBlock: true, fullDocument: true },
   },
   female_1: {
     id: "female_1",
     displayName: "Female 1",
     engine: "kokoro",
+    capabilities: { perBlock: false, fullDocument: true },
   },
   female_2: {
     id: "female_2",
     displayName: "Female 2",
     engine: "kokoro",
+    capabilities: { perBlock: false, fullDocument: true },
   },
 }
 
@@ -78,9 +87,11 @@ export function listAvailableVoices(): VoiceDefinition[] {
 export function listAvailableVoiceSummaries(): Array<{
   id: string
   displayName: string
+  capabilities: VoiceCapabilities
 }> {
   return listAvailableVoices().map((voice) => ({
     id: voice.id,
     displayName: voice.displayName,
+    capabilities: voice.capabilities,
   }))
 }

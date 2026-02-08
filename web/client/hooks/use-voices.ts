@@ -1,8 +1,14 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+
+export interface VoiceCapabilities {
+  perBlock: boolean
+  fullDocument: boolean
+}
 
 export interface Voice {
   id: string
   displayName: string
+  capabilities: VoiceCapabilities
 }
 
 export function useVoices() {
@@ -47,6 +53,14 @@ export function useVoiceSelection(
   }, [voices, currentVoice, onChange])
 
   return { voices, loading }
+}
+
+export function useCurrentVoiceCapabilities(voiceId: string): VoiceCapabilities | null {
+  const { voices } = useVoices()
+  return useMemo(
+    () => voices.find((v) => v.id === voiceId)?.capabilities ?? null,
+    [voices, voiceId],
+  )
 }
 
 let cachedVoices: Voice[] | null = null

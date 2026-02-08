@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.voices import VOICES, list_voices
-from core.synthesis import synthesize, synthesize_streaming_ndjson
+from core.synthesis import synthesize, synthesize_streaming_ndjson, synthesize_batch_ndjson
 from .models import get_or_create_model
 
 app = FastAPI(title="Kokoro-TTS Worker", version="1.0.0")
@@ -19,6 +19,16 @@ class SynthesizeRequest(BaseModel):
 class StreamRequest(BaseModel):
     text: str
     voice_id: str = "female_1"
+
+
+class BatchBlock(BaseModel):
+    blockId: str
+    text: str
+    voiceId: str = "female_1"
+
+
+class BatchRequest(BaseModel):
+    blocks: list[BatchBlock]
 
 
 class SynthesizeResponse(BaseModel):
@@ -92,6 +102,28 @@ async def synthesize_stream(request: StreamRequest):
             "X-Audio-Channels": "1",
             "X-Audio-Format": "s16le",
         },
+    )
+
+
+@app.post("/synthesize/batch")
+async def synthesize_batch(request: BatchRequest):
+    if not request.blocks:
+        raise HTTPException(status_code=400, detail="No blocks provided")
+
+    for block in request.blocks:
+        if block.voiceId not in VOICES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown voice: {block.voiceId}. Available: {list(VOICES.keys())}",
+            )
+
+    model = get_or_create_model()
+    blocks_data = [b.model_dump() for b in request.blocks]
+
+    return StreamingResponse(
+        synthesize_batch_ndjson(blocks_data, model),
+        media_type="application/x-ndjson",
+        headers={"Transfer-Encoding": "chunked"},
     )
 
 

@@ -7,7 +7,6 @@ export interface TTSMenuState {
   anchorElement: HTMLElement | null
   blockId: string | null
   wordIndex: number | null
-  chunkContent: string
 }
 
 const initialMenuState: TTSMenuState = {
@@ -15,7 +14,6 @@ const initialMenuState: TTSMenuState = {
   anchorElement: null,
   blockId: null,
   wordIndex: null,
-  chunkContent: "",
 }
 
 /**
@@ -73,8 +71,8 @@ export function useTTSChunkDetection(
         return
       }
 
-      const chunkContent = chunk.html.replace(/<[^>]*>/g, "")
-      if (!chunkContent.trim()) return
+      const textContent = chunk.html.replace(/<[^>]*>/g, "")
+      if (!textContent.trim()) return
 
       // Ensure words are wrapped for word-level detection
       ensureWordsWrapped(element!)
@@ -101,7 +99,6 @@ export function useTTSChunkDetection(
         anchorElement: wordSpan,
         blockId,
         wordIndex,
-        chunkContent,
       })
     },
     [chunkMap, ttsMap],

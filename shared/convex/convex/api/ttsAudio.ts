@@ -20,27 +20,25 @@ export const getBlockAudio = query({
 })
 
 /**
- * Get variation text for a block (any voice).
- * Used to reuse LLM-generated text across different voices.
+ * Check if any audio exists for a document+voice combination.
  */
-export const getBlockVariationText = query({
+export const hasDocumentAudio = query({
   args: {
     documentId: v.id("documents"),
-    blockId: v.string(),
+    voiceId: v.string(),
   },
-  handler: (ctx, { documentId, blockId }) =>
-    TtsAudio.getBlockVariationText(ctx, documentId, blockId),
+  handler: (ctx, { documentId, voiceId }) =>
+    TtsAudio.hasDocumentAudio(ctx, documentId, voiceId),
 })
 
 /**
- * Create a new audio cache record.
+ * Create or overwrite an audio cache record.
  */
 export const createAudio = mutation({
   args: {
     documentId: v.id("documents"),
     blockId: v.string(),
     voiceId: v.string(),
-    text: v.string(),
     storagePath: v.string(),
     durationMs: v.number(),
     sampleRate: v.number(),

@@ -8,6 +8,9 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
+import { useQuery } from "convex/react"
+import { api } from "@repo/convex/convex/_generated/api"
+import type { Id } from "@repo/convex/convex/_generated/dataModel"
 import type {
   AudioState,
   VoiceId,
@@ -219,7 +222,6 @@ type AudioActions = {
   // TTS playback actions
   loadBlockTTS: (
     blockId: string,
-    chunkContent: string,
     options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number },
   ) => Promise<void>
   play: () => void
@@ -227,6 +229,9 @@ type AudioActions = {
   togglePlayPause: () => void
   skip: (seconds: number) => void
   seekToWord: (wordIndex: number) => void
+
+  // Batch TTS actions
+  processDocument: (targetBlockId: string, wordIndex?: number) => void
 
   // Music actions
   addTrack: (track: MusicTrack) => void
@@ -259,7 +264,7 @@ const AudioContext = createContext<{
 function createInitialState(): AudioState {
   return {
     narrator: {
-      voice: "male_1",
+      voice: "female_1",
       speed: 1.0,
       volume: 1.0,
     },
@@ -292,6 +297,7 @@ function createInitialState(): AudioState {
         volume: 0.5,
       })),
     },
+    batchStarted: false,
     master: {
       volume: 1.0,
       activePreset: null,
@@ -324,9 +330,19 @@ export function AudioProvider({
   const prefetchAbortRef = useRef<AbortController | null>(null)
   // In-flight synthesis deduplication: blockId:voiceId → Promise
   const synthInFlightRef = useRef(new Map<string, Promise<void>>())
+  // Batch TTS state
+  const batchAbortRef = useRef<AbortController | null>(null)
+  const batchProcessingRef = useRef(false)
+  const [batchTarget, setBatchTarget] = useState<{
+    documentId: string
+    blockId: string
+    voiceId: string
+    wordIndex?: number
+  } | null>(null)
+  const [activeVoice, setActiveVoice] = useState("female_1")
   // Refs for cross-callback access (onEnded, skip need loadBlockTTS which is defined later)
   const chunksRef = useRef<ChunkBlock[] | undefined>(undefined)
-  const loadBlockTTSRef = useRef<(blockId: string, content: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => Promise<void>>(null!)
+  const loadBlockTTSRef = useRef<(blockId: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => Promise<void>>(null!)
 
   if (!storeRef.current) {
     storeRef.current = createStore(createInitialState())
@@ -369,6 +385,9 @@ export function AudioProvider({
   const ttsMapRef = useRef<Map<string, boolean> | undefined>(undefined)
   ttsMapRef.current = docContext?.ttsMap
 
+  const ttsTextMapRef = useRef<Map<string, string> | undefined>(undefined)
+  ttsTextMapRef.current = docContext?.ttsTextMap
+
   const findNextTtsBlock = useCallback(
     (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
       const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
@@ -406,6 +425,9 @@ export function AudioProvider({
       const nextBlock = findNextTtsBlock(chunks, currentBlockId)
       if (!nextBlock) return
 
+      const ttsText = ttsTextMapRef.current?.get(nextBlock.id)
+      if (!ttsText) return
+
       const key = `${nextBlock.id}:${voiceId}`
       if (synthInFlightRef.current.has(key)) return
 
@@ -431,7 +453,7 @@ export function AudioProvider({
           body: JSON.stringify({
             documentId,
             blockId: nextBlock.id,
-            chunkHtml: nextBlock.html,
+            ttsText,
             voiceId,
           }),
           signal: abortController.signal,
@@ -445,6 +467,47 @@ export function AudioProvider({
     },
     [documentId, docContext?.chunks, findNextTtsBlock],
   )
+
+  // === Batch TTS: Convex subscription for target block readiness ===
+  const targetBlockAudio = useQuery(
+    api.api.ttsAudio.getBlockAudio,
+    batchTarget
+      ? {
+          documentId: batchTarget.documentId as Id<"documents">,
+          blockId: batchTarget.blockId,
+          voiceId: batchTarget.voiceId,
+        }
+      : "skip",
+  )
+
+  useEffect(() => {
+    if (!batchTarget || !targetBlockAudio) return
+
+    const chunks = chunksRef.current
+    const block = chunks?.find((c) => c.id === batchTarget.blockId)
+    if (!block) return
+
+    const { wordIndex } = batchTarget
+    setBatchTarget(null)
+    loadBlockTTSRef.current(
+      block.id,
+      wordIndex !== undefined ? { wordIndex } : undefined,
+    )
+  }, [targetBlockAudio, batchTarget])
+
+  // === Batch TTS: Detect existing audio across sessions ===
+  const hasExistingAudio = useQuery(
+    api.api.ttsAudio.hasDocumentAudio,
+    documentId
+      ? { documentId: documentId as Id<"documents">, voiceId: activeVoice }
+      : "skip",
+  )
+
+  useEffect(() => {
+    if (hasExistingAudio) {
+      store.setState({ batchStarted: true })
+    }
+  }, [hasExistingAudio, store])
 
   // === Narrator Actions ===
   const setVoice = useCallback(
@@ -465,6 +528,14 @@ export function AudioProvider({
       }
       synthInFlightRef.current.clear()
 
+      // Cancel any ongoing batch
+      if (batchAbortRef.current) {
+        batchAbortRef.current.abort()
+        batchAbortRef.current = null
+      }
+      setBatchTarget(null)
+      setActiveVoice(voiceId)
+
       // Stop current playback
       cleanupPlayer()
 
@@ -481,7 +552,9 @@ export function AudioProvider({
           canSeek: false,
           currentTime: 0,
         },
+        batchStarted: false,
       })
+      batchProcessingRef.current = false
     },
     [store, cleanupPlayer],
   )
@@ -545,7 +618,7 @@ export function AudioProvider({
       if (chunks && blockId) {
         const nextBlock = findNextTtsBlock(chunks, blockId)
         if (nextBlock) {
-          loadBlockTTSRef.current(nextBlock.id, nextBlock.html)
+          loadBlockTTSRef.current(nextBlock.id)
           return
         }
       }
@@ -562,7 +635,7 @@ export function AudioProvider({
 
   // === TTS Playback Actions ===
   const loadBlockTTS = useCallback(
-    async (blockId: string, chunkContent: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => {
+    async (blockId: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => {
       const { wordIndex, seekToSeconds, seekFromEndSeconds } = options || {}
 
       if (!documentId) {
@@ -576,6 +649,8 @@ export function AudioProvider({
         toast.error("Document not saved - TTS requires a saved document")
         return
       }
+
+      const ttsText = ttsTextMapRef.current?.get(blockId)
 
       const voiceId = store.getState().narrator.voice
       const inFlightKey = `${blockId}:${voiceId}`
@@ -621,7 +696,6 @@ export function AudioProvider({
       try {
         const abortController = new AbortController()
         sseAbortRef.current = abortController
-
         const response = await fetch("/api/tts/synthesize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -629,8 +703,8 @@ export function AudioProvider({
           body: JSON.stringify({
             documentId,
             blockId,
-            chunkHtml: chunkContent,
-            voiceId: store.getState().narrator.voice,
+            ...(ttsText && { ttsText }),
+            voiceId,
           }),
           signal: abortController.signal,
         })
@@ -790,6 +864,80 @@ export function AudioProvider({
   )
   loadBlockTTSRef.current = loadBlockTTS
 
+  const processDocument = useCallback(
+    (targetBlockId: string, wordIndex?: number) => {
+      if (!documentId) {
+        toast.error("Document not saved - TTS requires a saved document")
+        return
+      }
+
+      const chunks = chunksRef.current
+      const ttsMap = ttsMapRef.current
+      const ttsTextMap = ttsTextMapRef.current
+      if (!chunks) return
+
+      const voiceId = store.getState().narrator.voice
+
+      // Set target block for playback when its audio is ready
+      setBatchTarget({ documentId, blockId: targetBlockId, voiceId, wordIndex })
+      store.setState({
+        playback: {
+          ...store.getState().playback,
+          mode: "loading",
+          blockId: targetBlockId,
+          error: null,
+          text: null,
+          durationMs: 0,
+          wordTimestamps: [],
+          isPlaying: false,
+          canPause: false,
+          canSeek: false,
+          currentTime: 0,
+        },
+      })
+
+      // If batch is already processing, just wait for the target block's audio
+      if (batchProcessingRef.current) return
+
+      const ttsEligible = chunks.filter((c) =>
+        ttsMap ? ttsMap.get(c.id) : c.includeTts,
+      )
+
+      const blocks: Array<{ blockId: string; ttsText: string }> = []
+      for (const c of ttsEligible) {
+        const text = ttsTextMap?.get(c.id)
+        if (text) blocks.push({ blockId: c.id, ttsText: text })
+      }
+
+      if (!blocks.length) return
+
+      batchProcessingRef.current = true
+      store.setState({ batchStarted: true })
+
+      const abortController = new AbortController()
+      batchAbortRef.current = abortController
+
+      fetch("/api/tts/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ documentId, voiceId, blocks }),
+        signal: abortController.signal,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("Batch processing failed")
+          batchProcessingRef.current = false
+        })
+        .catch((err) => {
+          if (err instanceof Error && err.name === "AbortError") return
+          batchProcessingRef.current = false
+          store.setState({ batchStarted: false })
+          toast.error(err instanceof Error ? err.message : "Batch processing failed")
+        })
+    },
+    [documentId, store],
+  )
+
   const play = useCallback(() => {
     playerRef.current?.play()
   }, [])
@@ -831,7 +979,7 @@ export function AudioProvider({
           playerRef.current.seek(0)
           return
         }
-        loadBlockTTSRef.current(prevBlock.id, prevBlock.html, {
+        loadBlockTTSRef.current(prevBlock.id, {
           seekFromEndSeconds: Math.abs(targetTime),
         })
       } else {
@@ -840,7 +988,7 @@ export function AudioProvider({
           playerRef.current.seek(duration)
           return
         }
-        loadBlockTTSRef.current(nextBlock.id, nextBlock.html, {
+        loadBlockTTSRef.current(nextBlock.id, {
           seekToSeconds: targetTime - duration,
         })
       }
@@ -1232,6 +1380,11 @@ export function AudioProvider({
         prefetchAbortRef.current.abort()
       }
 
+      // Cancel any ongoing batch
+      if (batchAbortRef.current) {
+        batchAbortRef.current.abort()
+      }
+
       // Clean up TTS player
       if (playerRef.current) {
         playerRef.current.dispose()
@@ -1269,6 +1422,7 @@ export function AudioProvider({
     setNarratorSpeed,
     setNarratorVolume,
     loadBlockTTS,
+    processDocument,
     play,
     pause,
     togglePlayPause,

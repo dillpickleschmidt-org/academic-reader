@@ -35,6 +35,7 @@ export interface ChunkBlock {
   polygon: number[][]
   bbox: number[]
   includeTts?: boolean
+  ttsText?: string
   section_hierarchy?: Record<string, string>
   images?: Record<string, string>
 }

@@ -112,3 +112,33 @@ def synthesize_streaming_ndjson(text: str, voice_id: str, model) -> Generator[st
             }) + "\n"
         else:
             yield json.dumps(chunk) + "\n"
+
+
+def synthesize_batch_ndjson(blocks: list[dict], model) -> Generator[str, None, None]:
+    """Process multiple blocks sequentially, yielding one NDJSON line per block.
+
+    Each block dict must have: blockId, text, voiceId.
+    Yields NDJSON lines with complete audio per block.
+    """
+    for block in blocks:
+        block_id = block.get("blockId", "unknown")
+
+        try:
+            text = block["text"]
+            voice_id = block["voiceId"]
+            audio_base64, sample_rate, duration_ms, word_timestamps = synthesize(
+                text, voice_id, model
+            )
+            yield json.dumps({
+                "blockId": block_id,
+                "audio": audio_base64,
+                "sampleRate": sample_rate,
+                "durationMs": duration_ms,
+                "wordTimestamps": word_timestamps,
+            }) + "\n"
+        except Exception as e:
+            print(f"[synthesis] Batch block {block_id} failed: {e}", flush=True)
+            yield json.dumps({
+                "blockId": block_id,
+                "error": str(e),
+            }) + "\n"

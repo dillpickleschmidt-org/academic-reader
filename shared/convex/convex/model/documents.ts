@@ -118,7 +118,7 @@ export async function updateDocumentSummary(
 /**
  * Bulk-update includeTts flags on chunks.
  */
-export async function updateChunksTts(
+export async function updateChunksTtsFlags(
   ctx: MutationCtx,
   documentId: Id<"documents">,
   flags: { blockId: string; includeTts: boolean }[],
@@ -135,15 +135,44 @@ export async function updateChunksTts(
 
   const flagMap = new Map(flags.map((f) => [f.blockId, f.includeTts]))
 
+  const matched = chunks.filter((chunk) => flagMap.has(chunk.blockId))
   await Promise.all(
-    chunks
-      .filter((chunk) => flagMap.has(chunk.blockId))
-      .map((chunk) =>
-        ctx.db.patch(chunk._id, { includeTts: flagMap.get(chunk.blockId)! }),
-      ),
+    matched.map((chunk) =>
+      ctx.db.patch(chunk._id, { includeTts: flagMap.get(chunk.blockId)! }),
+    ),
   )
 
-  return { updated: flags.length }
+  return { updated: matched.length }
+}
+
+/**
+ * Bulk-update ttsText on chunks.
+ */
+export async function updateChunksTtsText(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+  texts: { blockId: string; ttsText: string }[],
+) {
+  const user = await requireAuth(ctx)
+  const doc = await ctx.db.get(documentId)
+  if (!doc) throw new Error("Document not found")
+  if (doc.userId !== user._id) throw new Error("Unauthorized")
+
+  const chunks = await ctx.db
+    .query("chunks")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .collect()
+
+  const textMap = new Map(texts.map((t) => [t.blockId, t.ttsText]))
+
+  const matched = chunks.filter((chunk) => textMap.has(chunk.blockId))
+  await Promise.all(
+    matched.map((chunk) =>
+      ctx.db.patch(chunk._id, { ttsText: textMap.get(chunk.blockId)! }),
+    ),
+  )
+
+  return { updated: matched.length }
 }
 
 /**

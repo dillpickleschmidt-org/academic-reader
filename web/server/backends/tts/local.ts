@@ -1,5 +1,5 @@
-import type { TTSBackend, VoiceInfo, SynthesizeResult, StreamChunk } from "./interface"
-import { parseNdjsonStream } from "./interface"
+import type { TTSBackend, VoiceInfo, SynthesizeResult, StreamChunk, BatchBlock, BatchResult } from "./interface"
+import { parseStreamingNdjson, parseBatchNdjson } from "./interface"
 
 interface LocalTTSConfig {
   baseUrl: string
@@ -52,7 +52,26 @@ export class LocalTTSBackend implements TTSBackend {
       throw new Error("No response body")
     }
 
-    yield* parseNdjsonStream(res.body)
+    yield* parseStreamingNdjson(res.body)
+  }
+
+  async *synthesizeBatch(blocks: BatchBlock[]): AsyncGenerator<BatchResult> {
+    const res = await fetch(`${this.baseUrl}/synthesize/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blocks }),
+    })
+
+    if (!res.ok) {
+      const error = await res.text()
+      throw new Error(`Batch synthesis failed: ${error}`)
+    }
+
+    if (!res.body) {
+      throw new Error("No response body")
+    }
+
+    yield* parseBatchNdjson(res.body)
   }
 
   async listVoices(): Promise<VoiceInfo[]> {

@@ -8,6 +8,7 @@ interface DocumentContextValue {
   documentName: string | undefined
   toc: TocResult | undefined
   ttsMap: Map<string, boolean> | undefined
+  ttsTextMap: Map<string, string> | undefined
   summary: string | undefined
 }
 
@@ -28,14 +29,14 @@ export function DocumentProvider({
   toc: initialToc,
   children,
 }: DocumentProviderProps) {
-  const { toc: enrichedToc, ttsMap, summary } = useDocumentEnrichments(documentId, chunks)
+  const { toc: enrichedToc, ttsMap, ttsTextMap, summary } = useDocumentEnrichments(documentId, chunks)
 
   // Prefer enriched TOC from Convex subscription over initial SSE value
   const toc = enrichedToc ?? initialToc
 
   const value = useMemo(
-    () => ({ documentId, chunks, documentName, toc, ttsMap, summary }),
-    [documentId, chunks, documentName, toc, ttsMap, summary],
+    () => ({ documentId, chunks, documentName, toc, ttsMap, ttsTextMap, summary }),
+    [documentId, chunks, documentName, toc, ttsMap, ttsTextMap, summary],
   )
 
   return (

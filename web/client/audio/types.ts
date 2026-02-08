@@ -78,6 +78,9 @@ export type AudioState = {
     sounds: AmbientSoundState[]
   }
 
+  // Whether batch processing has been started for this document
+  batchStarted: boolean
+
   // Master settings
   master: {
     volume: number

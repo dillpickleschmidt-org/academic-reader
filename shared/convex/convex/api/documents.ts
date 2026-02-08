@@ -97,7 +97,7 @@ export const updateSummary = mutation({
 /**
  * Bulk-update includeTts flags on chunks after background filtering.
  */
-export const updateChunksTts = mutation({
+export const updateChunksTtsFlags = mutation({
   args: {
     documentId: v.id("documents"),
     flags: v.array(
@@ -108,7 +108,24 @@ export const updateChunksTts = mutation({
     ),
   },
   handler: (ctx, { documentId, flags }) =>
-    Documents.updateChunksTts(ctx, documentId, flags),
+    Documents.updateChunksTtsFlags(ctx, documentId, flags),
+})
+
+/**
+ * Bulk-update ttsText on chunks after background rewriting.
+ */
+export const updateChunksTtsText = mutation({
+  args: {
+    documentId: v.id("documents"),
+    texts: v.array(
+      v.object({
+        blockId: v.string(),
+        ttsText: v.string(),
+      }),
+    ),
+  },
+  handler: (ctx, { documentId, texts }) =>
+    Documents.updateChunksTtsText(ctx, documentId, texts),
 })
 
 /**
@@ -178,10 +195,10 @@ export const getChunks = query({
 })
 
 /**
- * Get TTS flags for all chunks in a document.
- * Lightweight projection of getChunks — only returns blockId + includeTts.
+ * Get TTS enrichment data for all chunks in a document.
+ * Lightweight projection — only returns blockId, includeTts, and ttsText.
  */
-export const getTtsFlags = query({
+export const getTtsEnrichments = query({
   args: {
     documentId: v.id("documents"),
   },
@@ -190,6 +207,7 @@ export const getTtsFlags = query({
     return chunks.map((c) => ({
       blockId: c.blockId,
       includeTts: c.includeTts,
+      ttsText: c.ttsText,
     }))
   },
 })

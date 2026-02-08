@@ -16,17 +16,7 @@ export type StreamChunk =
   | { type: "audio"; data: Uint8Array }
   | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
 
-function parseNdjsonLine(line: string): StreamChunk | null {
-  const parsed = JSON.parse(line)
-  if (parsed.type === "audio") {
-    return { type: "audio", data: Buffer.from(parsed.data, "base64") }
-  } else if (parsed.type === "timestamps") {
-    return { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
-  }
-  return null
-}
-
-export async function* parseNdjsonStream(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
+async function* readNdjsonLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
@@ -40,16 +30,40 @@ export async function* parseNdjsonStream(body: ReadableStream<Uint8Array>): Asyn
     buffer = lines.pop() || ""
 
     for (const line of lines) {
-      if (!line.trim()) continue
-      const chunk = parseNdjsonLine(line)
-      if (chunk) yield chunk
+      if (line.trim()) yield line
     }
   }
 
-  if (buffer.trim()) {
-    const chunk = parseNdjsonLine(buffer)
-    if (chunk) yield chunk
+  if (buffer.trim()) yield buffer
+}
+
+export async function* parseStreamingNdjson(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
+  for await (const line of readNdjsonLines(body)) {
+    try {
+      const parsed = JSON.parse(line)
+      if (parsed.type === "audio") {
+        yield { type: "audio", data: Buffer.from(parsed.data, "base64") }
+      } else if (parsed.type === "timestamps") {
+        yield { type: "timestamps", wordTimestamps: parsed.wordTimestamps }
+      }
+    } catch (e) {
+      console.warn("[tts-stream] Malformed NDJSON line, skipping:", e)
+    }
   }
+}
+
+export interface BatchBlock {
+  blockId: string
+  text: string
+  voiceId: string
+}
+
+export interface BatchResult {
+  blockId: string
+  audio: string
+  sampleRate: number
+  durationMs: number
+  wordTimestamps: WordTimestamp[]
 }
 
 export interface TTSBackend {
@@ -66,6 +80,11 @@ export interface TTSBackend {
   synthesizeStream(text: string, voiceId: string): AsyncGenerator<StreamChunk>
 
   /**
+   * Process multiple blocks in a single request, yielding results as they complete.
+   */
+  synthesizeBatch(blocks: BatchBlock[]): AsyncGenerator<BatchResult>
+
+  /**
    * List available voices.
    */
   listVoices(): Promise<VoiceInfo[]>
@@ -74,4 +93,19 @@ export interface TTSBackend {
    * Check if the backend is healthy/reachable.
    */
   healthCheck(): Promise<boolean>
+}
+
+export async function* parseBatchNdjson(body: ReadableStream<Uint8Array>): AsyncGenerator<BatchResult> {
+  for await (const line of readNdjsonLines(body)) {
+    try {
+      const parsed = JSON.parse(line)
+      if (parsed.error) {
+        console.warn(`[tts-batch] Block ${parsed.blockId} failed: ${parsed.error}`)
+        continue
+      }
+      yield parsed as BatchResult
+    } catch (e) {
+      console.warn("[tts-batch] Malformed NDJSON line, skipping:", e)
+    }
+  }
 }

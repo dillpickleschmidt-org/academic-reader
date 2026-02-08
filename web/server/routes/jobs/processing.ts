@@ -19,7 +19,9 @@ import {
   type TocResult,
 } from "../../services/toc-extraction"
 import { filterBlocksForTTS } from "../../services/tts-block-filter"
+import { rewriteBlocksForTTS } from "../../services/tts-rewrite"
 import { generateDocumentSummary } from "../../services/summary-generation"
+import { stripHtml } from "../../utils/sanitize"
 import type { ChunkBlock } from "@repo/core/types/api"
 import {
   extractLinkMappings,
@@ -31,6 +33,8 @@ import {
   persistDocument,
   type ChunkInput,
 } from "../../services/document-persistence"
+import { createWideEvent, emitEvent } from "../../utils/wide-event-logger"
+import { env } from "../../env"
 import { createAuthenticatedConvexClient } from "../../services/convex"
 import { api } from "@repo/convex/convex/_generated/api"
 import type { Id } from "@repo/convex/convex/_generated/dataModel"
@@ -364,6 +368,25 @@ export async function processCompletedJob(
 
 const TTS_BATCH_SIZE = 200
 
+async function writePlainTtsText(
+  convex: import("convex/browser").ConvexHttpClient,
+  documentId: Id<"documents">,
+  chunks: ChunkBlock[],
+) {
+  const texts = chunks
+    .map((c) => ({ blockId: c.id, ttsText: stripHtml(c.html) }))
+    .filter((t) => t.ttsText.length > 0)
+
+  for (let i = 0; i < texts.length; i += TTS_BATCH_SIZE) {
+    await tryCatch(
+      convex.mutation(api.api.documents.updateChunksTtsText, {
+        documentId,
+        texts: texts.slice(i, i + TTS_BATCH_SIZE),
+      }),
+    )
+  }
+}
+
 /**
  * Background enrichment: extract TOC, filter TTS blocks, and generate summary.
  * Runs asynchronously after the document is persisted and SSE completed is sent.
@@ -376,17 +399,20 @@ async function processEnrichments(
   documentId: string,
   convex: import("convex/browser").ConvexHttpClient,
 ) {
+  const start = performance.now()
   const typedDocumentId = documentId as Id<"documents">
   const chunkHtml = normalizedChunks.map((c) => c.html).join("\n")
+  const errors: string[] = []
 
   const pdfReadResult = await tryCatch(
     storage.readFile(`${fileInfo.documentPath}/original.pdf`),
   )
 
   if (!pdfReadResult.success) {
-    console.warn("[jobs/enrichment] Failed to read PDF:", pdfReadResult.error)
+    errors.push(`PDF read failed: ${getErrorMessage(pdfReadResult.error)}`)
     // Fallback: set empty TOC, all blocks TTS-included, still generate summary
     const summaryResult = await tryCatch(generateDocumentSummary(chunkHtml))
+    if (!summaryResult.success) errors.push(`Summary failed: ${getErrorMessage(summaryResult.error)}`)
     await Promise.all([
       tryCatch(
         convex.mutation(api.api.documents.updateToc, {
@@ -401,37 +427,45 @@ async function processEnrichments(
         }),
       ),
     ])
-    const allTtsFlags = normalizedChunks.map((c) => ({
-      blockId: c.id,
-      includeTts: true,
-    }))
+    const allTtsFlags = normalizedChunks.map((c) => ({ blockId: c.id, includeTts: true }))
     for (let i = 0; i < allTtsFlags.length; i += TTS_BATCH_SIZE) {
       await tryCatch(
-        convex.mutation(api.api.documents.updateChunksTts, {
+        convex.mutation(api.api.documents.updateChunksTtsFlags, {
           documentId: typedDocumentId,
           flags: allTtsFlags.slice(i, i + TTS_BATCH_SIZE),
         }),
       )
     }
+    await writePlainTtsText(convex, typedDocumentId, normalizedChunks)
+    emitEnrichmentEvent(documentId, start, errors)
     return
   }
 
   const pdfBuffer = pdfReadResult.data
   const textContent = result.formats?.markdown || result.content || ""
 
-  // Run TOC extraction, TTS filtering, and summary generation in parallel
-  const [tocExtractResult, blockFilterResult, summaryResult] = await Promise.all([
+  // Run TOC extraction, TTS filter, and summary generation in parallel
+  const [tocExtractResult, filterResult, summaryResult] = await Promise.all([
     tryCatch(extractTableOfContents(textContent, pdfBuffer)),
     tryCatch(filterBlocksForTTS(normalizedChunks)),
     tryCatch(generateDocumentSummary(chunkHtml)),
   ])
+
+  // Run TTS rewrite sequentially (depends on filter result for eligible blocks)
+  const rewriteResult = filterResult.success
+    ? await tryCatch(
+        rewriteBlocksForTTS(
+          normalizedChunks.filter((c) => filterResult.data[c.id] !== false),
+        ),
+      )
+    : { success: false as const, error: filterResult.error }
 
   // Update TOC (always, even on failure)
   let tocResult: TocResult = { sections: [], offset: 0 }
   if (tocExtractResult.success && tocExtractResult.data.toc) {
     tocResult = tocExtractResult.data.toc
   } else if (!tocExtractResult.success) {
-    console.warn("[jobs/enrichment] TOC extraction failed:", tocExtractResult.error)
+    errors.push(`TOC extraction failed: ${getErrorMessage(tocExtractResult.error)}`)
   }
   await tryCatch(
     convex.mutation(api.api.documents.updateToc, {
@@ -440,31 +474,66 @@ async function processEnrichments(
     }),
   )
 
-  // Update TTS flags (always, even on failure — default to true)
-  const blockFilter = blockFilterResult.success ? blockFilterResult.data : undefined
-  if (!blockFilterResult.success) {
-    console.warn("[jobs/enrichment] Block filter failed:", blockFilterResult.error)
+  // Update TTS flags (uses filter result even if rewrite failed)
+  if (filterResult.success) {
+    const filterMap = filterResult.data
+    const ttsFlags = normalizedChunks.map((chunk) => ({
+      blockId: chunk.id,
+      includeTts: filterMap[chunk.id] ?? true,
+    }))
+
+    for (let i = 0; i < ttsFlags.length; i += TTS_BATCH_SIZE) {
+      await tryCatch(
+        convex.mutation(api.api.documents.updateChunksTtsFlags, {
+          documentId: typedDocumentId,
+          flags: ttsFlags.slice(i, i + TTS_BATCH_SIZE),
+        }),
+      )
+    }
+  } else {
+    errors.push(`TTS filter failed: ${getErrorMessage(filterResult.error)}`)
+    const allTtsFlags = normalizedChunks.map((c) => ({ blockId: c.id, includeTts: true }))
+    for (let i = 0; i < allTtsFlags.length; i += TTS_BATCH_SIZE) {
+      await tryCatch(
+        convex.mutation(api.api.documents.updateChunksTtsFlags, {
+          documentId: typedDocumentId,
+          flags: allTtsFlags.slice(i, i + TTS_BATCH_SIZE),
+        }),
+      )
+    }
   }
 
-  const ttsFlags = normalizedChunks.map((chunk) => ({
-    blockId: chunk.id,
-    includeTts: chunk.block_type.includes("SectionHeader")
-      ? true
-      : blockFilter?.[chunk.id] ?? true,
-  }))
+  // Update TTS text (rewrite result or plain text fallback)
+  if (rewriteResult.success) {
+    if (rewriteResult.data.failedGroups > 0) {
+      errors.push(`TTS rewrite: ${rewriteResult.data.failedGroups} group(s) fell back to plain text`)
+    }
 
-  for (let i = 0; i < ttsFlags.length; i += TTS_BATCH_SIZE) {
-    await tryCatch(
-      convex.mutation(api.api.documents.updateChunksTts, {
-        documentId: typedDocumentId,
-        flags: ttsFlags.slice(i, i + TTS_BATCH_SIZE),
-      }),
-    )
+    const ttsTexts = Object.entries(rewriteResult.data.texts).map(([blockId, ttsText]) => ({
+      blockId,
+      ttsText,
+    }))
+
+    for (let i = 0; i < ttsTexts.length; i += TTS_BATCH_SIZE) {
+      const batch = ttsTexts.slice(i, i + TTS_BATCH_SIZE)
+      const batchResult = await tryCatch(
+        convex.mutation(api.api.documents.updateChunksTtsText, {
+          documentId: typedDocumentId,
+          texts: batch,
+        }),
+      )
+      if (!batchResult.success) {
+        errors.push(`ttsText batch ${i / TTS_BATCH_SIZE + 1} failed: ${getErrorMessage(batchResult.error)}`)
+      }
+    }
+  } else {
+    errors.push(`TTS rewrite failed: ${getErrorMessage(rewriteResult.error)}`)
+    await writePlainTtsText(convex, typedDocumentId, normalizedChunks)
   }
 
   // Update summary (always, even on failure — default to empty string)
   if (!summaryResult.success) {
-    console.warn("[jobs/enrichment] Summary generation failed:", summaryResult.error)
+    errors.push(`Summary failed: ${getErrorMessage(summaryResult.error)}`)
   }
   await tryCatch(
     convex.mutation(api.api.documents.updateSummary, {
@@ -472,6 +541,26 @@ async function processEnrichments(
       summary: summaryResult.success ? summaryResult.data : "",
     }),
   )
+
+  emitEnrichmentEvent(documentId, start, errors)
+}
+
+function emitEnrichmentEvent(documentId: string, start: number, errors: string[]) {
+  const event = createWideEvent("BACKGROUND", "/enrichment", {
+    backendMode: env.BACKEND_MODE,
+    siteUrl: env.SITE_URL,
+  })
+  event.documentId = documentId
+  event.durationMs = Math.round(performance.now() - start)
+  event.status = errors.length > 0 ? 500 : 200
+  if (errors.length > 0) {
+    event.error = {
+      category: "backend",
+      message: errors.join("; "),
+      code: "ENRICHMENT_PARTIAL_FAILURE",
+    }
+  }
+  emitEvent(event)
 }
 
 /**

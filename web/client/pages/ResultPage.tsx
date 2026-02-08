@@ -142,7 +142,6 @@ export function ResultPage({
         anchorElement={menuState.anchorElement}
         blockId={menuState.blockId}
         wordIndex={menuState.wordIndex}
-        chunkContent={menuState.chunkContent}
         isOpen={menuState.isOpen}
         onOpenChange={setMenuOpen}
       />

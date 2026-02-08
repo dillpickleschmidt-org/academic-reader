@@ -354,6 +354,7 @@ export function useConversion() {
             blockType: string
             html: string
             includeTts?: boolean
+            ttsText?: string
           }) => ({
             id: c.blockId,
             block_type: c.blockType,
@@ -361,6 +362,7 @@ export function useConversion() {
             polygon: [],
             bbox: [],
             includeTts: c.includeTts,
+            ttsText: c.ttsText,
           }),
         ) ?? [],
       )

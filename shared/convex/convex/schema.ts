@@ -100,6 +100,7 @@ export default defineSchema({
     section: v.optional(v.string()), // Section hierarchy flattened
     bbox: v.array(v.number()), // [x1, y1, x2, y2] bounding box coordinates
     includeTts: v.optional(v.boolean()), // Whether block should be read aloud by TTS
+    ttsText: v.optional(v.string()), // LLM-rewritten text for natural TTS speech
     embedding: v.optional(v.array(v.float64())), // 3072-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])
@@ -134,7 +135,6 @@ export default defineSchema({
     documentId: v.id("documents"),
     blockId: v.string(),
     voiceId: v.string(),
-    text: v.string(), // Full rewritten variation text
     storagePath: v.string(),
     durationMs: v.number(),
     sampleRate: v.number(),

@@ -67,20 +67,8 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Redis for cross-device chat streaming
-  redis:
-    image: redis:7-alpine
-    profiles: ["local", "datalab", "modal"]
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Self-hosted API (Hono on Bun)
-  # Profiles: local, datalab
+  # Self-hosted API (Effect.ts on Bun)
+  # Profiles: local, datalab, modal
   api:
     build:
       context: .
@@ -106,12 +94,10 @@ services:
       - S3_SECRET_KEY=minioadmin
       - S3_BUCKET=academic-reader
     volumes:
-      - ./web/server:/app/web/server
-      - ./shared/core/src:/app/shared/core/src
+      - ./apps/api/src:/app/apps/api/src
+      - ./packages:/app/packages
       - tunnel_url:/tunnel:ro
     depends_on:
-      redis:
-        condition: service_healthy
       convex-backend:
         condition: service_healthy
       marker:

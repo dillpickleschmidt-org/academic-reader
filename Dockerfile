@@ -6,51 +6,51 @@ FROM oven/bun:1 AS frontend
 WORKDIR /app
 
 # Copy workspace config and package files
-COPY package.json bun.lock* tsconfig.base.json ./
-COPY web/package.json ./web/
-COPY mobile/package.json ./mobile/
-COPY shared/core/package.json ./shared/core/
-COPY shared/convex/package.json ./shared/convex/
+COPY package.json bun.lock* tsconfig.base.json turbo.json ./
+COPY apps/web/package.json ./apps/web/
+COPY apps/api/package.json ./apps/api/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/convex/package.json ./packages/convex/
+COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
 RUN bun install --frozen-lockfile
 
 # Copy source
-COPY web/ ./web/
-COPY shared/ ./shared/
+COPY apps/web/ ./apps/web/
+COPY packages/ ./packages/
 
 # Build
 ARG VITE_CONVEX_URL
 ARG BACKEND_MODE
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
 ENV BACKEND_MODE=$BACKEND_MODE
-RUN bun run --cwd web build
+RUN bun run --cwd apps/web build
 
 # ─────────────────────────────────────────────────────────────
-# Stage 2: Server + Serve Frontend
+# Stage 2: API Server
 # ─────────────────────────────────────────────────────────────
 FROM oven/bun:1
 
 WORKDIR /app
 
 # Copy workspace config and package files
-COPY package.json bun.lock* tsconfig.base.json ./
-COPY web/package.json ./web/
-COPY mobile/package.json ./mobile/
-COPY shared/core/package.json ./shared/core/
-COPY shared/convex/package.json ./shared/convex/
+COPY package.json bun.lock* tsconfig.base.json turbo.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/convex/package.json ./packages/convex/
+COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
 RUN bun install --frozen-lockfile
 
-# Copy web source (includes server) and packages
-COPY web/ ./web/
-COPY shared/core/ ./shared/core/
-COPY shared/convex/ ./shared/convex/
+# Copy API source + packages
+COPY apps/api/ ./apps/api/
+COPY packages/ ./packages/
 
 # Copy frontend build from stage 1
-COPY --from=frontend /app/web/dist ./web/dist
+COPY --from=frontend /app/apps/web/dist ./apps/web/dist
 
 EXPOSE 8787
 
-CMD ["bun", "run", "--cwd", "web", "start"]
+CMD ["bun", "run", "--cwd", "apps/api", "src/main.ts"]

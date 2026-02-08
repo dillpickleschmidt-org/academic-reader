@@ -4,7 +4,7 @@ import { createProcessingModel } from "../providers/models"
 import { stripHtml } from "../utils/sanitize"
 import { tryCatch } from "../utils/try-catch"
 
-const BATCH_SIZE = 30
+const BATCH_SIZE = 15 // 8192 max token output for Groq Llama 4 Scout
 const MAX_CONCURRENT_GROUPS = 3
 
 const RewriteElement = z.object({
@@ -55,7 +55,7 @@ export async function rewriteBlocksForTTS(
   }
 
   const model = createProcessingModel()
-  const groups: typeof textBlocks[] = []
+  const groups: (typeof textBlocks)[] = []
 
   for (let i = 0; i < textBlocks.length; i += BATCH_SIZE) {
     groups.push(textBlocks.slice(i, i + BATCH_SIZE))
@@ -78,13 +78,6 @@ export async function rewriteBlocksForTTS(
             output: Output.array({ element: RewriteElement }),
             system: SYSTEM_PROMPT,
             prompt,
-            providerOptions: {
-              google: {
-                thinkingConfig: {
-                  thinkingLevel: "minimal",
-                },
-              },
-            },
           }),
         )
 
@@ -92,7 +85,10 @@ export async function rewriteBlocksForTTS(
           return { entries: result.data.output, failed: false }
         }
 
-        console.error("[tts-rewrite] LLM rewrite failed for group, falling back to plain text:", !result.success ? result.error : "no output")
+        console.error(
+          "[tts-rewrite] LLM rewrite failed for group, falling back to plain text:",
+          !result.success ? result.error : "no output",
+        )
         return {
           entries: group.map((b) => ({ id: b.id, text: b.text })),
           failed: true,

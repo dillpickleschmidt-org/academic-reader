@@ -249,13 +249,6 @@ async function generateTocWithAI(tocText: string): Promise<TocAIResult> {
       output: Output.object({ schema: TocSchema }),
       system: TOC_SYSTEM_PROMPT,
       prompt: tocText,
-      providerOptions: {
-        google: {
-          thinkingConfig: {
-            thinkingLevel: "minimal",
-          },
-        },
-      },
     }),
   )
 

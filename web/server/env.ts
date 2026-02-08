@@ -24,15 +24,20 @@ const baseSchema = z.object({
   // AI - shared keys
   GOOGLE_API_KEY: z.string().min(1),
   OPENROUTER_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().min(1),
 
-  // AI - chat model (chatbot, summary, title generation)
+  // AI - chat model (chatbot, title generation)
   CHAT_PROVIDER: z.enum(["google", "openrouter"]).default("google"),
   CHAT_MODEL: z.string().default("gemini-3-flash-preview"),
 
-  // AI - processing model (TOC extraction, TTS block filter)
-  PROCESSING_PROVIDER: z.enum(["google", "openrouter"]).default("google"),
-  PROCESSING_MODEL: z.string().default("gemini-3-flash-preview"),
+  // AI - processing model (TOC extraction, TTS block filter, TTS rewrite)
+  PROCESSING_PROVIDER: z.enum(["google", "openrouter", "groq"]).default("groq"),
+  PROCESSING_MODEL: z.string().default("meta-llama/llama-4-scout-17b-16e-instruct"),
+
+  // AI - summary model (document summarization)
+  SUMMARY_PROVIDER: z.enum(["google", "openrouter", "groq"]).default("google"),
+  SUMMARY_MODEL: z.string().default("gemini-3-flash-preview"),
 
   // Backend mode
   BACKEND_MODE: backendModeSchema,
@@ -70,16 +75,28 @@ const envSchema = baseSchema.superRefine((data, ctx) => {
     }
   }
 
-  // OpenRouter requires an API key
   if (
     (data.CHAT_PROVIDER === "openrouter" ||
-      data.PROCESSING_PROVIDER === "openrouter") &&
+      data.PROCESSING_PROVIDER === "openrouter" ||
+      data.SUMMARY_PROVIDER === "openrouter") &&
     !data.OPENROUTER_API_KEY
   ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "OPENROUTER_API_KEY required when any provider is openrouter",
       path: ["OPENROUTER_API_KEY"],
+    })
+  }
+
+  if (
+    (data.PROCESSING_PROVIDER === "groq" ||
+      data.SUMMARY_PROVIDER === "groq") &&
+    !data.GROQ_API_KEY
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "GROQ_API_KEY required when any provider is groq",
+      path: ["GROQ_API_KEY"],
     })
   }
 

@@ -1,5 +1,5 @@
 import { generateText } from "ai"
-import { createProcessingModel } from "../providers/models"
+import { createSummaryModel } from "../providers/models"
 import { tryCatch } from "../utils/try-catch"
 
 const MAX_INPUT_CHARS = 2_000_000
@@ -22,7 +22,7 @@ export async function generateDocumentSummary(
     ? chunkHtml.slice(0, MAX_INPUT_CHARS)
     : chunkHtml
 
-  const model = createProcessingModel()
+  const model = createSummaryModel()
 
   const result = await tryCatch(
     generateText({

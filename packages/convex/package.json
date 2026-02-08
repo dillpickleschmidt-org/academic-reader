@@ -1,0 +1,23 @@
+{
+  "name": "@academic-reader/convex",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bunx convex dev",
+    "check": "tsc --noEmit"
+  },
+  "exports": {
+    "./client": "./src/client.ts",
+    "./auth-client": "./src/auth-client.ts",
+    "./convex/*": "./convex/*.js"
+  },
+  "dependencies": {
+    "@convex-dev/better-auth": "^0.10.9",
+    "better-auth": "^1.4.9",
+    "convex": "1.31.7"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@academic-reader/api-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "exports": {
+    "./schemas/*": "./src/schemas/*.ts",
+    "./errors": "./src/errors.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "effect": "^3.19.16",
+    "@effect/platform": "^0.94.3"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

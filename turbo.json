@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDotEnv": [".env.local"],
+  "tasks": {
+    "dev": { "persistent": true, "cache": false },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "check": { "dependsOn": ["^check"] }
+  }
+}

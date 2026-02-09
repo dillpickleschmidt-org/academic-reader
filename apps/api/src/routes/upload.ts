@@ -10,9 +10,7 @@ import { sanitizeFilename } from "../utils/sanitize"
 import { validateExternalUrl } from "../utils/url-validation"
 
 function getOptionalAuth() {
-  return Effect.either(requireAuth).pipe(
-    Effect.map((result) => (result._tag === "Right" ? result.right : null)),
-  )
+  return requireAuth.pipe(Effect.catchAll(() => Effect.succeed(null)))
 }
 
 function extractPageCount(data: ArrayBuffer, contentType: string): number | undefined {

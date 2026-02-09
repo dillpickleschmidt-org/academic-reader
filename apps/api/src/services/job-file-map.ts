@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Ref, HashMap } from "effect"
+import { Context, Effect, Layer, Ref, HashMap, Option } from "effect"
 
 export type WorkerType = "marker" | "lightonocr" | "chandra"
 
@@ -26,9 +26,9 @@ export class JobFileMap extends Context.Tag("JobFileMap")<JobFileMap, JobFileMap
 
       return {
         set: (jobId, entry) => Ref.update(ref, HashMap.set(jobId, entry)),
-        get: (jobId) => Effect.map(Ref.get(ref), (map) => HashMap.get(map, jobId).pipe(
-          (opt) => opt._tag === "Some" ? opt.value : undefined
-        )),
+        get: (jobId) => Effect.map(Ref.get(ref), (map) =>
+          Option.getOrUndefined(HashMap.get(map, jobId))
+        ),
         remove: (jobId) => Ref.update(ref, HashMap.remove(jobId)),
       }
     }),

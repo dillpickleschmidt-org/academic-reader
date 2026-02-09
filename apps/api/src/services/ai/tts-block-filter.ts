@@ -83,16 +83,20 @@ export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {
           system: SYSTEM_PROMPT,
           prompt,
         }),
-      catch: (e) => e,
-    }).pipe(Effect.either)
+      catch: (e) => e as Error,
+    }).pipe(
+      Effect.catchAll(() => {
+        console.warn("[tts-block-filter] AI classification failed")
+        return Effect.succeed({ output: null as any })
+      }),
+    )
 
-    if (result._tag === "Left" || !result.right.output) {
-      console.warn("[tts-block-filter] AI classification failed")
+    if (!result.output) {
       return Object.fromEntries(textBlocks.map((b) => [b.id, true]))
     }
 
     const map: Record<string, boolean> = {}
-    for (const entry of result.right.output as { id: string; include: boolean }[]) {
+    for (const entry of result.output as { id: string; include: boolean }[]) {
       map[entry.id] = entry.include
     }
     return map

@@ -105,12 +105,10 @@ export function processCompletedJob(
 
     // Save to S3
     if (result.formats && fileInfo?.documentPath) {
-      yield* Effect.either(
-        Effect.all([
-          storage.saveFile(`${fileInfo.documentPath}/content.html`, result.formats.html || ""),
-          storage.saveFile(`${fileInfo.documentPath}/content.md`, result.formats.markdown || ""),
-        ]),
-      )
+      yield* Effect.all([
+        storage.saveFile(`${fileInfo.documentPath}/content.html`, result.formats.html || ""),
+        storage.saveFile(`${fileInfo.documentPath}/content.md`, result.formats.markdown || ""),
+      ], { concurrency: "unbounded" }).pipe(Effect.ignore)
     }
 
     // Persist to Convex
@@ -130,15 +128,7 @@ export function processCompletedJob(
 
           // Fire-and-forget enrichments
           if (normalizedChunks.length && fileInfo.documentPath) {
-            runBackgroundEnrichments(
-              storage,
-              config,
-              fileInfo,
-              result,
-              normalizedChunks,
-              documentId,
-              convex,
-            )
+            Effect.runFork(runBackgroundEnrichments(normalizedChunks, documentId, convex))
           }
         }
       }

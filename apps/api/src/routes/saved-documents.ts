@@ -47,7 +47,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         try: () => convex.query("api/documents:getChunks" as any, { documentId }),
         catch: () => [],
       }).pipe(Effect.catchAll(() => Effect.succeed([]))),
-    ])
+    ], { concurrency: "unbounded" })
 
     if (htmlResult._tag === "Left") {
       return HttpServerResponse.unsafeJson({ error: "Document not found" }, { status: 404 })
@@ -115,7 +115,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
     }
 
     const folderPrefix = `documents/${userId}/${storageId}/`
-    yield* storage.deletePrefix(folderPrefix).pipe(Effect.either)
+    yield* storage.deletePrefix(folderPrefix).pipe(Effect.ignore)
 
     return HttpServerResponse.unsafeJson({ success: true })
   })),

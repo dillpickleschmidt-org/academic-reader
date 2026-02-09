@@ -165,31 +165,32 @@ export const ttsRouter = HttpRouter.empty.pipe(
 
             const storagePath = ttsAudioPath(userId, doc.storageId, voiceId, blockId)
 
-            // Fire-and-forget: save to storage + convex
             Effect.runPromise(
               storage.saveFile(storagePath, wavBuffer, {
                 contentType: "audio/wav",
                 cacheControl: "public, max-age=31536000, immutable",
-              }),
+              }).pipe(
+                Effect.flatMap(() =>
+                  Effect.tryPromise({
+                    try: () =>
+                      convex.mutation("api/ttsAudio:createAudio" as any, {
+                        documentId,
+                        blockId,
+                        voiceId,
+                        storagePath,
+                        durationMs,
+                        sampleRate,
+                        wordTimestamps: latestWordTimestamps,
+                      }),
+                    catch: (e) => e as Error,
+                  }),
+                ),
+                Effect.catchAll((e) => {
+                  console.warn("[tts] Cache save failed:", e)
+                  return Effect.void
+                }),
+              ),
             )
-              .then(() => {
-                convex
-                  .mutation("api/ttsAudio:createAudio" as any, {
-                    documentId,
-                    blockId,
-                    voiceId,
-                    storagePath,
-                    durationMs,
-                    sampleRate,
-                    wordTimestamps: latestWordTimestamps,
-                  })
-                  .catch((e: unknown) =>
-                    console.warn("[tts] Cache save failed:", e),
-                  )
-              })
-              .catch((e: unknown) =>
-                console.warn("[tts] Storage save failed:", e),
-              )
           } catch (e) {
             console.error("[tts] Stream error:", e)
             sendEvent({ type: "error", error: e instanceof Error ? e.message : "Synthesis failed" })

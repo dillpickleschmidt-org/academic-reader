@@ -1,0 +1,151 @@
+"use client"
+
+import { useState, useEffect, useRef, type ReactNode } from "react"
+import { ChevronRight, type LucideIcon } from "lucide-react"
+
+import {
+  CollapsibleRoot,
+  CollapsiblePanel,
+} from "@academic-reader/ui/primitives/collapsible"
+import {
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from "@academic-reader/ui/primitives/sidebar"
+
+type NavSubItem =
+  | {
+      title: string
+      url: string
+      displayPage?: number
+      isChild?: boolean
+      onClick?: () => void
+    }
+  | {
+      render: ReactNode
+    }
+
+type NavItem = {
+  title: string
+  url: string
+  icon?: LucideIcon
+  isActive?: boolean
+  onClick?: () => boolean | void
+  items?: NavSubItem[]
+  className?: string
+}
+
+function NavItem({
+  item,
+  open,
+  onToggle,
+}: {
+  item: NavItem
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <CollapsibleRoot
+      open={open}
+      onOpenChange={onToggle}
+      className="group/collapsible"
+    >
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={item.title}
+          onClick={() => {
+            const result = item.onClick?.()
+            if (result === false) return
+            onToggle()
+          }}
+        >
+          {item.icon && <item.icon />}
+          <span>{item.title}</span>
+          <ChevronRight className="ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90" />
+        </SidebarMenuButton>
+        <CollapsiblePanel>
+          <SidebarMenuSub className={item.className}>
+            {item.items?.map((subItem, index) =>
+              "render" in subItem ? (
+                <SidebarMenuSubItem key={index}>
+                  {subItem.render}
+                </SidebarMenuSubItem>
+              ) : (
+                <SidebarMenuSubItem key={`${subItem.title}-${index}`}>
+                  <SidebarMenuSubButton
+                    render={
+                      <a
+                        href={subItem.url}
+                        title={subItem.title}
+                        onClick={(e) => {
+                          if (subItem.onClick) {
+                            e.preventDefault()
+                            subItem.onClick()
+                          }
+                        }}
+                      />
+                    }
+                    className={subItem.isChild ? "pl-6" : ""}
+                  >
+                    <span className="flex-1 truncate">{subItem.title}</span>
+                    {subItem.displayPage !== undefined && (
+                      <span className="text-muted-foreground text-xs ml-2 shrink-0">
+                        {subItem.displayPage}
+                      </span>
+                    )}
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              ),
+            )}
+          </SidebarMenuSub>
+        </CollapsiblePanel>
+      </SidebarMenuItem>
+    </CollapsibleRoot>
+  )
+}
+
+export function NavMain({
+  items,
+  label,
+}: {
+  items: NavItem[]
+  label?: string
+}) {
+  const [openKey, setOpenKey] = useState<string | null>(
+    () => items.find((i) => i.isActive)?.title ?? null,
+  )
+
+  const prevActiveRef = useRef(new Set(items.filter((i) => i.isActive).map((i) => i.title)))
+  useEffect(() => {
+    for (const item of items) {
+      if (item.isActive && !prevActiveRef.current.has(item.title)) {
+        setOpenKey(item.title)
+        break
+      }
+    }
+    prevActiveRef.current = new Set(items.filter((i) => i.isActive).map((i) => i.title))
+  }, [items])
+
+  return (
+    <SidebarGroup>
+      {label && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
+      <SidebarMenu>
+        {items.map((item) => (
+          <NavItem
+            key={item.title}
+            item={item}
+            open={openKey === item.title}
+            onToggle={() =>
+              setOpenKey((prev) => (prev === item.title ? null : item.title))
+            }
+          />
+        ))}
+      </SidebarMenu>
+    </SidebarGroup>
+  )
+}

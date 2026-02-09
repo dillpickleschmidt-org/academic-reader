@@ -22,14 +22,14 @@ export function generateChatTitle(
           system: SYSTEM_PROMPT,
           prompt: `User: ${userMessage}\n\nAssistant: ${assistantMessage}`,
         }),
-      catch: (e) => e,
-    }).pipe(Effect.either)
+      catch: (e) => e as Error,
+    }).pipe(
+      Effect.catchAll((e) => {
+        console.warn("[title-generation] AI generation failed:", e)
+        return Effect.succeed({ text: "" })
+      }),
+    )
 
-    if (result._tag === "Left") {
-      console.warn("[title-generation] AI generation failed:", result.left)
-      return ""
-    }
-
-    return result.right.text?.trim() || ""
+    return result.text?.trim() || ""
   })
 }

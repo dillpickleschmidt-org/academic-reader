@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import {
   streamText,
   convertToModelMessages,
@@ -9,7 +9,7 @@ import {
 import { z } from "zod"
 import type { ConvexHttpClient } from "convex/browser"
 import { webSearch, type ExaSearchResult } from "@exalabs/ai-sdk"
-import { ModelProvider } from "../model-provider"
+import { ModelProvider, type ModelProviderService } from "../model-provider"
 import { generateEmbedding } from "./embeddings"
 import { generateChatTitle } from "./title-generation"
 import { AppConfig } from "../../config"
@@ -204,9 +204,8 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
         // Fire-and-forget: generate LLM title for new threads
         if (isFirstMessage) {
           Effect.runPromise(
-            Effect.provide(
-              generateChatTitle(userText!, text),
-              ModelProvider.Live.pipe(Layer.provide(AppConfig.Live)),
+            generateChatTitle(userText!, text).pipe(
+              Effect.provideService(ModelProvider, models),
             ),
           )
             .then(async (llmTitle) => {
@@ -230,7 +229,7 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
 function createSearchTool(
   documentId: string,
   convex: ConvexHttpClient,
-  models: { embeddingModel: () => any },
+  models: ModelProviderService,
 ) {
   return tool({
     description:
@@ -245,9 +244,8 @@ function createSearchTool(
 
       try {
         const queryEmbedding = await Effect.runPromise(
-          Effect.provide(
-            generateEmbedding(query),
-            ModelProvider.Live.pipe(Layer.provide(AppConfig.Live)),
+          generateEmbedding(query).pipe(
+            Effect.provideService(ModelProvider, models),
           ),
         )
 

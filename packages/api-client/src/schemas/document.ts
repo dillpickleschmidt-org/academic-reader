@@ -71,3 +71,20 @@ export const LoadedDocument = Schema.Struct({
   storageId: Schema.String,
 })
 export type LoadedDocument = typeof LoadedDocument.Type
+
+export const SavedDocumentChunk = Schema.Struct({
+  blockId: Schema.String,
+  blockType: Schema.String,
+  html: Schema.String,
+  includeTts: Schema.optional(Schema.Boolean),
+  ttsText: Schema.optional(Schema.String),
+})
+export type SavedDocumentChunk = typeof SavedDocumentChunk.Type
+
+export const SavedDocumentResponse = Schema.Struct({
+  html: Schema.String,
+  storageId: Schema.String,
+  toc: TocResult,
+  chunks: Schema.optional(Schema.Array(SavedDocumentChunk)),
+})
+export type SavedDocumentResponse = typeof SavedDocumentResponse.Type

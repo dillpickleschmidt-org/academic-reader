@@ -5,7 +5,7 @@ import type { CheerioAPI } from "cheerio"
 import { minify } from "html-minifier-terser"
 import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
-import { Storage, type StorageService } from "../services/storage"
+import { Storage } from "../services/storage"
 import {
   escapeHtml,
   sanitizeTitle,
@@ -71,10 +71,7 @@ export const downloadRouter = HttpRouter.empty.pipe(
     const html = processHtml(htmlResult.right, HTML_TRANSFORMS)
     const $ = cheerio.load(html)
 
-    yield* Effect.tryPromise({
-      try: () => embedImagesFromStorage($, storage, docPath),
-      catch: () => undefined,
-    }).pipe(Effect.catchAll(() => Effect.void))
+    yield* embedImagesFromStorage($, docPath).pipe(Effect.ignore)
 
     const katexFontUsage = extractKatexFontUsage($)
 
@@ -186,30 +183,29 @@ ${renderedContent}
 </html>`
 }
 
-async function embedImagesFromStorage(
-  $: CheerioAPI,
-  storage: StorageService,
-  docPath: string,
-): Promise<void> {
-  const images = $("img").toArray()
-  const imagesPath = `${docPath}/images/`
+function embedImagesFromStorage($: CheerioAPI, docPath: string) {
+  return Effect.gen(function* () {
+    const storage = yield* Storage
+    const images = $("img").toArray()
+    const imagesPath = `${docPath}/images/`
 
-  await Promise.all(
-    images.map(async (el) => {
-      const src = $(el).attr("src")
-      if (!src) return
-      if (!src.includes(imagesPath)) return
-
-      const filename = new URL(src).pathname.split("/").pop()
-      if (!filename) return
-
-      try {
-        const buffer = await Effect.runPromise(storage.readFile(`${docPath}/images/${filename}`))
-        const base64 = buffer.toString("base64")
-        $(el).attr("src", `data:${getImageMimeType(filename)};base64,${base64}`)
-      } catch {
-        console.warn(`[download] Failed to embed image: ${filename}`)
-      }
-    }),
-  )
+    yield* Effect.all(
+      images
+        .filter((el) => {
+          const src = $(el).attr("src")
+          return src && src.includes(imagesPath)
+        })
+        .map((el) =>
+          Effect.gen(function* () {
+            const src = $(el).attr("src")!
+            const filename = new URL(src).pathname.split("/").pop()
+            if (!filename) return
+            const buffer = yield* storage.readFile(`${docPath}/images/${filename}`)
+            const base64 = buffer.toString("base64")
+            $(el).attr("src", `data:${getImageMimeType(filename)};base64,${base64}`)
+          }).pipe(Effect.catchAll(() => Effect.void)),
+        ),
+      { concurrency: "unbounded" },
+    )
+  })
 }

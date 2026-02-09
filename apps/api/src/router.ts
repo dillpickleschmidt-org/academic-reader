@@ -59,12 +59,15 @@ const authProxyApp = Effect.gen(function* () {
       } as RequestInit)
       return HttpServerResponse.fromWeb(response)
     },
-    catch: () =>
-      HttpServerResponse.json(
+    catch: () => null,
+  }).pipe(
+    Effect.orElseSucceed(() =>
+      HttpServerResponse.unsafeJson(
         { error: "Auth service unavailable" },
         { status: 502 },
       ),
-  })
+    ),
+  )
 })
 
 const STATIC_DIR = resolve(import.meta.dirname, "../../web/dist")
@@ -91,7 +94,7 @@ const serveStaticApp = Effect.gen(function* () {
 })
 
 export const app = HttpRouter.empty.pipe(
-  HttpRouter.mountApp("/api/auth", authProxyApp as any),
+  HttpRouter.mountApp("/api/auth", authProxyApp),
   HttpRouter.mount("/api", apiRouter),
-  HttpRouter.mountApp("/", serveStaticApp as any),
-) as any
+  HttpRouter.mountApp("/", serveStaticApp),
+)

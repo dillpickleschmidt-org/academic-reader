@@ -32,7 +32,7 @@ const program = Effect.gen(function* () {
     ),
   )
 
-  const ServerLive = (app as any).pipe(
+  const ServerLive = app.pipe(
     HttpServer.serve(middleware),
     Layer.provide(
       BunHttpServer.layer({
@@ -48,7 +48,7 @@ const program = Effect.gen(function* () {
           : {}),
       }),
     ),
-  ) as Layer.Layer<never, unknown, never>
+  )
 
   yield* Layer.launch(ServerLive)
 })
@@ -70,5 +70,5 @@ const ConversionLive = ConversionBackend.Live.pipe(
 const AllServices = Layer.mergeAll(MainLive, ConversionLive)
 
 BunRuntime.runMain(
-  Effect.provide(program, AllServices) as Effect.Effect<void, unknown, never>,
+  Effect.provide(program, AllServices),
 )

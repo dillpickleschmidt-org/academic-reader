@@ -122,7 +122,7 @@ services:
           esac
         done
     volumes:
-      - tunnel_url:/tunnel
+      - ./.infra/tunnel:/tunnel
 
   # Self-hosted Convex backend
   # Profiles: all dev modes (local, datalab, modal)
@@ -144,10 +144,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Self-hosted Convex dashboard (opt-in with --dashboard flag)
+  # Self-hosted Convex dashboard
   convex-dashboard:
     image: ghcr.io/get-convex/convex-dashboard:latest
-    profiles: ["dashboard"]
+    profiles: ["local", "datalab", "modal"]
     ports:
       - "6791:6791"
     environment:
@@ -163,4 +163,3 @@ services:
 
 volumes:
   convex_data:
-  tunnel_url:

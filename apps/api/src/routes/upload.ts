@@ -44,15 +44,9 @@ export const uploadRouter = HttpRouter.empty.pipe(
       yield* enrichEvent({ backend: config.backendMode })
 
       const request = yield* HttpServerRequest.HttpServerRequest
+      const webRequest = yield* HttpServerRequest.toWeb(request)
       const formData = yield* Effect.tryPromise({
-        try: () => {
-          const webReq = new Request(request.url, {
-            method: request.method,
-            headers: request.headers as Record<string, string>,
-            body: (request as any).source?.body ?? null,
-          })
-          return webReq.formData()
-        },
+        try: () => webRequest.formData(),
         catch: () => new ValidationError({ message: "Invalid form data" }),
       })
 

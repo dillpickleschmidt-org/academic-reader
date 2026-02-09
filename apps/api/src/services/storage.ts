@@ -1,7 +1,14 @@
 import { Context, Effect, Layer } from "effect"
 import { AwsClient } from "aws4fetch"
+import { existsSync, readFileSync } from "fs"
+import { resolve } from "path"
 import { StorageError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
+
+const tunnelUrlPath = resolve(
+  import.meta.dirname,
+  "../../../../.infra/tunnel/url",
+)
 
 export function getDocumentPath(fileId: string, userId?: string): string {
   return userId ? `documents/${userId}/${fileId}` : `temp_documents/${fileId}`
@@ -59,9 +66,8 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
       function getTunnelUrl(): string | undefined {
         if (config.backendMode !== "modal") return undefined
         try {
-          const { existsSync, readFileSync } = require("fs")
-          if (existsSync("/tunnel/url")) {
-            const url = readFileSync("/tunnel/url", "utf-8").trim()
+          if (existsSync(tunnelUrlPath)) {
+            const url = readFileSync(tunnelUrlPath, "utf-8").trim()
             if (url) return url
           }
         } catch {}

@@ -14,7 +14,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install
+RUN bun install --verbose
 
 # Copy source
 COPY apps/web/ ./apps/web/
@@ -42,7 +42,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install
+RUN bun install --verbose
 
 # Copy API source + packages
 COPY apps/api/ ./apps/api/

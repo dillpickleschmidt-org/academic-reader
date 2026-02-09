@@ -1,0 +1,35 @@
+name: Deploy Modal Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workers/**"
+      - ".github/workflows/deploy-modal.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Modal CLI
+        run: pip install modal
+
+      - name: Deploy Marker worker
+        run: modal deploy workers/marker/modal_app.py
+
+      - name: Deploy LightOnOCR worker
+        run: modal deploy workers/lightonocr/modal_app.py
+
+      - name: Deploy CHANDRA worker
+        run: modal deploy workers/chandra/modal_app.py
+
+      - name: Deploy Kokoro TTS worker
+        run: modal deploy workers/kokoro-tts/modal_app.py
+
+      - name: Deploy Qwen3 TTS worker
+        run: modal deploy workers/qwen3-tts/modal_app.py

@@ -5,6 +5,8 @@ FROM oven/bun:latest AS frontend
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Copy workspace config and package files
 COPY package.json bun.lock* tsconfig.base.json turbo.json ./
 COPY apps/web/package.json ./apps/web/
@@ -14,7 +16,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source
 COPY apps/web/ ./apps/web/
@@ -34,6 +36,8 @@ FROM oven/bun:latest
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 # Copy workspace config and package files
 COPY package.json bun.lock* tsconfig.base.json turbo.json ./
 COPY apps/api/package.json ./apps/api/
@@ -42,7 +46,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy API source + packages
 COPY apps/api/ ./apps/api/

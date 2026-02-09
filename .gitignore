@@ -11,6 +11,7 @@ __pycache__/
 
 # Build outputs
 dist/
+.turbo/
 *.tsbuildinfo
 
 # Logs

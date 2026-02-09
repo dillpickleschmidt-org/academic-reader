@@ -1,21 +1,21 @@
 {
   "name": "academic-reader",
   "private": true,
-  "packageManager": "bun@1.3.3",
-  "workspaces": [
+  "packageManager": "bun@1.3.9",
+    "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo dev --ui",
+    "dev": "turbo dev --ui tui",
     "dev:api": "turbo dev --filter=@academic-reader/api",
     "dev:web": "turbo dev --filter=@academic-reader/web",
     "build": "turbo build",
     "check": "turbo check",
     "check:api": "turbo check --filter=@academic-reader/api",
     "check:web": "turbo check --filter=@academic-reader/web",
-    "infra": "docker compose up -d",
-    "infra:down": "docker compose down"
+    "infra": "bun scripts/infra.ts up",
+    "infra:down": "bun scripts/infra.ts down"
   },
   "devDependencies": {
     "@types/bun": "^1.3.5",

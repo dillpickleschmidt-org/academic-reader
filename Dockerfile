@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────
 # Stage 1: Build Frontend
 # ─────────────────────────────────────────────────────────────
-FROM oven/bun:1 AS frontend
+FROM oven/bun:latest AS frontend
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source
 COPY apps/web/ ./apps/web/
@@ -30,7 +30,7 @@ RUN bun run --cwd apps/web build
 # ─────────────────────────────────────────────────────────────
 # Stage 2: API Server
 # ─────────────────────────────────────────────────────────────
-FROM oven/bun:1
+FROM oven/bun:latest
 
 WORKDIR /app
 
@@ -42,7 +42,7 @@ COPY packages/convex/package.json ./packages/convex/
 COPY packages/ui/package.json ./packages/ui/
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy API source + packages
 COPY apps/api/ ./apps/api/

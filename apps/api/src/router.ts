@@ -28,7 +28,7 @@ const authProxyApp = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest
   const webRequest = yield* HttpServerRequest.toWeb(request)
   const url = new URL(request.url, "http://localhost")
-  const targetUrl = `${config.convex.httpUrl}${url.pathname}${url.search}`
+  const targetUrl = `${config.convex.httpUrl}/api/auth${url.pathname}${url.search}`
   const targetHost = new URL(config.convex.httpUrl).host
 
   const headers = new Headers(request.headers as Record<string, string>)
@@ -57,6 +57,6 @@ const authProxyApp = Effect.gen(function* () {
 })
 
 export const app = HttpRouter.empty.pipe(
-  HttpRouter.mount("/api", apiRouter),
   HttpRouter.mountApp("/api/auth", authProxyApp as any),
+  HttpRouter.mount("/api", apiRouter),
 ) as any

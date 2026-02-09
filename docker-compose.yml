@@ -67,56 +67,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Self-hosted API (Effect.ts on Bun)
-  # Profiles: local, datalab, modal
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    profiles: ["local", "datalab", "modal"]
-    stop_grace_period: 10s
-    stop_signal: SIGINT
-    ports:
-      - "8787:8787"
-    env_file:
-      - .env.local
-    environment:
-      - NODE_ENV=development
-      - PORT=8787
-      - BACKEND_MODE=${BACKEND_MODE}
-      - CONVEX_HTTP_URL=http://convex-backend:3211
-      - CONVEX_SITE_URL=http://convex-backend:3210
-      - KOKORO_TTS_WORKER_URL=http://kokoro-tts:8001
-      - QWEN3_TTS_WORKER_URL=http://qwen3-tts:8002
-      - S3_ENDPOINT=http://minio:9000
-      - S3_PUBLIC_URL=http://localhost:9000/academic-reader
-      - S3_ACCESS_KEY=minioadmin
-      - S3_SECRET_KEY=minioadmin
-      - S3_BUCKET=academic-reader
-    volumes:
-      - ./apps/api/src:/app/apps/api/src
-      - ./packages:/app/packages
-      - tunnel_url:/tunnel:ro
-    depends_on:
-      convex-backend:
-        condition: service_healthy
-      marker:
-        condition: service_started
-        required: false
-      lightonocr:
-        condition: service_started
-        required: false
-      kokoro-tts:
-        condition: service_started
-        required: false
-      qwen3-tts:
-        condition: service_started
-        required: false
-      minio:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-
   # MinIO S3-compatible storage for all dev profiles
   minio:
     image: minio/minio

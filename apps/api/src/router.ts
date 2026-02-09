@@ -4,6 +4,7 @@ import {
   HttpServerResponse,
 } from "@effect/platform"
 import { Effect } from "effect"
+import { resolve, join } from "path"
 import { AppConfig } from "./config"
 import { healthRouter } from "./routes/health"
 import { uploadRouter } from "./routes/upload"
@@ -65,7 +66,30 @@ const authProxyApp = Effect.gen(function* () {
   })
 })
 
+const STATIC_DIR = resolve(import.meta.dirname, "../../web/dist")
+
+const serveStaticApp = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest
+  const url = new URL(request.url, "http://localhost")
+  const pathname = decodeURIComponent(url.pathname)
+
+  const filePath = join(STATIC_DIR, pathname)
+  if (!filePath.startsWith(STATIC_DIR)) {
+    return HttpServerResponse.text("Forbidden", { status: 403 })
+  }
+
+  return yield* HttpServerResponse.file(filePath).pipe(
+    Effect.catchAll(() =>
+      HttpServerResponse.file(join(STATIC_DIR, "index.html")),
+    ),
+    Effect.catchAll(() =>
+      Effect.succeed(HttpServerResponse.text("Not Found", { status: 404 })),
+    ),
+  )
+})
+
 export const app = HttpRouter.empty.pipe(
   HttpRouter.mountApp("/api/auth", authProxyApp as any),
   HttpRouter.mount("/api", apiRouter),
+  HttpRouter.mountApp("/", serveStaticApp as any),
 ) as any

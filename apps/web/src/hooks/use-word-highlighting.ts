@@ -23,7 +23,10 @@ export function useWordHighlighting() {
 
   // Rebuild ranges when timestamps change without restarting the RAF loop
   const prevTimestampsRef = useRef(wordTimestamps)
-  if (wordTimestamps !== prevTimestampsRef.current && spansRef.current.length > 0) {
+  if (
+    wordTimestamps !== prevTimestampsRef.current &&
+    spansRef.current.length > 0
+  ) {
     prevTimestampsRef.current = wordTimestamps
     const originalWords = spansRef.current.map((s) => s.textContent || "")
     const spokenWords = wordTimestamps.map((t) => t.word)
@@ -86,20 +89,31 @@ export function useWordHighlighting() {
       const ranges = rangesRef.current
 
       let spokenIndex = -1
-      for (let i = Math.max(0, lastIndexRef.current - 1); i < timestamps.length; i++) {
+      for (
+        let i = Math.max(0, lastIndexRef.current - 1);
+        i < timestamps.length;
+        i++
+      ) {
         if (timestamps[i].startMs > currentMs) break
-        if (currentMs >= timestamps[i].startMs && currentMs < timestamps[i].endMs) {
+        if (
+          currentMs >= timestamps[i].startMs &&
+          currentMs < timestamps[i].endMs
+        ) {
           spokenIndex = i
           lastIndexRef.current = i
           break
         }
       }
 
-      const range = spokenIndex >= 0 ? ranges[spokenIndex] ?? null : null
+      const range = spokenIndex >= 0 ? (ranges[spokenIndex] ?? null) : null
 
       if (spokenIndex >= 0 && !rangesEqual(range, currentRangeRef.current)) {
         if (currentRangeRef.current) {
-          for (let i = currentRangeRef.current.start; i <= currentRangeRef.current.end; i++) {
+          for (
+            let i = currentRangeRef.current.start;
+            i <= currentRangeRef.current.end;
+            i++
+          ) {
             spansRef.current[i]?.classList.remove("tts-word-active")
           }
         }
@@ -146,7 +160,9 @@ function buildRanges(
   const mapping = alignWordIndices(normSpoken, normOrig)
   const gapRanges = detectGapRanges(mapping)
 
-  const ranges: (HighlightRange | null)[] = new Array(spokenWords.length).fill(null)
+  const ranges: (HighlightRange | null)[] = new Array(spokenWords.length).fill(
+    null,
+  )
 
   for (const [spokenIdx, origIdx] of mapping) {
     ranges[spokenIdx] = { start: origIdx, end: origIdx }
@@ -222,8 +238,18 @@ function matchesSequence(
 
 function detectGapRanges(
   mapping: Map<number, number>,
-): { spokenStart: number; spokenEnd: number; origStart: number; origEnd: number }[] {
-  const ranges: { spokenStart: number; spokenEnd: number; origStart: number; origEnd: number }[] = []
+): {
+  spokenStart: number
+  spokenEnd: number
+  origStart: number
+  origEnd: number
+}[] {
+  const ranges: {
+    spokenStart: number
+    spokenEnd: number
+    origStart: number
+    origEnd: number
+  }[] = []
   const entries = Array.from(mapping.entries()).sort((a, b) => a[0] - b[0])
 
   for (let i = 0; i < entries.length - 1; i++) {

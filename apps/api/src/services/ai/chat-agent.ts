@@ -68,8 +68,7 @@ export function runChatStream(
       const deadline = Date.now() + 60_000
       while (resolvedSummary === undefined && Date.now() < deadline) {
         const poll = yield* Effect.tryPromise({
-          try: () =>
-            convex.query("api/documents:get" as any, { documentId }),
+          try: () => convex.query("api/documents:get" as any, { documentId }),
           catch: () => null,
         }).pipe(Effect.catchAll(() => Effect.succeed(null)))
 
@@ -167,18 +166,30 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
         activeStreams.delete(threadId)
         console.error("[chat] Stream error:", error)
       },
-      onFinish: async ({ usage, finishReason, response, text, sources, steps, totalUsage }) => {
+      onFinish: async ({
+        usage,
+        finishReason,
+        response,
+        text,
+        sources,
+        steps,
+        totalUsage,
+      }) => {
         activeStreams.delete(threadId)
 
         const isFirstMessage = messages.length === 1 && !!userText
-        const fallbackTitle = isFirstMessage ? userText!.slice(0, 20) : undefined
+        const fallbackTitle = isFirstMessage
+          ? userText!.slice(0, 20)
+          : undefined
 
         const parts: any[] = []
         for (const step of steps) {
           for (const result of step.toolResults) {
             const isWebSearch = result.toolName === "webSearch"
             const output = isWebSearch
-              ? stripExaResponse(result.output as Parameters<typeof stripExaResponse>[0])
+              ? stripExaResponse(
+                  result.output as Parameters<typeof stripExaResponse>[0],
+                )
               : result.output
             parts.push({
               type: `tool-${result.toolName}`,

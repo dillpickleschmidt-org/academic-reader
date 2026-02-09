@@ -34,7 +34,11 @@ export class UnifiedAudioPlayer {
   // Callbacks
   private callbacks: UnifiedPlayerCallbacks
 
-  constructor(ctx: AudioContext, volume: number, callbacks: UnifiedPlayerCallbacks) {
+  constructor(
+    ctx: AudioContext,
+    volume: number,
+    callbacks: UnifiedPlayerCallbacks,
+  ) {
     this.ctx = ctx
     this.gainNode = ctx.createGain()
     this.gainNode.gain.value = volume
@@ -181,7 +185,10 @@ export class UnifiedAudioPlayer {
 
     this.pausePosition = this.ctx.currentTime - this.startTime
     if (this.buffer) {
-      this.pausePosition = Math.max(0, Math.min(this.pausePosition, this.buffer.duration))
+      this.pausePosition = Math.max(
+        0,
+        Math.min(this.pausePosition, this.buffer.duration),
+      )
     }
 
     if (this.activeSource) {
@@ -267,7 +274,10 @@ export class UnifiedAudioPlayer {
 
   getDuration(): number {
     if (this.mode === "streaming") {
-      const totalSamples = this.streamingChunks.reduce((sum, c) => sum + c.length, 0)
+      const totalSamples = this.streamingChunks.reduce(
+        (sum, c) => sum + c.length,
+        0,
+      )
       return totalSamples / 24000
     }
 
@@ -327,7 +337,8 @@ export class UnifiedAudioPlayer {
 
     source.start(0, position)
     this.startTime = this.ctx.currentTime - position
-    this.nextScheduleTime = this.ctx.currentTime + (consolidated.duration - position)
+    this.nextScheduleTime =
+      this.ctx.currentTime + (consolidated.duration - position)
 
     this.streamingSources.push(source)
     source.onended = () => {
@@ -338,7 +349,10 @@ export class UnifiedAudioPlayer {
   }
 
   private consolidateChunks(): AudioBuffer | null {
-    const totalSamples = this.streamingChunks.reduce((sum, c) => sum + c.length, 0)
+    const totalSamples = this.streamingChunks.reduce(
+      (sum, c) => sum + c.length,
+      0,
+    )
     if (totalSamples === 0) return null
 
     const combined = new Float32Array(totalSamples)
@@ -397,7 +411,10 @@ function int16ToFloat32(int16: Int16Array): Float32Array {
   return float32
 }
 
-function parseWavToBuffer(ctx: AudioContext, arrayBuffer: ArrayBuffer): AudioBuffer {
+function parseWavToBuffer(
+  ctx: AudioContext,
+  arrayBuffer: ArrayBuffer,
+): AudioBuffer {
   const view = new DataView(arrayBuffer)
   const sampleRate = view.getUint32(24, true)
   const pcmData = new Int16Array(arrayBuffer, 44)

@@ -12,7 +12,10 @@ import { DefaultChatTransport, type UIMessage, type ChatStatus } from "ai"
 import { useChat } from "@ai-sdk/react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@academic-reader/convex/convex/_generated/api"
-import type { Id, Doc } from "@academic-reader/convex/convex/_generated/dataModel"
+import type {
+  Id,
+  Doc,
+} from "@academic-reader/convex/convex/_generated/dataModel"
 
 import {
   Bot,

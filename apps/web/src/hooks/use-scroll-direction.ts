@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 
 export function useScrollDirection(
-  containerRef: React.RefObject<HTMLElement | null>
+  containerRef: React.RefObject<HTMLElement | null>,
 ) {
   const lastScrollY = useRef(0)
 

@@ -6,7 +6,11 @@ import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
 import { processHtml, HTML_TRANSFORMS } from "../utils/html-processing"
 import { transformSSEStream } from "../utils/sse-transform"
-import { processCompletedJob, SSE_HEADERS, type JobResultInput } from "./completed-job"
+import {
+  processCompletedJob,
+  SSE_HEADERS,
+  type JobResultInput,
+} from "./completed-job"
 import { JobFileMap, type JobFileEntry } from "../services/job-file-map"
 import { TtsService } from "../services/backends/tts"
 
@@ -34,16 +38,25 @@ export function handleStreamingJob(
         // Emit loading model progress
         if (fileInfo?.workerType) {
           controller.enqueue(
-            encoder.encode(formatSSE("progress", { stage: "Loading model", current: 0, total: 0 })),
+            encoder.encode(
+              formatSSE("progress", {
+                stage: "Loading model",
+                current: 0,
+                total: 0,
+              }),
+            ),
           )
 
           try {
             await new Promise<void>((resolve, reject) => {
-              const workerName = fileInfo.workerType === "lightonocr" ? "lightonocr" : "marker"
+              const workerName =
+                fileInfo.workerType === "lightonocr" ? "lightonocr" : "marker"
               // Simple health check to activate worker
               fetch(`${streamUrl.replace(/\/jobs\/.*/, "/health")}`, {
                 signal: AbortSignal.timeout(30000),
-              }).then(() => resolve()).catch(reject)
+              })
+                .then(() => resolve())
+                .catch(reject)
             })
           } catch (err) {
             event.error = {
@@ -52,7 +65,9 @@ export function handleStreamingJob(
               code: "WORKER_ACTIVATE_ERROR",
             }
             controller.enqueue(
-              encoder.encode(formatSSE("failed", { error: "Failed to load model" })),
+              encoder.encode(
+                formatSSE("failed", { error: "Failed to load model" }),
+              ),
             )
             controller.close()
             emitStreamingEvent(event)
@@ -71,7 +86,9 @@ export function handleStreamingJob(
             code: "STREAM_CONNECT_ERROR",
           }
           controller.enqueue(
-            encoder.encode(formatSSE("failed", { error: "Failed to connect to worker" })),
+            encoder.encode(
+              formatSSE("failed", { error: "Failed to connect to worker" }),
+            ),
           )
           controller.close()
           emitStreamingEvent(event)
@@ -79,9 +96,15 @@ export function handleStreamingJob(
         }
 
         if (!response.ok || !response.body) {
-          event.error = { category: "backend", message: "Stream not available", code: "STREAM_NOT_OK" }
+          event.error = {
+            category: "backend",
+            message: "Stream not available",
+            code: "STREAM_NOT_OK",
+          }
           controller.enqueue(
-            encoder.encode(formatSSE("failed", { error: "Worker stream not available" })),
+            encoder.encode(
+              formatSSE("failed", { error: "Worker stream not available" }),
+            ),
           )
           controller.close()
           emitStreamingEvent(event)
@@ -110,7 +133,13 @@ export function handleStreamingJob(
 
               // Run processCompletedJob as a promise
               const result = await Effect.runPromise(
-                processCompletedJob(jobId, parsed, fileInfo, event, requestCookies).pipe(
+                processCompletedJob(
+                  jobId,
+                  parsed,
+                  fileInfo,
+                  event,
+                  requestCookies,
+                ).pipe(
                   Effect.provideService(AppConfig, config),
                   Effect.provideService(Storage, storage as any),
                 ),
@@ -120,7 +149,8 @@ export function handleStreamingJob(
               output.content = result.content
               output.jobId = jobId
               output.fileId = fileInfo?.fileId
-              if (output.formats?.chunks) output.formats.chunks.blocks = result.blocks
+              if (output.formats?.chunks)
+                output.formats.chunks.blocks = result.blocks
               if (result.imageUrls) output.images = result.imageUrls
               if (result.documentId) output.documentId = result.documentId
 
@@ -159,6 +189,8 @@ export function handleStreamingJob(
       },
     })
 
-    return HttpServerResponse.fromWeb(new Response(stream, { headers: SSE_HEADERS }))
+    return HttpServerResponse.fromWeb(
+      new Response(stream, { headers: SSE_HEADERS }),
+    )
   })
 }

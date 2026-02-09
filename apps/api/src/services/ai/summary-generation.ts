@@ -15,9 +15,10 @@ export function generateDocumentSummary(chunkHtml: string) {
 
     if (!chunkHtml.trim()) return ""
 
-    const input = chunkHtml.length > MAX_INPUT_CHARS
-      ? chunkHtml.slice(0, MAX_INPUT_CHARS)
-      : chunkHtml
+    const input =
+      chunkHtml.length > MAX_INPUT_CHARS
+        ? chunkHtml.slice(0, MAX_INPUT_CHARS)
+        : chunkHtml
 
     const model = models.summaryModel()
 

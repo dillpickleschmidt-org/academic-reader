@@ -1,7 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { BookOpen, Bot, Download, Link2Off, Loader2, Plus, Trash2 } from "lucide-react"
+import {
+  BookOpen,
+  Bot,
+  Download,
+  Link2Off,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react"
 
 import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"

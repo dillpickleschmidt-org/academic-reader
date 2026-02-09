@@ -20,7 +20,11 @@ const program = Effect.gen(function* () {
   if (config.tlsCert && config.tlsKey) console.log("TLS: enabled")
 
   const middleware = HttpMiddleware.make((httpApp) =>
-    wideEventMiddleware(config.backendMode, config.siteUrl, config.otelEndpoint)(
+    wideEventMiddleware(
+      config.backendMode,
+      config.siteUrl,
+      config.otelEndpoint,
+    )(
       HttpMiddleware.cors({
         allowedOrigins: config.siteUrl ? [config.siteUrl] : [],
         credentials: true,
@@ -56,9 +60,7 @@ const MainLive = Layer.mergeAll(
   ModelProvider.Live,
   TtsService.Live,
   JobFileMap.Live,
-).pipe(
-  Layer.provideMerge(AppConfig.Live),
-)
+).pipe(Layer.provideMerge(AppConfig.Live))
 
 const ConversionLive = ConversionBackend.Live.pipe(
   Layer.provide(AppConfig.Live),

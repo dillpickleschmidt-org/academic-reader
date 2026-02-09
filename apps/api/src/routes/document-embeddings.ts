@@ -25,7 +25,10 @@ export const documentEmbeddingsRouter = HttpRouter.empty.pipe(
       })
 
       if (hasEmbeddings) {
-        return HttpServerResponse.unsafeJson({ chunkCount: 0, alreadyHasEmbeddings: true })
+        return HttpServerResponse.unsafeJson({
+          chunkCount: 0,
+          alreadyHasEmbeddings: true,
+        })
       }
 
       // Fetch chunks

@@ -59,7 +59,10 @@ async function ensureWoff2Init(): Promise<void> {
   woff2Initialized = true
 }
 
-async function subsetFontBuffer(fontBuffer: ArrayBuffer, chars: string): Promise<ArrayBuffer> {
+async function subsetFontBuffer(
+  fontBuffer: ArrayBuffer,
+  chars: string,
+): Promise<ArrayBuffer> {
   await ensureWoff2Init()
 
   const codePoints = [...new Set(chars)].map((c) => c.codePointAt(0)!)
@@ -86,7 +89,10 @@ async function subsetFontBuffer(fontBuffer: ArrayBuffer, chars: string): Promise
   return copy
 }
 
-const KATEX_FONT_MAP: Record<string, { family: string; weight: string; style: string }> = {
+const KATEX_FONT_MAP: Record<
+  string,
+  { family: string; weight: string; style: string }
+> = {
   mathnormal: { family: "KaTeX_Math", weight: "400", style: "italic" },
   mathit: { family: "KaTeX_Main", weight: "400", style: "italic" },
   mathrm: { family: "KaTeX_Main", weight: "400", style: "normal" },
@@ -114,10 +120,26 @@ const KATEX_FONT_MAP: Record<string, { family: string; weight: string; style: st
   mathtt: { family: "KaTeX_Typewriter", weight: "400", style: "normal" },
   mathscr: { family: "KaTeX_Script", weight: "400", style: "normal" },
   mathsf: { family: "KaTeX_SansSerif", weight: "400", style: "normal" },
-  "delimsizing size1": { family: "KaTeX_Size1", weight: "400", style: "normal" },
-  "delimsizing size2": { family: "KaTeX_Size2", weight: "400", style: "normal" },
-  "delimsizing size3": { family: "KaTeX_Size3", weight: "400", style: "normal" },
-  "delimsizing size4": { family: "KaTeX_Size4", weight: "400", style: "normal" },
+  "delimsizing size1": {
+    family: "KaTeX_Size1",
+    weight: "400",
+    style: "normal",
+  },
+  "delimsizing size2": {
+    family: "KaTeX_Size2",
+    weight: "400",
+    style: "normal",
+  },
+  "delimsizing size3": {
+    family: "KaTeX_Size3",
+    weight: "400",
+    style: "normal",
+  },
+  "delimsizing size4": {
+    family: "KaTeX_Size4",
+    weight: "400",
+    style: "normal",
+  },
   "delim-size1": { family: "KaTeX_Size1", weight: "400", style: "normal" },
   "delim-size4": { family: "KaTeX_Size4", weight: "400", style: "normal" },
   "small-op": { family: "KaTeX_Size1", weight: "400", style: "normal" },
@@ -147,7 +169,9 @@ const FONT_DATA: Record<string, string> = {
   "KaTeX_Size4|normal|400": katexSize4Regular,
 }
 
-export function extractKatexFontUsage($: cheerio.CheerioAPI): Record<string, Set<string>> {
+export function extractKatexFontUsage(
+  $: cheerio.CheerioAPI,
+): Record<string, Set<string>> {
   const fontChars: Record<string, Set<string>> = {}
   const defaultFont = { family: "KaTeX_Main", weight: "400", style: "normal" }
 
@@ -213,7 +237,9 @@ export async function embedSourceSans(): Promise<string> {
   }
 }
 
-export async function subsetKatexFonts(fontUsage: Record<string, Set<string>>): Promise<string> {
+export async function subsetKatexFonts(
+  fontUsage: Record<string, Set<string>>,
+): Promise<string> {
   const cssBlocks: string[] = []
 
   for (const [fontKey, chars] of Object.entries(fontUsage)) {

@@ -31,23 +31,27 @@ export const uploadFile = (file: File) =>
     const client = yield* HttpClient.HttpClient
     const formData = new FormData()
     formData.append("file", file)
-    return yield* client.post("/api/upload", {
-      body: HttpBody.formData(formData),
-    }).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .post("/api/upload", {
+        body: HttpBody.formData(formData),
+      })
+      .pipe(
+        Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })
 
 export const fetchFromUrl = (url: string) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    return yield* client.post(`/api/fetch-url?url=${encodeURIComponent(url)}`).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .post(`/api/fetch-url?url=${encodeURIComponent(url)}`)
+      .pipe(
+        Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })
 
 export const startConversion = (
@@ -64,9 +68,14 @@ export const startConversion = (
       filename,
       mime_type: mimeType,
     })
-    if (options.pageRange.trim()) params.set("page_range", options.pageRange.trim())
+    if (options.pageRange.trim())
+      params.set("page_range", options.pageRange.trim())
     return yield* client.post(`/api/convert/${fileId}?${params}`).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Struct({ job_id: Schema.String }))),
+      Effect.flatMap(
+        HttpClientResponse.schemaBodyJson(
+          Schema.Struct({ job_id: Schema.String }),
+        ),
+      ),
       Effect.scoped,
       Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
     )
@@ -76,7 +85,11 @@ export const cancelJob = (jobId: string) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client.post(`/api/jobs/${jobId}/cancel`).pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Struct({ status: Schema.String }))),
+      Effect.flatMap(
+        HttpClientResponse.schemaBodyJson(
+          Schema.Struct({ status: Schema.String }),
+        ),
+      ),
       Effect.scoped,
       Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
     )
@@ -92,9 +105,13 @@ export const subscribeToJobStream = (jobId: string) =>
   Stream.unwrapScoped(
     Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
-      const response = yield* client.get(`/api/jobs/${jobId}/stream`).pipe(
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-      )
+      const response = yield* client
+        .get(`/api/jobs/${jobId}/stream`)
+        .pipe(
+          Effect.mapError(
+            (e) => new ApiError({ message: String(e), status: 0 }),
+          ),
+        )
       const decoder = new TextDecoder()
       return response.stream.pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
@@ -109,7 +126,8 @@ export const subscribeToJobStream = (jobId: string) =>
             case "html_ready":
               return Option.some({
                 _tag: "HtmlReady",
-                content: (JSON.parse(event.data) as { content: string }).content,
+                content: (JSON.parse(event.data) as { content: string })
+                  .content,
               })
             case "completed":
               return Option.some({
@@ -167,15 +185,20 @@ export const loadSavedDocument = (documentId: string) =>
     )
   })
 
-export const deleteSavedDocument = (documentId: string, threadAction?: string) =>
+export const deleteSavedDocument = (
+  documentId: string,
+  threadAction?: string,
+) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     const params = threadAction ? `?threadAction=${threadAction}` : ""
-    return yield* client.del(`/api/saved-documents/${documentId}${params}`).pipe(
-      Effect.asVoid,
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .del(`/api/saved-documents/${documentId}${params}`)
+      .pipe(
+        Effect.asVoid,
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })
 
 export const prefetchTTS = (params: {
@@ -186,13 +209,15 @@ export const prefetchTTS = (params: {
 }) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    return yield* client.post("/api/tts/prefetch", {
-      body: HttpBody.unsafeJson(params),
-    }).pipe(
-      Effect.asVoid,
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .post("/api/tts/prefetch", {
+        body: HttpBody.unsafeJson(params),
+      })
+      .pipe(
+        Effect.asVoid,
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })
 
 export const synthesizeTTS = (params: {
@@ -209,11 +234,13 @@ export const synthesizeTTS = (params: {
       voiceId: params.voiceId,
     }
     if (params.ttsText) body.ttsText = params.ttsText
-    const response = yield* client.post("/api/tts/synthesize", {
-      body: HttpBody.unsafeJson(body),
-    }).pipe(
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    const response = yield* client
+      .post("/api/tts/synthesize", {
+        body: HttpBody.unsafeJson(body),
+      })
+      .pipe(
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
     return response
   })
 
@@ -224,13 +251,15 @@ export const batchTTS = (params: {
 }) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    return yield* client.post("/api/tts/batch", {
-      body: HttpBody.unsafeJson(params),
-    }).pipe(
-      Effect.asVoid,
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .post("/api/tts/batch", {
+        body: HttpBody.unsafeJson(params),
+      })
+      .pipe(
+        Effect.asVoid,
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })
 
 export const unloadTTS = () =>
@@ -266,11 +295,11 @@ export const triggerEmbeddings = (documentId: string) =>
 export const fetchPdfPage = (documentId: string, pageNum: number) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
-    return yield* client.get(
-      `/api/saved-documents/${documentId}/page/${pageNum}`,
-    ).pipe(
-      Effect.flatMap((response) => response.arrayBuffer),
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
+    return yield* client
+      .get(`/api/saved-documents/${documentId}/page/${pageNum}`)
+      .pipe(
+        Effect.flatMap((response) => response.arrayBuffer),
+        Effect.scoped,
+        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
+      )
   })

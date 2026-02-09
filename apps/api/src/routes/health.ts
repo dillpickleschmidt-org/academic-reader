@@ -7,7 +7,10 @@ export const healthRouter = HttpRouter.empty.pipe(
     "/",
     Effect.gen(function* () {
       const config = yield* AppConfig
-      return HttpServerResponse.unsafeJson({ status: "ok", mode: config.backendMode })
+      return HttpServerResponse.unsafeJson({
+        status: "ok",
+        mode: config.backendMode,
+      })
     }),
   ),
 )

@@ -1,4 +1,8 @@
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform"
 import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import { requireAuth } from "../middleware/auth"
@@ -9,7 +13,12 @@ import { TtsService, type TTSEngine } from "../services/backends/tts"
 import { AppConfig } from "../config"
 import { pcmToWav } from "../utils/pcm-to-wav"
 
-function ttsAudioPath(userId: string, storageId: string, voiceId: string, blockId: string): string {
+function ttsAudioPath(
+  userId: string,
+  storageId: string,
+  voiceId: string,
+  blockId: string,
+): string {
   return `documents/${userId}/${storageId}/audio/${voiceId}/${blockId.replace(/\//g, "_")}.wav`
 }
 
@@ -59,21 +68,28 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const { documentId, blockId, ttsText, voiceId = "female_1" } = body
 
       if (!documentId || !blockId) {
-        return yield* new ValidationError({ message: "Missing required fields: documentId, blockId" })
+        return yield* new ValidationError({
+          message: "Missing required fields: documentId, blockId",
+        })
       }
 
-      yield* enrichEvent({ documentId, blockId, voiceId } as Record<string, unknown>)
+      yield* enrichEvent({ documentId, blockId, voiceId } as Record<
+        string,
+        unknown
+      >)
 
       // Check document exists
       const rawDoc = yield* Effect.tryPromise({
-        try: () =>
-          convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.query("api/documents:get" as any, { documentId }),
         catch: () => new Error("Document not found"),
       })
       const doc = rawDoc as unknown as { storageId: string } | null
 
       if (!doc) {
-        return HttpServerResponse.unsafeJson({ error: "Document not found" }, { status: 404 })
+        return HttpServerResponse.unsafeJson(
+          { error: "Document not found" },
+          { status: 404 },
+        )
       }
 
       // Check cache
@@ -101,7 +117,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
       }
 
       if (!ttsText) {
-        return yield* new ValidationError({ message: "ttsText required for uncached synthesis" })
+        return yield* new ValidationError({
+          message: "ttsText required for uncached synthesis",
+        })
       }
 
       // Activate worker and create backend
@@ -114,7 +132,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
         async start(controller) {
           const encoder = new TextEncoder()
           const sendEvent = (data: object) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
+            )
           }
 
           try {
@@ -122,9 +142,16 @@ export const ttsRouter = HttpRouter.empty.pipe(
             sendEvent({ type: "text", text: ttsText })
 
             const pcmChunks: Uint8Array[] = []
-            let latestWordTimestamps: Array<{ word: string; startMs: number; endMs: number }> = []
+            let latestWordTimestamps: Array<{
+              word: string
+              startMs: number
+              endMs: number
+            }> = []
 
-            for await (const chunk of backend.synthesizeStream(ttsText, voiceId)) {
+            for await (const chunk of backend.synthesizeStream(
+              ttsText,
+              voiceId,
+            )) {
               if (chunk.type === "audio" && chunk.audio) {
                 const data = Buffer.from(chunk.audio, "base64")
                 if (data.length > 0) {
@@ -160,40 +187,52 @@ export const ttsRouter = HttpRouter.empty.pipe(
               concatenated.set(c, offset)
               offset += c.length
             }
-            const durationMs = Math.round((concatenated.length / 2 / sampleRate) * 1000)
+            const durationMs = Math.round(
+              (concatenated.length / 2 / sampleRate) * 1000,
+            )
             const wavBuffer = pcmToWav(concatenated, sampleRate)
 
-            const storagePath = ttsAudioPath(userId, doc.storageId, voiceId, blockId)
+            const storagePath = ttsAudioPath(
+              userId,
+              doc.storageId,
+              voiceId,
+              blockId,
+            )
 
             Effect.runPromise(
-              storage.saveFile(storagePath, wavBuffer, {
-                contentType: "audio/wav",
-                cacheControl: "public, max-age=31536000, immutable",
-              }).pipe(
-                Effect.flatMap(() =>
-                  Effect.tryPromise({
-                    try: () =>
-                      convex.mutation("api/ttsAudio:createAudio" as any, {
-                        documentId,
-                        blockId,
-                        voiceId,
-                        storagePath,
-                        durationMs,
-                        sampleRate,
-                        wordTimestamps: latestWordTimestamps,
-                      }),
-                    catch: (e) => e as Error,
+              storage
+                .saveFile(storagePath, wavBuffer, {
+                  contentType: "audio/wav",
+                  cacheControl: "public, max-age=31536000, immutable",
+                })
+                .pipe(
+                  Effect.flatMap(() =>
+                    Effect.tryPromise({
+                      try: () =>
+                        convex.mutation("api/ttsAudio:createAudio" as any, {
+                          documentId,
+                          blockId,
+                          voiceId,
+                          storagePath,
+                          durationMs,
+                          sampleRate,
+                          wordTimestamps: latestWordTimestamps,
+                        }),
+                      catch: (e) => e as Error,
+                    }),
+                  ),
+                  Effect.catchAll((e) => {
+                    console.warn("[tts] Cache save failed:", e)
+                    return Effect.void
                   }),
                 ),
-                Effect.catchAll((e) => {
-                  console.warn("[tts] Cache save failed:", e)
-                  return Effect.void
-                }),
-              ),
             )
           } catch (e) {
             console.error("[tts] Stream error:", e)
-            sendEvent({ type: "error", error: e instanceof Error ? e.message : "Synthesis failed" })
+            sendEvent({
+              type: "error",
+              error: e instanceof Error ? e.message : "Synthesis failed",
+            })
           }
 
           controller.close()
@@ -205,7 +244,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
           headers: {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            Connection: "keep-alive",
           },
         }),
       )
@@ -226,7 +265,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const { documentId, voiceId, blocks } = body
 
       if (!documentId || !voiceId || !blocks?.length) {
-        return yield* new ValidationError({ message: "Missing required fields" })
+        return yield* new ValidationError({
+          message: "Missing required fields",
+        })
       }
 
       const engine = VOICE_ENGINES[voiceId] ?? "kokoro"
@@ -238,14 +279,16 @@ export const ttsRouter = HttpRouter.empty.pipe(
       }
 
       const rawBatchDoc = yield* Effect.tryPromise({
-        try: () =>
-          convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.query("api/documents:get" as any, { documentId }),
         catch: () => new Error("Document not found"),
       })
       const doc = rawBatchDoc as unknown as { storageId: string } | null
 
       if (!doc) {
-        return HttpServerResponse.unsafeJson({ error: "Document not found" }, { status: 404 })
+        return HttpServerResponse.unsafeJson(
+          { error: "Document not found" },
+          { status: 404 },
+        )
       }
 
       const batchBlocks = blocks
@@ -253,7 +296,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
         .map((b) => ({ blockId: b.blockId, text: b.ttsText }))
 
       if (!batchBlocks.length) {
-        return yield* new ValidationError({ message: "No blocks could be processed" })
+        return yield* new ValidationError({
+          message: "No blocks could be processed",
+        })
       }
 
       yield* ttsService.activateWorker(engine)
@@ -264,9 +309,17 @@ export const ttsRouter = HttpRouter.empty.pipe(
 
       yield* Effect.tryPromise({
         try: async () => {
-          for await (const result of backend.synthesizeBatch(batchBlocks, voiceId)) {
+          for await (const result of backend.synthesizeBatch(
+            batchBlocks,
+            voiceId,
+          )) {
             const wavBuffer = Buffer.from(result.audio, "base64")
-            const storagePath = ttsAudioPath(userId, doc.storageId, voiceId, result.blockId)
+            const storagePath = ttsAudioPath(
+              userId,
+              doc.storageId,
+              voiceId,
+              result.blockId,
+            )
 
             try {
               await Effect.runPromise(
@@ -312,7 +365,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const config = yield* AppConfig
 
       if (config.backendMode !== "local") {
-        return HttpServerResponse.unsafeJson({ unloaded: false, reason: "not local mode" })
+        return HttpServerResponse.unsafeJson({
+          unloaded: false,
+          reason: "not local mode",
+        })
       }
 
       const ttsWorkers = [
@@ -355,18 +411,22 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const { documentId, blockId, ttsText, voiceId = "female_1" } = body
 
       if (!documentId || !blockId || !ttsText) {
-        return yield* new ValidationError({ message: "Missing required fields" })
+        return yield* new ValidationError({
+          message: "Missing required fields",
+        })
       }
 
       const rawPrefetchDoc = yield* Effect.tryPromise({
-        try: () =>
-          convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.query("api/documents:get" as any, { documentId }),
         catch: () => new Error("Document not found"),
       })
       const doc = rawPrefetchDoc as unknown as { storageId: string } | null
 
       if (!doc) {
-        return HttpServerResponse.unsafeJson({ error: "Document not found" }, { status: 404 })
+        return HttpServerResponse.unsafeJson(
+          { error: "Document not found" },
+          { status: 404 },
+        )
       }
 
       // Check if already cached

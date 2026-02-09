@@ -1,5 +1,8 @@
 export function NarrationDemo() {
-  const bars = [2, 4, 7, 5, 3, 6, 8, 9, 7, 5, 4, 6, 3, 2, 1, 2, 3, 5, 7, 8, 6, 4, 5, 7, 9, 8, 6, 4, 3, 5]
+  const bars = [
+    2, 4, 7, 5, 3, 6, 8, 9, 7, 5, 4, 6, 3, 2, 1, 2, 3, 5, 7, 8, 6, 4, 5, 7, 9,
+    8, 6, 4, 3, 5,
+  ]
   return (
     <div className="space-y-3">
       {/* Player chrome */}
@@ -23,7 +26,9 @@ export function NarrationDemo() {
             })}
           </div>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono shrink-0">0:42 / 3:15</span>
+        <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+          0:42 / 3:15
+        </span>
       </div>
 
       {/* Skip indicator */}

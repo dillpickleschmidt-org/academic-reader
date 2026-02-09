@@ -8,8 +8,12 @@ export const ChunkBlock = Schema.Struct({
   bbox: Schema.Array(Schema.Number),
   includeTts: Schema.optional(Schema.Boolean),
   ttsText: Schema.optional(Schema.String),
-  section_hierarchy: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  images: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  section_hierarchy: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.String }),
+  ),
+  images: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.String }),
+  ),
 })
 export type ChunkBlock = typeof ChunkBlock.Type
 
@@ -37,7 +41,9 @@ export const ConversionResult = Schema.Struct({
   content: Schema.String,
   metadata: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
   formats: Schema.optional(AllFormats),
-  images: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  images: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.String }),
+  ),
 })
 export type ConversionResult = typeof ConversionResult.Type
 

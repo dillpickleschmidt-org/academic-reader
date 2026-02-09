@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from "react"
 import { fetchVoices as apiFetchVoices } from "@academic-reader/api-client/client"
-import type { Voice, VoiceCapabilities } from "@academic-reader/api-client/schemas/tts"
+import type {
+  Voice,
+  VoiceCapabilities,
+} from "@academic-reader/api-client/schemas/tts"
 import { AppRuntime } from "@/lib/runtime"
 
 export type { Voice, VoiceCapabilities }
@@ -49,7 +52,9 @@ export function useVoiceSelection(
   return { voices, loading }
 }
 
-export function useCurrentVoiceCapabilities(voiceId: string): VoiceCapabilities | null {
+export function useCurrentVoiceCapabilities(
+  voiceId: string,
+): VoiceCapabilities | null {
   const { voices } = useVoices()
   return useMemo(
     () => voices.find((v) => v.id === voiceId)?.capabilities ?? null,
@@ -62,7 +67,9 @@ let fetchPromise: Promise<Voice[]> | null = null
 
 function loadVoices(): Promise<Voice[]> {
   if (!fetchPromise) {
-    fetchPromise = AppRuntime.runPromise(apiFetchVoices()).then((r) => [...r.voices])
+    fetchPromise = AppRuntime.runPromise(apiFetchVoices()).then((r) => [
+      ...r.voices,
+    ])
   }
 
   return fetchPromise

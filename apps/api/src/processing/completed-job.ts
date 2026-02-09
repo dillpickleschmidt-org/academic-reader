@@ -3,14 +3,23 @@ import { ConvexHttpClient } from "convex/browser"
 import { getToken } from "@convex-dev/better-auth/utils"
 import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
-import { enrichEvent, type WideEvent, emitStreamingEvent } from "../middleware/wide-event"
+import {
+  enrichEvent,
+  type WideEvent,
+  emitStreamingEvent,
+} from "../middleware/wide-event"
 import {
   processHtml,
   HTML_TRANSFORMS,
   rewriteImageSources,
   injectPageMarkers,
 } from "../utils/html-processing"
-import { normalizeChunks, transformChunks, type ChunkBlock, type ChunkInput } from "./chunk-normalizer"
+import {
+  normalizeChunks,
+  transformChunks,
+  type ChunkBlock,
+  type ChunkInput,
+} from "./chunk-normalizer"
 import { runBackgroundEnrichments } from "./enrichments"
 import type { JobFileEntry } from "../services/job-file-map"
 
@@ -25,8 +34,16 @@ export interface JobResultFormats {
   html?: string
   markdown?: string
   chunks?: {
-    blocks?: Array<{ id?: string, block_type?: string, html?: string, label?: string, content?: string, bbox: number[], section_hierarchy?: Record<string, string> }>
-    page_info?: Record<string, { bbox: number[], polygon: number[][] }>
+    blocks?: Array<{
+      id?: string
+      block_type?: string
+      html?: string
+      label?: string
+      content?: string
+      bbox: number[]
+      section_hierarchy?: Record<string, string>
+    }>
+    page_info?: Record<string, { bbox: number[]; polygon: number[][] }>
   }
 }
 
@@ -59,13 +76,23 @@ export function processCompletedJob(
 
     // Upload images
     let imageUrls: Record<string, string> | undefined
-    if (result.images && Object.keys(result.images).length > 0 && fileInfo?.documentPath) {
-      const uploadResult = yield* Effect.either(storage.uploadImages(fileInfo.documentPath, result.images))
+    if (
+      result.images &&
+      Object.keys(result.images).length > 0 &&
+      fileInfo?.documentPath
+    ) {
+      const uploadResult = yield* Effect.either(
+        storage.uploadImages(fileInfo.documentPath, result.images),
+      )
       if (uploadResult._tag === "Right") {
         imageUrls = uploadResult.right
         event.imageCount = Object.keys(imageUrls).length
       } else {
-        event.error = { category: "storage", message: String(uploadResult.left), code: "IMAGE_UPLOAD_FAILED" }
+        event.error = {
+          category: "storage",
+          message: String(uploadResult.left),
+          code: "IMAGE_UPLOAD_FAILED",
+        }
       }
     }
 
@@ -105,10 +132,19 @@ export function processCompletedJob(
 
     // Save to S3
     if (result.formats && fileInfo?.documentPath) {
-      yield* Effect.all([
-        storage.saveFile(`${fileInfo.documentPath}/content.html`, result.formats.html || ""),
-        storage.saveFile(`${fileInfo.documentPath}/content.md`, result.formats.markdown || ""),
-      ], { concurrency: "unbounded" }).pipe(Effect.ignore)
+      yield* Effect.all(
+        [
+          storage.saveFile(
+            `${fileInfo.documentPath}/content.html`,
+            result.formats.html || "",
+          ),
+          storage.saveFile(
+            `${fileInfo.documentPath}/content.md`,
+            result.formats.markdown || "",
+          ),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.ignore)
     }
 
     // Persist to Convex
@@ -118,7 +154,8 @@ export function processCompletedJob(
       if (convex) {
         const chunksForPersistence = transformChunks(normalizedChunks)
         const persistResult = yield* Effect.tryPromise({
-          try: () => persistDocument(convex, fileInfo, result, chunksForPersistence),
+          try: () =>
+            persistDocument(convex, fileInfo, result, chunksForPersistence),
           catch: (e) => e,
         }).pipe(Effect.either)
 
@@ -128,17 +165,27 @@ export function processCompletedJob(
 
           // Fire-and-forget enrichments
           if (normalizedChunks.length && fileInfo.documentPath) {
-            Effect.runFork(runBackgroundEnrichments(normalizedChunks, documentId, convex))
+            Effect.runFork(
+              runBackgroundEnrichments(normalizedChunks, documentId, convex),
+            )
           }
         }
       }
     }
 
-    return { content: processedContent, blocks: normalizedChunks, imageUrls, documentId } satisfies ProcessedJobResult
+    return {
+      content: processedContent,
+      blocks: normalizedChunks,
+      imageUrls,
+      documentId,
+    } satisfies ProcessedJobResult
   })
 }
 
-function createConvexClient(config: { convex: { httpUrl: string, siteUrl: string } }, cookies: Record<string, string>) {
+function createConvexClient(
+  config: { convex: { httpUrl: string; siteUrl: string } },
+  cookies: Record<string, string>,
+) {
   return Effect.tryPromise({
     try: async () => {
       const headers = new Headers()
@@ -180,4 +227,3 @@ async function persistDocument(
 
   return documentId
 }
-

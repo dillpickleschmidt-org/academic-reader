@@ -51,7 +51,10 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
 }: InnerProps) {
   const [readerMode, setReaderMode] = useReaderTheme()
   const documentContext = useDocumentContext()
-  const tocItems = useTableOfContents(documentContext?.toc, !!documentContext?.documentId)
+  const tocItems = useTableOfContents(
+    documentContext?.toc,
+    !!documentContext?.documentId,
+  )
   const scrollRef = useRef<HTMLDivElement>(null)
   useScrollDirection(scrollRef)
   const atTop = useIsScrolledToTop(scrollRef)
@@ -68,7 +71,10 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
         />
       )}
       <SidebarInset className="h-svh overflow-hidden">
-        <div className="reader-output flex flex-col" data-reader-mode={readerMode}>
+        <div
+          className="reader-output flex flex-col"
+          data-reader-mode={readerMode}
+        >
           {showThemeToggle && (
             <div className="reader-theme-toggle">
               {THEMES.map((t) => {
@@ -87,9 +93,20 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
               })}
             </div>
           )}
-          <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
-            <ResizablePanel id="content-panel" className="relative" minSize={isMobile ? undefined : "40%"}>
-              <div ref={scrollRef} className="overflow-auto h-full" style={{ contain: "strict" }}>
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="flex-1 min-h-0"
+          >
+            <ResizablePanel
+              id="content-panel"
+              className="relative"
+              minSize={isMobile ? undefined : "40%"}
+            >
+              <div
+                ref={scrollRef}
+                className="overflow-auto h-full"
+                style={{ contain: "strict" }}
+              >
                 {/* Sticky action buttons - top left */}
                 {showSidebar && (
                   <div className="reader-actions-left sticky top-2 ml-4 mt-2 -mb-10 flex items-center gap-1 z-10 w-fit bg-[var(--reader-bg)] p-1 rounded-lg">
@@ -132,8 +149,15 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
             )}
           </ResizablePanelGroup>
           {isMobile && (
-            <Sheet open={chatOpen} onOpenChange={(open) => !open && onChatClose()}>
-              <SheetContent side="right" className="data-[side=right]:w-full data-[side=right]:max-w-none p-0" showCloseButton={false}>
+            <Sheet
+              open={chatOpen}
+              onOpenChange={(open) => !open && onChatClose()}
+            >
+              <SheetContent
+                side="right"
+                className="data-[side=right]:w-full data-[side=right]:max-w-none p-0"
+                showCloseButton={false}
+              >
                 <AIChatPanel onClose={onChatClose} />
               </SheetContent>
             </Sheet>

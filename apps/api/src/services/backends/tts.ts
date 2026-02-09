@@ -20,7 +20,7 @@ export interface SynthesizeResult {
   audio: string
   sampleRate: number
   durationMs: number
-  wordTimestamps: Array<{ word: string, startMs: number, endMs: number }>
+  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
 }
 
 export interface StreamChunk {
@@ -28,7 +28,7 @@ export interface StreamChunk {
   audio?: string
   sampleRate?: number
   durationMs?: number
-  wordTimestamps?: Array<{ word: string, startMs: number, endMs: number }>
+  wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>
 }
 
 export interface BatchBlock {
@@ -41,14 +41,17 @@ export interface BatchResult {
   audio: string
   sampleRate: number
   durationMs: number
-  wordTimestamps: Array<{ word: string, startMs: number, endMs: number }>
+  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
 }
 
 export interface TTSBackend {
   synthesize(text: string, voiceId: string): Promise<SynthesizeResult>
   synthesizeStream(text: string, voiceId: string): AsyncGenerator<StreamChunk>
-  synthesizeBatch(blocks: BatchBlock[], voiceId: string): AsyncGenerator<BatchResult>
-  listVoices(): Promise<Array<{ id: string, displayName: string }>>
+  synthesizeBatch(
+    blocks: BatchBlock[],
+    voiceId: string,
+  ): AsyncGenerator<BatchResult>
+  listVoices(): Promise<Array<{ id: string; displayName: string }>>
   healthCheck(): Promise<boolean>
 }
 
@@ -75,11 +78,18 @@ const VOICE_REGISTRY: Record<string, VoiceDefinition> = {
 
 export interface TtsServiceShape {
   createBackend(voiceId: string): Effect.Effect<TTSBackend, BackendError>
-  listVoices(): Array<{ id: string, displayName: string, capabilities: VoiceCapabilities }>
+  listVoices(): Array<{
+    id: string
+    displayName: string
+    capabilities: VoiceCapabilities
+  }>
   activateWorker(workerName: string): Effect.Effect<void, BackendError>
 }
 
-export class TtsService extends Context.Tag("TtsService")<TtsService, TtsServiceShape>() {
+export class TtsService extends Context.Tag("TtsService")<
+  TtsService,
+  TtsServiceShape
+>() {
   static Live = Layer.effect(
     TtsService,
     Effect.gen(function* () {
@@ -87,9 +97,13 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
 
       function getEngineUrl(engine: TTSEngine): string | undefined {
         if (config.backendMode === "local") {
-          return engine === "qwen3" ? config.ttsWorkers.qwen3Url : config.ttsWorkers.kokoroUrl
+          return engine === "qwen3"
+            ? config.ttsWorkers.qwen3Url
+            : config.ttsWorkers.kokoroUrl
         }
-        return engine === "qwen3" ? config.modal.qwen3TtsUrl : config.modal.kokoroTtsUrl
+        return engine === "qwen3"
+          ? config.modal.qwen3TtsUrl
+          : config.modal.kokoroTtsUrl
       }
 
       function createHttpBackend(baseUrl: string): TTSBackend {
@@ -100,7 +114,8 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ text, voice_id: voiceId }),
             })
-            if (!response.ok) throw new Error(`TTS synthesize failed: ${await response.text()}`)
+            if (!response.ok)
+              throw new Error(`TTS synthesize failed: ${await response.text()}`)
             return (await response.json()) as SynthesizeResult
           },
 
@@ -110,8 +125,10 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ text, voice_id: voiceId }),
             })
-            if (!response.ok) throw new Error(`TTS stream failed: ${await response.text()}`)
-            if (!response.body) throw new Error("No response body for TTS stream")
+            if (!response.ok)
+              throw new Error(`TTS stream failed: ${await response.text()}`)
+            if (!response.body)
+              throw new Error("No response body for TTS stream")
 
             const reader = response.body.getReader()
             const decoder = new TextDecoder()
@@ -140,8 +157,10 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ blocks, voice_id: voiceId }),
             })
-            if (!response.ok) throw new Error(`TTS batch failed: ${await response.text()}`)
-            if (!response.body) throw new Error("No response body for TTS batch")
+            if (!response.ok)
+              throw new Error(`TTS batch failed: ${await response.text()}`)
+            if (!response.body)
+              throw new Error("No response body for TTS batch")
 
             const reader = response.body.getReader()
             const decoder = new TextDecoder()
@@ -167,7 +186,10 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
           async listVoices() {
             const response = await fetch(`${baseUrl}/voices`)
             if (!response.ok) return []
-            return (await response.json()) as Array<{ id: string, displayName: string }>
+            return (await response.json()) as Array<{
+              id: string
+              displayName: string
+            }>
           },
 
           async healthCheck() {
@@ -222,8 +244,12 @@ export class TtsService extends Context.Tag("TtsService")<TtsService, TtsService
           Effect.tryPromise({
             try: async () => {
               const url =
-                workerName === "qwen3" ? config.ttsWorkers.qwen3Url : config.ttsWorkers.kokoroUrl
-              await fetch(`${url}/health`, { signal: AbortSignal.timeout(10000) })
+                workerName === "qwen3"
+                  ? config.ttsWorkers.qwen3Url
+                  : config.ttsWorkers.kokoroUrl
+              await fetch(`${url}/health`, {
+                signal: AbortSignal.timeout(10000),
+              })
             },
             catch: (e) =>
               new BackendError({

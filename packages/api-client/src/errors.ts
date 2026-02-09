@@ -5,22 +5,25 @@ export class ApiError extends Schema.TaggedError<ApiError>("ApiError")(
   { message: Schema.String, status: Schema.Number },
 ) {}
 
-export class StorageError extends Schema.TaggedError<StorageError>("StorageError")(
+export class StorageError extends Schema.TaggedError<StorageError>(
   "StorageError",
-  { message: Schema.String, key: Schema.optional(Schema.String) },
-) {}
+)("StorageError", {
+  message: Schema.String,
+  key: Schema.optional(Schema.String),
+}) {}
 
-export class BackendError extends Schema.TaggedError<BackendError>("BackendError")(
+export class BackendError extends Schema.TaggedError<BackendError>(
   "BackendError",
-  { message: Schema.String, backend: Schema.String },
-) {}
+)("BackendError", { message: Schema.String, backend: Schema.String }) {}
 
 export class AuthError extends Schema.TaggedError<AuthError>("AuthError")(
   "AuthError",
   { message: Schema.String, code: Schema.String },
 ) {}
 
-export class ValidationError extends Schema.TaggedError<ValidationError>("ValidationError")(
+export class ValidationError extends Schema.TaggedError<ValidationError>(
   "ValidationError",
-  { message: Schema.String, field: Schema.optional(Schema.String) },
-) {}
+)("ValidationError", {
+  message: Schema.String,
+  field: Schema.optional(Schema.String),
+}) {}

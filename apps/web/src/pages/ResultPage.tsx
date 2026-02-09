@@ -28,8 +28,10 @@ export function ResultPage({
   const documentId = documentContext?.documentId ?? null
   const ttsMap = documentContext?.ttsMap
   const pageOffset = documentContext?.toc?.offset ?? 0
-  const { menuState, setMenuOpen, handleContentClick } =
-    useTTSChunkDetection(chunks, ttsMap)
+  const { menuState, setMenuOpen, handleContentClick } = useTTSChunkDetection(
+    chunks,
+    ttsMap,
+  )
 
   useWordHighlighting()
 

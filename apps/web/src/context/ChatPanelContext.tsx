@@ -8,11 +8,17 @@ import {
 } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@academic-reader/convex/convex/_generated/api"
-import type { Id, Doc } from "@academic-reader/convex/convex/_generated/dataModel"
+import type {
+  Id,
+  Doc,
+} from "@academic-reader/convex/convex/_generated/dataModel"
 import { useDocumentContext } from "./DocumentContext"
 
 type ViewMode = "all" | "document"
-type ThreadWithColor = Doc<"chatThreads"> & { documentColor?: number; documentName?: string }
+type ThreadWithColor = Doc<"chatThreads"> & {
+  documentColor?: number
+  documentName?: string
+}
 
 interface ChatPanelContextValue {
   isOpen: boolean

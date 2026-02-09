@@ -66,7 +66,10 @@ const AppConfigSchema = Schema.Struct({
 
 export type AppConfigShape = typeof AppConfigSchema.Type
 
-export class AppConfig extends Context.Tag("AppConfig")<AppConfig, AppConfigShape>() {
+export class AppConfig extends Context.Tag("AppConfig")<
+  AppConfig,
+  AppConfigShape
+>() {
   static Live = Layer.effect(
     AppConfig,
     Effect.gen(function* () {
@@ -104,11 +107,16 @@ function readEnv(): AppConfigShape {
         model: e.CHAT_MODEL ?? "gemini-3-flash-preview",
       },
       processing: {
-        provider: (e.PROCESSING_PROVIDER as AppConfigShape["ai"]["processing"]["provider"]) ?? "groq",
-        model: e.PROCESSING_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct",
+        provider:
+          (e.PROCESSING_PROVIDER as AppConfigShape["ai"]["processing"]["provider"]) ??
+          "groq",
+        model:
+          e.PROCESSING_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct",
       },
       summary: {
-        provider: (e.SUMMARY_PROVIDER as AppConfigShape["ai"]["summary"]["provider"]) ?? "google",
+        provider:
+          (e.SUMMARY_PROVIDER as AppConfigShape["ai"]["summary"]["provider"]) ??
+          "google",
         model: e.SUMMARY_MODEL ?? "gemini-3-flash-preview",
       },
     },
@@ -147,10 +155,16 @@ function validate(config: AppConfigShape) {
       return yield* Effect.die("Invalid configuration")
     }
 
-    const providers = [config.ai.chat.provider, config.ai.processing.provider, config.ai.summary.provider]
+    const providers = [
+      config.ai.chat.provider,
+      config.ai.processing.provider,
+      config.ai.summary.provider,
+    ]
 
     if (providers.includes("openrouter") && !config.ai.openrouterApiKey) {
-      console.error("OPENROUTER_API_KEY required when any provider is openrouter")
+      console.error(
+        "OPENROUTER_API_KEY required when any provider is openrouter",
+      )
       return yield* Effect.die("Invalid configuration")
     }
 

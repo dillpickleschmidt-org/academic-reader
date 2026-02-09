@@ -10,7 +10,10 @@ import {
 } from "@academic-reader/api-client/client"
 import type { ConversionProgress } from "@academic-reader/api-client/schemas/job"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
-import type { ChunkBlock, TocResult } from "@academic-reader/api-client/schemas/document"
+import type {
+  ChunkBlock,
+  TocResult,
+} from "@academic-reader/api-client/schemas/document"
 import { authClient } from "@academic-reader/convex/auth-client"
 import { AppRuntime } from "@/lib/runtime"
 import { useAppConfig } from "./use-app-config"
@@ -245,7 +248,8 @@ export function useConversion() {
                   setImagesReady(true)
                   setChunks([...(event.result.formats?.chunks?.blocks ?? [])])
                   setToc(event.result.toc)
-                  if (event.result.documentId) setDocumentId(event.result.documentId)
+                  if (event.result.documentId)
+                    setDocumentId(event.result.documentId)
                   break
                 case "Failed":
                   setError(event.error)
@@ -256,7 +260,11 @@ export function useConversion() {
           Effect.catchAll((error) =>
             Effect.sync(() => setError(String(error))),
           ),
-          Effect.ensuring(Effect.sync(() => { sseFiberRef.current = null })),
+          Effect.ensuring(
+            Effect.sync(() => {
+              sseFiberRef.current = null
+            }),
+          ),
         ),
       )
     } catch (err) {

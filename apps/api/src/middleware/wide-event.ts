@@ -8,8 +8,14 @@ import {
 } from "@opentelemetry/sdk-logs"
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http"
 import { resourceFromAttributes } from "@opentelemetry/resources"
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
-import type { BackendType, ProcessingMode } from "@academic-reader/api-client/schemas/common"
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions"
+import type {
+  BackendType,
+  ProcessingMode,
+} from "@academic-reader/api-client/schemas/common"
 
 export type ErrorCategory =
   | "storage"
@@ -49,7 +55,7 @@ export interface WideEvent {
   processingMode?: ProcessingMode
   useLlm?: boolean
   error?: WideEventError
-  warning?: { message: string, code: string }
+  warning?: { message: string; code: string }
   isStreaming?: boolean
   manualEmit?: boolean
   streamEvents?: number
@@ -87,10 +93,15 @@ function createOtelLogger(endpoint?: string) {
   })
 
   const processor = endpoint
-    ? new BatchLogRecordProcessor(new OTLPLogExporter({ url: `${endpoint}/v1/logs` }))
+    ? new BatchLogRecordProcessor(
+        new OTLPLogExporter({ url: `${endpoint}/v1/logs` }),
+      )
     : new BatchLogRecordProcessor(new ConsoleLogRecordExporter())
 
-  const loggerProvider = new LoggerProvider({ resource, processors: [processor] })
+  const loggerProvider = new LoggerProvider({
+    resource,
+    processors: [processor],
+  })
   return loggerProvider.getLogger("wide-events")
 }
 
@@ -108,14 +119,20 @@ function emitEvent(event: WideEvent, otelEndpoint?: string) {
     Object.entries(event)
       .filter(([, v]) => v != null)
       .map(([k, v]) => {
-        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        if (
+          typeof v === "string" ||
+          typeof v === "number" ||
+          typeof v === "boolean"
+        ) {
           return [k, v]
         }
         return [k, JSON.stringify(v)]
       }),
   ) as Record<string, string | number | boolean>
 
-  const severityNumber = event.error ? SeverityNumber.ERROR : SeverityNumber.INFO
+  const severityNumber = event.error
+    ? SeverityNumber.ERROR
+    : SeverityNumber.INFO
   const severityText = event.error ? "ERROR" : "INFO"
 
   getOtelLogger(otelEndpoint).emit({
@@ -125,7 +142,11 @@ function emitEvent(event: WideEvent, otelEndpoint?: string) {
   })
 }
 
-export function emitStreamingEvent(event: WideEvent, extra?: Partial<WideEvent>, otelEndpoint?: string) {
+export function emitStreamingEvent(
+  event: WideEvent,
+  extra?: Partial<WideEvent>,
+  otelEndpoint?: string,
+) {
   if (extra) Object.assign(event, extra)
   emitEvent(event, otelEndpoint)
 }
@@ -147,7 +168,11 @@ function isManualEmitRoute(path: string): boolean {
   })
 }
 
-export const wideEventMiddleware = (backendMode: string, siteUrl?: string, otelEndpoint?: string) =>
+export const wideEventMiddleware = (
+  backendMode: string,
+  siteUrl?: string,
+  otelEndpoint?: string,
+) =>
   HttpMiddleware.make((app) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest

@@ -52,7 +52,10 @@ export function PdfPageDialog({
 
     const baseViewport = page.getViewport({ scale: 1 })
     const baseScaleFactor = container.clientWidth / baseViewport.width
-    setBaseSize({ width: container.clientWidth, height: baseScaleFactor * baseViewport.height })
+    setBaseSize({
+      width: container.clientWidth,
+      height: baseScaleFactor * baseViewport.height,
+    })
 
     const pixelScale = baseScaleFactor * targetScale * window.devicePixelRatio
     const scaledViewport = page.getViewport({ scale: pixelScale })
@@ -83,15 +86,22 @@ export function PdfPageDialog({
     }
   }, [])
 
-  const { setContainerRef, containerRef, scale, position, isDragging, handlers, sliderProps, zoomTo, reset } = useZoomPan(
-    baseSize,
-    {
-      minScale: MIN_SCALE,
-      maxScale: MAX_SCALE,
-      clickZoom: CLICK_ZOOM,
-      onZoomEnd: renderAtScale,
-    }
-  )
+  const {
+    setContainerRef,
+    containerRef,
+    scale,
+    position,
+    isDragging,
+    handlers,
+    sliderProps,
+    zoomTo,
+    reset,
+  } = useZoomPan(baseSize, {
+    minScale: MIN_SCALE,
+    maxScale: MAX_SCALE,
+    clickZoom: CLICK_ZOOM,
+    onZoomEnd: renderAtScale,
+  })
 
   useEffect(() => {
     if (!open) {
@@ -118,7 +128,9 @@ export function PdfPageDialog({
           import.meta.url,
         ).toString()
 
-        const pdfData = await AppRuntime.runPromise(fetchPdfPage(documentId, pageNum))
+        const pdfData = await AppRuntime.runPromise(
+          fetchPdfPage(documentId, pageNum),
+        )
         if (cancelled) return
 
         const pdf = await pdfjs.getDocument({ data: pdfData }).promise
@@ -161,7 +173,13 @@ export function PdfPageDialog({
           ref={setContainerRef}
           {...handlers}
           className="relative min-h-[200px] -mt-2 -mx-3 -mb-3 overflow-hidden select-none"
-          style={{ cursor: isDragging ? "grabbing" : scale > MIN_SCALE ? "grab" : "zoom-in" }}
+          style={{
+            cursor: isDragging
+              ? "grabbing"
+              : scale > MIN_SCALE
+                ? "grab"
+                : "zoom-in",
+          }}
         >
           {(loading || error) && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -197,7 +215,10 @@ export function PdfPageDialog({
               onClick={(e) => e.stopPropagation()}
               className="absolute top-2 right-2 flex flex-col items-center gap-1 bg-background/60 backdrop-blur-xs rounded-full py-2.5 px-1.5 shadow-md cursor-default"
             >
-              <ZoomIn className="size-4 text-muted-foreground cursor-pointer" onClick={() => zoomTo(scale + 0.5)} />
+              <ZoomIn
+                className="size-4 text-muted-foreground cursor-pointer"
+                onClick={() => zoomTo(scale + 0.5)}
+              />
               <Slider
                 orientation="vertical"
                 min={MIN_SCALE}
@@ -207,7 +228,10 @@ export function PdfPageDialog({
                 className="data-vertical:min-h-18 [&_[data-slot=slider-track]]:flex-1 [&_[data-slot=slider-track]]:opacity-50 cursor-grab active:cursor-grabbing"
                 size="sm"
               />
-              <ZoomOut className="size-4 text-muted-foreground cursor-pointer" onClick={() => zoomTo(scale - 0.5)} />
+              <ZoomOut
+                className="size-4 text-muted-foreground cursor-pointer"
+                onClick={() => zoomTo(scale - 0.5)}
+              />
               <span className="text-[10px] text-muted-foreground font-mono mt-1">
                 {Math.round(scale * 100)}%
               </span>

@@ -21,7 +21,9 @@ export function validateExternalUrl(urlString: string): string | null {
     return "URL not allowed"
   }
 
-  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  const ipv4Match = hostname.match(
+    /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+  )
   if (ipv4Match) {
     const [, a, b] = ipv4Match.map(Number)
     if (

@@ -2,7 +2,10 @@ import { useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "@academic-reader/convex/convex/_generated/api"
 import type { Id } from "@academic-reader/convex/convex/_generated/dataModel"
-import type { ChunkBlock, TocResult } from "@academic-reader/api-client/schemas/document"
+import type {
+  ChunkBlock,
+  TocResult,
+} from "@academic-reader/api-client/schemas/document"
 
 export function useDocumentEnrichments(
   documentId: string | null,
@@ -31,7 +34,8 @@ export function useDocumentEnrichments(
   const ttsMap = useMemo(() => {
     // Prefer Convex subscription data when available, otherwise use prop chunks
     if (ttsEnrichments) {
-      if (ttsEnrichments.every((f) => f.includeTts === undefined)) return undefined
+      if (ttsEnrichments.every((f) => f.includeTts === undefined))
+        return undefined
       const map = new Map<string, boolean>()
       for (const f of ttsEnrichments) {
         map.set(f.blockId, f.includeTts ?? true)

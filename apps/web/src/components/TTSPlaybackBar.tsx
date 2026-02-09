@@ -20,7 +20,8 @@ function PlaybackProgress({ isStreaming }: { isStreaming: boolean }) {
   const durationMs = useAudioSelector((s) => s.playback.durationMs)
 
   const totalDuration = durationMs / 1000
-  const progressPercent = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
+  const progressPercent =
+    totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
 
   return (
     <>
@@ -76,7 +77,10 @@ export function TTSPlaybackBar() {
 
           {mode === "loading" ? (
             <div className="flex items-center justify-center w-9 h-9">
-              <Loader2 size={18} className="animate-spin text-(--reader-text-muted)" />
+              <Loader2
+                size={18}
+                className="animate-spin text-(--reader-text-muted)"
+              />
             </div>
           ) : (
             <button

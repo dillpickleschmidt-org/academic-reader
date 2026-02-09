@@ -18,7 +18,10 @@ export interface JobFileMapService {
   remove(jobId: string): Effect.Effect<void>
 }
 
-export class JobFileMap extends Context.Tag("JobFileMap")<JobFileMap, JobFileMapService>() {
+export class JobFileMap extends Context.Tag("JobFileMap")<
+  JobFileMap,
+  JobFileMapService
+>() {
   static Live = Layer.effect(
     JobFileMap,
     Effect.gen(function* () {
@@ -26,9 +29,10 @@ export class JobFileMap extends Context.Tag("JobFileMap")<JobFileMap, JobFileMap
 
       return {
         set: (jobId, entry) => Ref.update(ref, HashMap.set(jobId, entry)),
-        get: (jobId) => Effect.map(Ref.get(ref), (map) =>
-          Option.getOrUndefined(HashMap.get(map, jobId))
-        ),
+        get: (jobId) =>
+          Effect.map(Ref.get(ref), (map) =>
+            Option.getOrUndefined(HashMap.get(map, jobId)),
+          ),
         remove: (jobId) => Ref.update(ref, HashMap.remove(jobId)),
       }
     }),
@@ -39,14 +43,22 @@ export function prefixJobId(rawId: string, worker: WorkerType): string {
   return `${worker}:${rawId}`
 }
 
-export function parseJobId(jobId: string): { worker: WorkerType, rawId: string } {
-  if (jobId.startsWith("chandra:")) return { worker: "chandra", rawId: jobId.slice(8) }
-  if (jobId.startsWith("lightonocr:")) return { worker: "lightonocr", rawId: jobId.slice(11) }
-  if (jobId.startsWith("marker:")) return { worker: "marker", rawId: jobId.slice(7) }
+export function parseJobId(jobId: string): {
+  worker: WorkerType
+  rawId: string
+} {
+  if (jobId.startsWith("chandra:"))
+    return { worker: "chandra", rawId: jobId.slice(8) }
+  if (jobId.startsWith("lightonocr:"))
+    return { worker: "lightonocr", rawId: jobId.slice(11) }
+  if (jobId.startsWith("marker:"))
+    return { worker: "marker", rawId: jobId.slice(7) }
   return { worker: "marker", rawId: jobId }
 }
 
-export function getWorkerFromProcessingMode(processingMode?: string): WorkerType {
+export function getWorkerFromProcessingMode(
+  processingMode?: string,
+): WorkerType {
   if (processingMode === "aggressive") return "chandra"
   if (processingMode === "balanced") return "lightonocr"
   return "marker"

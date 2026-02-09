@@ -13,16 +13,31 @@ export interface SaveFileOptions {
 }
 
 export interface StorageService {
-  saveFile(key: string, content: string | Buffer, options?: SaveFileOptions): Effect.Effect<void, StorageError>
+  saveFile(
+    key: string,
+    content: string | Buffer,
+    options?: SaveFileOptions,
+  ): Effect.Effect<void, StorageError>
   readFile(key: string): Effect.Effect<Buffer, StorageError>
   readFileAsString(key: string): Effect.Effect<string, StorageError>
   exists(key: string): Effect.Effect<boolean, StorageError>
   deleteFile(key: string): Effect.Effect<boolean, StorageError>
   deletePrefix(prefix: string): Effect.Effect<number, StorageError>
-  copyPrefix(srcPrefix: string, dstPrefix: string): Effect.Effect<number, StorageError>
-  getFileUrl(key: string, internal?: boolean): Effect.Effect<string, StorageError>
-  getPresignedUploadUrl(key: string): Effect.Effect<{ uploadUrl: string, expiresAt: string }, StorageError>
-  uploadImages(docPath: string, images: Record<string, string>): Effect.Effect<Record<string, string>, StorageError>
+  copyPrefix(
+    srcPrefix: string,
+    dstPrefix: string,
+  ): Effect.Effect<number, StorageError>
+  getFileUrl(
+    key: string,
+    internal?: boolean,
+  ): Effect.Effect<string, StorageError>
+  getPresignedUploadUrl(
+    key: string,
+  ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, StorageError>
+  uploadImages(
+    docPath: string,
+    images: Record<string, string>,
+  ): Effect.Effect<Record<string, string>, StorageError>
 }
 
 export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
@@ -53,7 +68,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
         return undefined
       }
 
-      async function waitForTunnelUrl(maxWaitMs = 30000): Promise<string | undefined> {
+      async function waitForTunnelUrl(
+        maxWaitMs = 30000,
+      ): Promise<string | undefined> {
         if (config.backendMode !== "modal") return undefined
         const startTime = Date.now()
         while (Date.now() - startTime < maxWaitMs) {
@@ -70,10 +87,13 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
           Effect.tryPromise({
             try: async () => {
               const url = getObjectUrl(key)
-              const buffer = typeof data === "string" ? Buffer.from(data, "utf-8") : data
+              const buffer =
+                typeof data === "string" ? Buffer.from(data, "utf-8") : data
               const headers: Record<string, string> = {}
-              if (options?.contentType) headers["Content-Type"] = options.contentType
-              if (options?.cacheControl) headers["Cache-Control"] = options.cacheControl
+              if (options?.contentType)
+                headers["Content-Type"] = options.contentType
+              if (options?.cacheControl)
+                headers["Cache-Control"] = options.cacheControl
 
               const response = await client.fetch(url.toString(), {
                 method: "PUT",
@@ -91,7 +111,10 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
         readFile: (key) =>
           Effect.tryPromise({
             try: async () => {
-              const response = await client.fetch(getObjectUrl(key).toString(), { method: "GET" })
+              const response = await client.fetch(
+                getObjectUrl(key).toString(),
+                { method: "GET" },
+              )
               if (!response.ok) {
                 const body = await response.text()
                 throw new Error(`S3 read failed: ${response.status} - ${body}`)
@@ -107,7 +130,10 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
         exists: (key) =>
           Effect.tryPromise({
             try: async () => {
-              const response = await client.fetch(getObjectUrl(key).toString(), { method: "HEAD" })
+              const response = await client.fetch(
+                getObjectUrl(key).toString(),
+                { method: "HEAD" },
+              )
               return response.ok
             },
             catch: (e) => new StorageError({ message: String(e), key }),
@@ -116,7 +142,10 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
         deleteFile: (key) =>
           Effect.tryPromise({
             try: async () => {
-              const response = await client.fetch(getObjectUrl(key).toString(), { method: "DELETE" })
+              const response = await client.fetch(
+                getObjectUrl(key).toString(),
+                { method: "DELETE" },
+              )
               return response.ok || response.status === 404
             },
             catch: (e) => new StorageError({ message: String(e), key }),
@@ -128,7 +157,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               const listUrl = new URL(
                 `${s3.endpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`,
               )
-              const listResponse = await client.fetch(listUrl.toString(), { method: "GET" })
+              const listResponse = await client.fetch(listUrl.toString(), {
+                method: "GET",
+              })
               if (!listResponse.ok) return 0
 
               const xml = await listResponse.text()
@@ -139,7 +170,11 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               if (keys.length === 0) return 0
 
               await Promise.all(
-                keys.map((k) => client.fetch(getObjectUrl(k).toString(), { method: "DELETE" })),
+                keys.map((k) =>
+                  client.fetch(getObjectUrl(k).toString(), {
+                    method: "DELETE",
+                  }),
+                ),
               )
               return keys.length
             },
@@ -152,7 +187,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               const listUrl = new URL(
                 `${s3.endpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(srcPrefix)}`,
               )
-              const listResponse = await client.fetch(listUrl.toString(), { method: "GET" })
+              const listResponse = await client.fetch(listUrl.toString(), {
+                method: "GET",
+              })
               if (!listResponse.ok) return 0
 
               const xml = await listResponse.text()
@@ -174,7 +211,8 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               )
               return keys.length
             },
-            catch: (e) => new StorageError({ message: String(e), key: srcPrefix }),
+            catch: (e) =>
+              new StorageError({ message: String(e), key: srcPrefix }),
           }),
 
         getFileUrl: (key, internal) =>
@@ -202,7 +240,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               if (tunnelUrl) {
                 return {
                   uploadUrl: `${tunnelUrl}/${s3.bucket}/${key}`,
-                  expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+                  expiresAt: new Date(
+                    Date.now() + expiresInSeconds * 1000,
+                  ).toISOString(),
                 }
               }
 
@@ -214,7 +254,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               )
               return {
                 uploadUrl: signedRequest.url,
-                expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+                expiresAt: new Date(
+                  Date.now() + expiresInSeconds * 1000,
+                ).toISOString(),
               }
             },
             catch: (e) => new StorageError({ message: String(e), key }),
@@ -230,28 +272,37 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
                   const buffer = Buffer.from(base64Data, "base64")
                   const ext = filename.split(".").pop()?.toLowerCase() ?? "png"
                   const mimeTypes: Record<string, string> = {
-                    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-                    webp: "image/webp", gif: "image/gif",
+                    png: "image/png",
+                    jpg: "image/jpeg",
+                    jpeg: "image/jpeg",
+                    webp: "image/webp",
+                    gif: "image/gif",
                   }
 
-                  const response = await client.fetch(getObjectUrl(key).toString(), {
-                    method: "PUT",
-                    headers: {
-                      "Content-Type": mimeTypes[ext] ?? "image/png",
-                      "Cache-Control": "public, max-age=31536000, immutable",
+                  const response = await client.fetch(
+                    getObjectUrl(key).toString(),
+                    {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": mimeTypes[ext] ?? "image/png",
+                        "Cache-Control": "public, max-age=31536000, immutable",
+                      },
+                      body: new Uint8Array(buffer),
                     },
-                    body: new Uint8Array(buffer),
-                  })
+                  )
                   if (!response.ok) {
                     const error = await response.text()
-                    throw new Error(`S3 image upload failed for ${filename}: ${error}`)
+                    throw new Error(
+                      `S3 image upload failed for ${filename}: ${error}`,
+                    )
                   }
                   return [filename, `${baseUrl}/${key}`] as const
                 }),
               )
               return Object.fromEntries(entries)
             },
-            catch: (e) => new StorageError({ message: String(e), key: docPath }),
+            catch: (e) =>
+              new StorageError({ message: String(e), key: docPath }),
           }),
       }
 

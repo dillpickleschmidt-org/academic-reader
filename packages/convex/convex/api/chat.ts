@@ -112,5 +112,6 @@ export const countThreadsForDocument = query({
   args: {
     documentId: v.id("documents"),
   },
-  handler: (ctx, { documentId }) => Chat.countThreadsForDocument(ctx, documentId),
+  handler: (ctx, { documentId }) =>
+    Chat.countThreadsForDocument(ctx, documentId),
 })

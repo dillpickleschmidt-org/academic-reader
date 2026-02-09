@@ -1,4 +1,8 @@
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform"
 import { Effect } from "effect"
 import * as mupdf from "mupdf"
 import { ValidationError } from "@academic-reader/api-client/errors"
@@ -13,10 +17,16 @@ function getOptionalAuth() {
   return requireAuth.pipe(Effect.catchAll(() => Effect.succeed(null)))
 }
 
-function extractPageCount(data: ArrayBuffer, contentType: string): number | undefined {
+function extractPageCount(
+  data: ArrayBuffer,
+  contentType: string,
+): number | undefined {
   if (contentType !== "application/pdf") return undefined
   try {
-    const doc = mupdf.Document.openDocument(Buffer.from(data), "application/pdf")
+    const doc = mupdf.Document.openDocument(
+      Buffer.from(data),
+      "application/pdf",
+    )
     const count = doc.countPages()
     doc.destroy()
     return count
@@ -64,7 +74,10 @@ export const uploadRouter = HttpRouter.empty.pipe(
       const fileId = crypto.randomUUID()
       const docPath = getDocumentPath(fileId, auth?.userId)
 
-      yield* storage.saveFile(`${docPath}/original.pdf`, Buffer.from(arrayBuffer))
+      yield* storage.saveFile(
+        `${docPath}/original.pdf`,
+        Buffer.from(arrayBuffer),
+      )
 
       const pageCount = extractPageCount(arrayBuffer, file.type)
 
@@ -136,25 +149,36 @@ export const uploadRouter = HttpRouter.empty.pipe(
       })
 
       if (!fileResponse.ok) {
-        return yield* new ValidationError({ message: `Failed to fetch URL: ${fileResponse.statusText}` })
+        return yield* new ValidationError({
+          message: `Failed to fetch URL: ${fileResponse.statusText}`,
+        })
       }
 
       const rawFilename = url.split("/").pop()?.split("?")[0] || ""
       const filename = sanitizeFilename(rawFilename)
-      const contentType = fileResponse.headers.get("content-type") || "application/pdf"
+      const contentType =
+        fileResponse.headers.get("content-type") || "application/pdf"
 
       const arrayBuffer = yield* Effect.tryPromise({
         try: () => fileResponse.arrayBuffer(),
-        catch: () => new ValidationError({ message: "Failed to read fetched content" }),
+        catch: () =>
+          new ValidationError({ message: "Failed to read fetched content" }),
       })
 
-      yield* enrichEvent({ filename, contentType, fileSize: arrayBuffer.byteLength })
+      yield* enrichEvent({
+        filename,
+        contentType,
+        fileSize: arrayBuffer.byteLength,
+      })
 
       const auth = yield* getOptionalAuth()
       const fileId = crypto.randomUUID()
       const docPath = getDocumentPath(fileId, auth?.userId)
 
-      yield* storage.saveFile(`${docPath}/original.pdf`, Buffer.from(arrayBuffer))
+      yield* storage.saveFile(
+        `${docPath}/original.pdf`,
+        Buffer.from(arrayBuffer),
+      )
 
       const pageCount = extractPageCount(arrayBuffer, contentType)
 

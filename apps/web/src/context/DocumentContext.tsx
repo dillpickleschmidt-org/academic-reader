@@ -1,5 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react"
-import type { ChunkBlock, TocResult } from "@academic-reader/api-client/schemas/document"
+import type {
+  ChunkBlock,
+  TocResult,
+} from "@academic-reader/api-client/schemas/document"
 import { useDocumentEnrichments } from "@/hooks/use-document-enrichments"
 
 interface DocumentContextValue {
@@ -29,13 +32,26 @@ export function DocumentProvider({
   toc: initialToc,
   children,
 }: DocumentProviderProps) {
-  const { toc: enrichedToc, ttsMap, ttsTextMap, summary } = useDocumentEnrichments(documentId, chunks)
+  const {
+    toc: enrichedToc,
+    ttsMap,
+    ttsTextMap,
+    summary,
+  } = useDocumentEnrichments(documentId, chunks)
 
   // Prefer enriched TOC from Convex subscription over initial SSE value
   const toc = enrichedToc ?? initialToc
 
   const value = useMemo(
-    () => ({ documentId, chunks, documentName, toc, ttsMap, ttsTextMap, summary }),
+    () => ({
+      documentId,
+      chunks,
+      documentName,
+      toc,
+      ttsMap,
+      ttsTextMap,
+      summary,
+    }),
     [documentId, chunks, documentName, toc, ttsMap, ttsTextMap, summary],
   )
 

@@ -28,7 +28,12 @@ interface AuthDialogProps {
   showTrigger?: boolean
 }
 
-export function AuthDialog({ open: externalOpen, onOpenChange, onSuccess, showTrigger = true }: AuthDialogProps) {
+export function AuthDialog({
+  open: externalOpen,
+  onOpenChange,
+  onSuccess,
+  showTrigger = true,
+}: AuthDialogProps) {
   const { authProviders, isLoading } = useAppConfig()
   const [internalOpen, setInternalOpen] = useState(false)
 

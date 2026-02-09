@@ -1,4 +1,8 @@
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform"
 import { Effect } from "effect"
 import { AppConfig } from "./config"
 import { healthRouter } from "./routes/health"
@@ -45,14 +49,19 @@ const authProxyApp = Effect.gen(function* () {
       const response = await fetch(targetUrl, {
         method: request.method,
         headers,
-        body: ["GET", "HEAD"].includes(request.method) ? undefined : webRequest.body,
+        body: ["GET", "HEAD"].includes(request.method)
+          ? undefined
+          : webRequest.body,
         redirect: "manual",
         duplex: "half",
       } as RequestInit)
       return HttpServerResponse.fromWeb(response)
     },
     catch: () =>
-      HttpServerResponse.json({ error: "Auth service unavailable" }, { status: 502 }),
+      HttpServerResponse.json(
+        { error: "Auth service unavailable" },
+        { status: 502 },
+      ),
   })
 })
 

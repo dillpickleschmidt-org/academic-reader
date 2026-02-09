@@ -2,11 +2,7 @@
 
 import { Button } from "../primitives/button"
 import { Separator } from "../primitives/separator"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../primitives/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "../primitives/tooltip"
 import { cn } from "../lib/utils"
 import { BookmarkIcon, type LucideProps } from "lucide-react"
 import type { ComponentProps, HTMLAttributes } from "react"

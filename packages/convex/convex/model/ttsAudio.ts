@@ -48,7 +48,10 @@ export async function getBlockAudio(
   const record = await ctx.db
     .query("ttsAudio")
     .withIndex("by_document_block_voice", (q) =>
-      q.eq("documentId", documentId).eq("blockId", blockId).eq("voiceId", voiceId),
+      q
+        .eq("documentId", documentId)
+        .eq("blockId", blockId)
+        .eq("voiceId", voiceId),
     )
     .first()
 
@@ -79,7 +82,10 @@ export async function createAudio(
   const existing = await ctx.db
     .query("ttsAudio")
     .withIndex("by_document_block_voice", (q) =>
-      q.eq("documentId", input.documentId).eq("blockId", input.blockId).eq("voiceId", input.voiceId),
+      q
+        .eq("documentId", input.documentId)
+        .eq("blockId", input.blockId)
+        .eq("voiceId", input.voiceId),
     )
     .first()
 

@@ -26,10 +26,7 @@ export function TTSContextMenu({
   const handlePlay = () => {
     if (!blockId) return
 
-    loadBlockTTS(
-      blockId,
-      wordIndex !== null ? { wordIndex } : undefined,
-    )
+    loadBlockTTS(blockId, wordIndex !== null ? { wordIndex } : undefined)
     onOpenChange(false)
   }
 

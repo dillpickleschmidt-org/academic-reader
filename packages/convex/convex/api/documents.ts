@@ -4,12 +4,7 @@
  */
 
 import { v } from "convex/values"
-import {
-  mutation,
-  query,
-  action,
-  internalQuery,
-} from "../_generated/server"
+import { mutation, query, action, internalQuery } from "../_generated/server"
 import { tocValidator } from "../schema"
 import * as Documents from "../model/documents"
 
@@ -47,7 +42,8 @@ export const addChunks = mutation({
       }),
     ),
   },
-  handler: (ctx, args) => Documents.addChunksToDocument(ctx, args.documentId, args.chunks),
+  handler: (ctx, args) =>
+    Documents.addChunksToDocument(ctx, args.documentId, args.chunks),
 })
 
 /**
@@ -171,7 +167,8 @@ export const getChunks = query({
   args: {
     documentId: v.id("documents"),
   },
-  handler: (ctx, { documentId }) => Documents.getChunksForDocument(ctx, documentId),
+  handler: (ctx, { documentId }) =>
+    Documents.getChunksForDocument(ctx, documentId),
 })
 
 /**

@@ -10,28 +10,18 @@ export function escapeHtml(text: string): string {
 }
 
 export function sanitizeTitle(title: string, maxLength = 200): string {
-  return (
-    title
-      .replace(/[\x00-\x1F\x7F]/g, "")
-      .slice(0, maxLength) || "Document"
-  )
+  return title.replace(/[\x00-\x1F\x7F]/g, "").slice(0, maxLength) || "Document"
 }
 
 export function toAsciiFilename(title: string): string {
-  return title
-    .replace(/[^\x20-\x7E]/g, "_")
-    .replace(/["\\]/g, "\\$&")
+  return title.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "\\$&")
 }
 
 export function sanitizeFilename(
   rawFilename: string,
   fallback = "document.pdf",
 ): string {
-  return (
-    rawFilename
-      .replace(/[\x00-\x1F\x7F]/g, "")
-      .slice(0, 255) || fallback
-  )
+  return rawFilename.replace(/[\x00-\x1F\x7F]/g, "").slice(0, 255) || fallback
 }
 
 export function contentDisposition(

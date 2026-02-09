@@ -101,7 +101,8 @@ export function extractTableOfContents(
       } satisfies TocExtractionResult
     }
 
-    const { sections: rawSections, failed: aiFailed } = yield* generateTocWithAI(tocText, models)
+    const { sections: rawSections, failed: aiFailed } =
+      yield* generateTocWithAI(tocText, models)
     if (aiFailed) {
       return {
         toc: null,
@@ -117,10 +118,14 @@ export function extractTableOfContents(
 
     const hasRomanNumerals = rawSections.some(
       (s) =>
-        isRomanNumeral(s.page) || s.children?.some((c) => isRomanNumeral(c.page)),
+        isRomanNumeral(s.page) ||
+        s.children?.some((c) => isRomanNumeral(c.page)),
     )
 
-    const { offset, detected: offsetDetected } = calculatePageOffset(rawSections, pdfBuffer)
+    const { offset, detected: offsetDetected } = calculatePageOffset(
+      rawSections,
+      pdfBuffer,
+    )
     const sections = convertToTocSections(rawSections, offset)
 
     return {
@@ -205,11 +210,16 @@ function generateTocWithAI(
         prompt: tocText,
       })
       if (!result.output) return { sections: [] as RawTocEntry[], failed: true }
-      return { sections: result.output.sections as RawTocEntry[], failed: false }
+      return {
+        sections: result.output.sections as RawTocEntry[],
+        failed: false,
+      }
     },
     catch: (e) => e,
   }).pipe(
-    Effect.catchAll(() => Effect.succeed({ sections: [] as RawTocEntry[], failed: true })),
+    Effect.catchAll(() =>
+      Effect.succeed({ sections: [] as RawTocEntry[], failed: true }),
+    ),
   )
 }
 
@@ -297,7 +307,10 @@ function extractFooterPageNumber(
   return null
 }
 
-function convertToTocSections(rawSections: RawTocEntry[], offset: number): TocSection[] {
+function convertToTocSections(
+  rawSections: RawTocEntry[],
+  offset: number,
+): TocSection[] {
   return rawSections
     .map((section) => {
       const displayPage = parsePageNumber(section.page)

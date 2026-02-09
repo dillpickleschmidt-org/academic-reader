@@ -4,9 +4,16 @@ import type { WideEvent } from "../middleware/wide-event"
 import { emitStreamingEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
-import { ConversionBackend, type ConversionJob } from "../services/backends/conversion"
+import {
+  ConversionBackend,
+  type ConversionJob,
+} from "../services/backends/conversion"
 import { processHtml, HTML_TRANSFORMS } from "../utils/html-processing"
-import { processCompletedJob, SSE_HEADERS, type JobResultInput } from "./completed-job"
+import {
+  processCompletedJob,
+  SSE_HEADERS,
+  type JobResultInput,
+} from "./completed-job"
 import { JobFileMap, type JobFileEntry } from "../services/job-file-map"
 
 const POLLING = {
@@ -41,7 +48,9 @@ export function handlePollingJob(
           eventCount++
           lastEventTime = Date.now()
           controller.enqueue(
-            encoder.encode(`event: ${sseEvent}\ndata: ${JSON.stringify(data)}\n\n`),
+            encoder.encode(
+              `event: ${sseEvent}\ndata: ${JSON.stringify(data)}\n\n`,
+            ),
           )
         }
 
@@ -100,11 +109,15 @@ export function handlePollingJob(
               if (job.s3Result && fileInfo?.documentPath) {
                 const resultKey = `${fileInfo.documentPath}/result.json`
                 try {
-                  const resultJson = await Effect.runPromise(storage.readFileAsString(resultKey))
+                  const resultJson = await Effect.runPromise(
+                    storage.readFileAsString(resultKey),
+                  )
                   resultData = JSON.parse(resultJson)
                   await Effect.runPromise(storage.deleteFile(resultKey))
                 } catch (err) {
-                  sendEvent("error", { message: "Failed to fetch conversion result" })
+                  sendEvent("error", {
+                    message: "Failed to fetch conversion result",
+                  })
                   finalStatus = "failed"
                   event.error = {
                     category: "storage",
@@ -123,7 +136,13 @@ export function handlePollingJob(
 
               try {
                 const processedResult = await Effect.runPromise(
-                  processCompletedJob(jobId, resultToProcess, fileInfo, event, requestCookies).pipe(
+                  processCompletedJob(
+                    jobId,
+                    resultToProcess,
+                    fileInfo,
+                    event,
+                    requestCookies,
+                  ).pipe(
                     Effect.provideService(AppConfig, config),
                     Effect.provideService(Storage, storage as any),
                   ),
@@ -136,7 +155,8 @@ export function handlePollingJob(
 
                 const resultForClient: any = { ...resultData }
                 if (resultForClient?.formats?.markdown) {
-                  const { markdown: _, ...formatsWithoutMarkdown } = resultForClient.formats
+                  const { markdown: _, ...formatsWithoutMarkdown } =
+                    resultForClient.formats
                   resultForClient.formats = formatsWithoutMarkdown
                 }
                 if (resultForClient?.formats?.chunks) {
@@ -146,14 +166,20 @@ export function handlePollingJob(
                 sendEvent("completed", {
                   ...resultForClient,
                   content: processedResult.content,
-                  ...(processedResult.imageUrls && { images: processedResult.imageUrls }),
-                  ...(processedResult.documentId && { documentId: processedResult.documentId }),
+                  ...(processedResult.imageUrls && {
+                    images: processedResult.imageUrls,
+                  }),
+                  ...(processedResult.documentId && {
+                    documentId: processedResult.documentId,
+                  }),
                   jobId,
                   fileId: fileInfo?.fileId,
                 })
                 finalStatus = "completed"
               } catch (err) {
-                sendEvent("error", { message: "Failed to process completed job" })
+                sendEvent("error", {
+                  message: "Failed to process completed job",
+                })
                 finalStatus = "failed"
                 event.error = {
                   category: "internal",
@@ -186,14 +212,20 @@ export function handlePollingJob(
           }
 
           if (!completed) {
-            await new Promise((resolve) => setTimeout(resolve, POLLING.INTERVAL_MS))
+            await new Promise((resolve) =>
+              setTimeout(resolve, POLLING.INTERVAL_MS),
+            )
             pollCount++
           }
         }
 
         if (!completed) {
           sendEvent("error", { message: "Polling timeout" })
-          event.error = { category: "backend", message: "Polling timeout", code: "POLL_TIMEOUT" }
+          event.error = {
+            category: "backend",
+            message: "Polling timeout",
+            code: "POLL_TIMEOUT",
+          }
           if (backend.supportsCancellation()) {
             void Effect.runPromise(backend.cancelJob(jobId)).catch(() => {})
           }
@@ -204,11 +236,18 @@ export function handlePollingJob(
         emitStreamingEvent(event, {
           streamEvents: eventCount,
           durationMs: Math.round(performance.now() - streamStart),
-          status: finalStatus === "completed" ? 200 : finalStatus === "cancelled" ? 499 : 500,
+          status:
+            finalStatus === "completed"
+              ? 200
+              : finalStatus === "cancelled"
+                ? 499
+                : 500,
         })
       },
     })
 
-    return HttpServerResponse.fromWeb(new Response(stream, { headers: SSE_HEADERS }))
+    return HttpServerResponse.fromWeb(
+      new Response(stream, { headers: SSE_HEADERS }),
+    )
   })
 }

@@ -110,10 +110,7 @@ export async function addMessage(
 
 // ===== Query Helpers =====
 
-export async function listThreads(
-  ctx: QueryCtx,
-  documentId: Id<"documents">,
-) {
+export async function listThreads(ctx: QueryCtx, documentId: Id<"documents">) {
   const user = await requireAuth(ctx)
 
   return ctx.db
@@ -125,10 +122,7 @@ export async function listThreads(
     .collect()
 }
 
-export async function getThread(
-  ctx: QueryCtx,
-  threadId: Id<"chatThreads">,
-) {
+export async function getThread(ctx: QueryCtx, threadId: Id<"chatThreads">) {
   const user = await requireAuth(ctx)
   const thread = await ctx.db.get(threadId)
 
@@ -138,10 +132,7 @@ export async function getThread(
   return thread
 }
 
-export async function getMessages(
-  ctx: QueryCtx,
-  threadId: Id<"chatThreads">,
-) {
+export async function getMessages(ctx: QueryCtx, threadId: Id<"chatThreads">) {
   const user = await requireAuth(ctx)
   const thread = await ctx.db.get(threadId)
 
@@ -166,10 +157,12 @@ export async function listAllThreads(ctx: QueryCtx) {
 
   return Promise.all(
     threads.map(async (thread) => {
-      const doc = thread.documentId
-        ? await ctx.db.get(thread.documentId)
-        : null
-      return { ...thread, documentColor: doc?.color, documentName: doc?.filename }
+      const doc = thread.documentId ? await ctx.db.get(thread.documentId) : null
+      return {
+        ...thread,
+        documentColor: doc?.color,
+        documentName: doc?.filename,
+      }
     }),
   )
 }

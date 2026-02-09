@@ -23,12 +23,16 @@ export function AmbienceDemo() {
                   className={`w-[3px] rounded-full ${s.active ? "bg-primary/40" : "bg-muted-foreground/15"}`}
                   style={{
                     height: `${s.active ? h * 12 : 30}%`,
-                    animation: s.active ? `waveform-pulse ${0.5 + j * 0.12}s ease-in-out infinite ${j * 0.08}s` : undefined,
+                    animation: s.active
+                      ? `waveform-pulse ${0.5 + j * 0.12}s ease-in-out infinite ${j * 0.08}s`
+                      : undefined,
                   }}
                 />
               ))}
             </div>
-            <span className={`text-[8px] whitespace-nowrap ${s.active ? "text-primary font-medium" : "text-muted-foreground"}`}>
+            <span
+              className={`text-[8px] whitespace-nowrap ${s.active ? "text-primary font-medium" : "text-muted-foreground"}`}
+            >
               {s.label}
             </span>
           </div>

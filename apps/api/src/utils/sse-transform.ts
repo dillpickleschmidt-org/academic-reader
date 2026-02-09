@@ -61,12 +61,16 @@ export function transformSSEStream(
 
       if (completedData !== null && completedEvent !== null) {
         controller.enqueue(
-          encoder.encode(`event: progress\ndata: ${JSON.stringify({ stage: "Processing", current: 0, total: 0 })}\n\n`),
+          encoder.encode(
+            `event: progress\ndata: ${JSON.stringify({ stage: "Processing", current: 0, total: 0 })}\n\n`,
+          ),
         )
 
         const processedData = await asyncCompletedHandler(completedData)
         controller.enqueue(
-          encoder.encode(`event: ${completedEvent}\ndata: ${processedData}\n\n`),
+          encoder.encode(
+            `event: ${completedEvent}\ndata: ${processedData}\n\n`,
+          ),
         )
       }
 

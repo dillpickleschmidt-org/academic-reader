@@ -120,7 +120,9 @@ export function NavMain({
     () => items.find((i) => i.isActive)?.title ?? null,
   )
 
-  const prevActiveRef = useRef(new Set(items.filter((i) => i.isActive).map((i) => i.title)))
+  const prevActiveRef = useRef(
+    new Set(items.filter((i) => i.isActive).map((i) => i.title)),
+  )
   useEffect(() => {
     for (const item of items) {
       if (item.isActive && !prevActiveRef.current.has(item.title)) {
@@ -128,7 +130,9 @@ export function NavMain({
         break
       }
     }
-    prevActiveRef.current = new Set(items.filter((i) => i.isActive).map((i) => i.title))
+    prevActiveRef.current = new Set(
+      items.filter((i) => i.isActive).map((i) => i.title),
+    )
   }, [items])
 
   return (

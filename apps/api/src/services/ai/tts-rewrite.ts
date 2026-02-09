@@ -79,16 +79,24 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
                 })
 
                 if (result.output?.length) {
-                  return { entries: result.output as { id: string; text: string }[], failed: false }
+                  return {
+                    entries: result.output as { id: string; text: string }[],
+                    failed: false,
+                  }
                 }
 
-                console.error("[tts-rewrite] LLM rewrite failed for group, falling back to plain text: no output")
+                console.error(
+                  "[tts-rewrite] LLM rewrite failed for group, falling back to plain text: no output",
+                )
                 return {
                   entries: group.map((b) => ({ id: b.id, text: b.text })),
                   failed: true,
                 }
               } catch (err) {
-                console.error("[tts-rewrite] LLM rewrite failed for group, falling back to plain text:", err)
+                console.error(
+                  "[tts-rewrite] LLM rewrite failed for group, falling back to plain text:",
+                  err,
+                )
                 return {
                   entries: group.map((b) => ({ id: b.id, text: b.text })),
                   failed: true,
@@ -96,7 +104,8 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
               }
             }),
           ),
-        catch: () => [] as { entries: { id: string; text: string }[]; failed: boolean }[],
+        catch: () =>
+          [] as { entries: { id: string; text: string }[]; failed: boolean }[],
       })
 
       for (const { entries, failed } of batchResults) {

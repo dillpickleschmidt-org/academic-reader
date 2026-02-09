@@ -8,7 +8,10 @@ import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { requireAuth } from "./auth"
 
-export type ChunkInput = Omit<Doc<"chunks">, "_id" | "_creationTime" | "documentId" | "embedding">
+export type ChunkInput = Omit<
+  Doc<"chunks">,
+  "_id" | "_creationTime" | "documentId" | "embedding"
+>
 export type TocInput = NonNullable<Doc<"documents">["toc"]>
 
 export interface CreateDocumentInput {

@@ -1,4 +1,8 @@
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform"
 import { Effect } from "effect"
 import * as cheerio from "cheerio"
 import type { CheerioAPI } from "cheerio"
@@ -49,69 +53,89 @@ const MOON_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18
 const katexCssRules = getKatexCssRules()
 
 export const downloadRouter = HttpRouter.empty.pipe(
-  HttpRouter.get("/:fileId/download", Effect.gen(function* () {
-    const { userId } = yield* requireAuth
-    const storage = yield* Storage
-    const params = yield* HttpRouter.params
-    const request = yield* HttpServerRequest.HttpServerRequest
-    const fileId = params.fileId
+  HttpRouter.get(
+    "/:fileId/download",
+    Effect.gen(function* () {
+      const { userId } = yield* requireAuth
+      const storage = yield* Storage
+      const params = yield* HttpRouter.params
+      const request = yield* HttpServerRequest.HttpServerRequest
+      const fileId = params.fileId
 
-    const url = new URL(request.url, "http://localhost")
-    const title = sanitizeTitle(url.searchParams.get("title") || "")
+      const url = new URL(request.url, "http://localhost")
+      const title = sanitizeTitle(url.searchParams.get("title") || "")
 
-    yield* enrichEvent({ fileId } as Record<string, unknown>)
+      yield* enrichEvent({ fileId } as Record<string, unknown>)
 
-    const docPath = `documents/${userId}/${fileId}`
+      const docPath = `documents/${userId}/${fileId}`
 
-    const htmlResult = yield* storage.readFileAsString(`${docPath}/content.html`).pipe(Effect.either)
-    if (htmlResult._tag === "Left") {
-      return HttpServerResponse.unsafeJson({ error: "Document not found" }, { status: 404 })
-    }
+      const htmlResult = yield* storage
+        .readFileAsString(`${docPath}/content.html`)
+        .pipe(Effect.either)
+      if (htmlResult._tag === "Left") {
+        return HttpServerResponse.unsafeJson(
+          { error: "Document not found" },
+          { status: 404 },
+        )
+      }
 
-    const html = processHtml(htmlResult.right, HTML_TRANSFORMS)
-    const $ = cheerio.load(html)
+      const html = processHtml(htmlResult.right, HTML_TRANSFORMS)
+      const $ = cheerio.load(html)
 
-    yield* embedImagesFromStorage($, docPath).pipe(Effect.ignore)
+      yield* embedImagesFromStorage($, docPath).pipe(Effect.ignore)
 
-    const katexFontUsage = extractKatexFontUsage($)
+      const katexFontUsage = extractKatexFontUsage($)
 
-    const fontsResult = yield* Effect.tryPromise({
-      try: () => Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)]),
-      catch: (e) => e,
-    }).pipe(Effect.either)
+      const fontsResult = yield* Effect.tryPromise({
+        try: () =>
+          Promise.all([embedSourceSans(), subsetKatexFonts(katexFontUsage)]),
+        catch: (e) => e,
+      }).pipe(Effect.either)
 
-    if (fontsResult._tag === "Left") {
-      return HttpServerResponse.unsafeJson({ error: "Failed to embed fonts" }, { status: 500 })
-    }
+      if (fontsResult._tag === "Left") {
+        return HttpServerResponse.unsafeJson(
+          { error: "Failed to embed fonts" },
+          { status: 500 },
+        )
+      }
 
-    const [sourceSansCss, katexFontsCss] = fontsResult.right
-    const fontCss = `${sourceSansCss}\n${katexFontsCss}`
-    const finalHtml = $("body").html() || html
-    const fullHtml = generateHtmlDocument(finalHtml, title, fontCss, katexCssRules)
+      const [sourceSansCss, katexFontsCss] = fontsResult.right
+      const fontCss = `${sourceSansCss}\n${katexFontsCss}`
+      const finalHtml = $("body").html() || html
+      const fullHtml = generateHtmlDocument(
+        finalHtml,
+        title,
+        fontCss,
+        katexCssRules,
+      )
 
-    const minifyResult = yield* Effect.tryPromise({
-      try: () =>
-        minify(fullHtml, {
-          collapseWhitespace: true,
-          removeComments: true,
-          minifyCSS: true,
-          minifyJS: true,
-        }),
-      catch: (e) => e,
-    }).pipe(Effect.either)
+      const minifyResult = yield* Effect.tryPromise({
+        try: () =>
+          minify(fullHtml, {
+            collapseWhitespace: true,
+            removeComments: true,
+            minifyCSS: true,
+            minifyJS: true,
+          }),
+        catch: (e) => e,
+      }).pipe(Effect.either)
 
-    if (minifyResult._tag === "Left") {
-      return HttpServerResponse.unsafeJson({ error: "Failed to generate download" }, { status: 500 })
-    }
+      if (minifyResult._tag === "Left") {
+        return HttpServerResponse.unsafeJson(
+          { error: "Failed to generate download" },
+          { status: 500 },
+        )
+      }
 
-    const body = new TextEncoder().encode(minifyResult.right)
-    return HttpServerResponse.uint8Array(body, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": contentDisposition(`${title}.html`),
-      },
-    })
-  })),
+      const body = new TextEncoder().encode(minifyResult.right)
+      return HttpServerResponse.uint8Array(body, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": contentDisposition(`${title}.html`),
+        },
+      })
+    }),
+  ),
 )
 
 function generateHtmlDocument(
@@ -200,9 +224,14 @@ function embedImagesFromStorage($: CheerioAPI, docPath: string) {
             const src = $(el).attr("src")!
             const filename = new URL(src).pathname.split("/").pop()
             if (!filename) return
-            const buffer = yield* storage.readFile(`${docPath}/images/${filename}`)
+            const buffer = yield* storage.readFile(
+              `${docPath}/images/${filename}`,
+            )
             const base64 = buffer.toString("base64")
-            $(el).attr("src", `data:${getImageMimeType(filename)};base64,${base64}`)
+            $(el).attr(
+              "src",
+              `data:${getImageMimeType(filename)};base64,${base64}`,
+            )
           }).pipe(Effect.catchAll(() => Effect.void)),
         ),
       { concurrency: "unbounded" },

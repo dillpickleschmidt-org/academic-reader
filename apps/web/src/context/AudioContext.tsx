@@ -69,7 +69,11 @@ type AudioActions = {
   // TTS playback actions
   loadBlockTTS: (
     blockId: string,
-    options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number },
+    options?: {
+      wordIndex?: number
+      seekToSeconds?: number
+      seekFromEndSeconds?: number
+    },
   ) => Promise<void>
   play: () => void
   pause: () => void
@@ -168,7 +172,9 @@ export function AudioProvider({
   // Effect fiber refs replace AbortController refs
   const sseFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
   const playerRef = useRef<UnifiedAudioPlayer | null>(null)
-  const prefetchFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
+  const prefetchFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(
+    null,
+  )
   const synthInFlightRef = useRef(new Map<string, Promise<void>>())
   const batchFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
   const batchProcessingRef = useRef(false)
@@ -180,7 +186,16 @@ export function AudioProvider({
   } | null>(null)
   const [activeVoice, setActiveVoice] = useState("female_1")
   const chunksRef = useRef<ChunkBlock[] | undefined>(undefined)
-  const loadBlockTTSRef = useRef<(blockId: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => Promise<void>>(null!)
+  const loadBlockTTSRef = useRef<
+    (
+      blockId: string,
+      options?: {
+        wordIndex?: number
+        seekToSeconds?: number
+        seekFromEndSeconds?: number
+      },
+    ) => Promise<void>
+  >(null!)
 
   if (!storeRef.current) {
     storeRef.current = createStore(createInitialState())
@@ -280,10 +295,12 @@ export function AudioProvider({
           voiceId,
         }).pipe(
           Effect.catchAll(() => Effect.void),
-          Effect.ensuring(Effect.sync(() => {
-            synthInFlightRef.current.delete(key)
-            resolveInFlight()
-          })),
+          Effect.ensuring(
+            Effect.sync(() => {
+              synthInFlightRef.current.delete(key)
+              resolveInFlight()
+            }),
+          ),
         ),
       )
     },
@@ -397,58 +414,68 @@ export function AudioProvider({
     [store],
   )
 
-  const createPlayerCallbacks = useCallback(() => ({
-    onModeChange: (mode: "idle" | "streaming" | "ready") => {
-      const playback = store.getState().playback
-      const hasControls = mode === "streaming" || mode === "ready"
-      store.setState({
-        playback: {
-          ...playback,
-          mode: mode === "idle" ? "idle" : mode,
-          canPause: hasControls,
-          canSeek: hasControls,
-        },
-      })
-    },
-    onPlayingChange: (isPlaying: boolean) => {
-      store.setState({
-        playback: { ...store.getState().playback, isPlaying },
-      })
-    },
-    onTimeUpdate: (currentTime: number, duration: number) => {
-      store.setState({
-        playback: {
-          ...store.getState().playback,
-          currentTime,
-          durationMs: Math.round(duration * 1000),
-        },
-      })
-    },
-    onEnded: () => {
-      const chunks = chunksRef.current
-      const { blockId } = store.getState().playback
+  const createPlayerCallbacks = useCallback(
+    () => ({
+      onModeChange: (mode: "idle" | "streaming" | "ready") => {
+        const playback = store.getState().playback
+        const hasControls = mode === "streaming" || mode === "ready"
+        store.setState({
+          playback: {
+            ...playback,
+            mode: mode === "idle" ? "idle" : mode,
+            canPause: hasControls,
+            canSeek: hasControls,
+          },
+        })
+      },
+      onPlayingChange: (isPlaying: boolean) => {
+        store.setState({
+          playback: { ...store.getState().playback, isPlaying },
+        })
+      },
+      onTimeUpdate: (currentTime: number, duration: number) => {
+        store.setState({
+          playback: {
+            ...store.getState().playback,
+            currentTime,
+            durationMs: Math.round(duration * 1000),
+          },
+        })
+      },
+      onEnded: () => {
+        const chunks = chunksRef.current
+        const { blockId } = store.getState().playback
 
-      if (chunks && blockId) {
-        const nextBlock = findNextTtsBlock(chunks, blockId)
-        if (nextBlock) {
-          loadBlockTTSRef.current(nextBlock.id)
-          return
+        if (chunks && blockId) {
+          const nextBlock = findNextTtsBlock(chunks, blockId)
+          if (nextBlock) {
+            loadBlockTTSRef.current(nextBlock.id)
+            return
+          }
         }
-      }
 
-      store.setState({
-        playback: {
-          ...store.getState().playback,
-          isPlaying: false,
-          currentTime: 0,
-        },
-      })
-    },
-  }), [store, findNextTtsBlock])
+        store.setState({
+          playback: {
+            ...store.getState().playback,
+            isPlaying: false,
+            currentTime: 0,
+          },
+        })
+      },
+    }),
+    [store, findNextTtsBlock],
+  )
 
   // === TTS Playback Actions ===
   const loadBlockTTS = useCallback(
-    async (blockId: string, options?: { wordIndex?: number; seekToSeconds?: number; seekFromEndSeconds?: number }) => {
+    async (
+      blockId: string,
+      options?: {
+        wordIndex?: number
+        seekToSeconds?: number
+        seekFromEndSeconds?: number
+      },
+    ) => {
       const { wordIndex, seekToSeconds, seekFromEndSeconds } = options || {}
 
       if (!documentId) {
@@ -527,7 +554,11 @@ export function AudioProvider({
                 audioUrl: string
                 text: string
                 durationMs: number
-                wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>
+                wordTimestamps?: Array<{
+                  word: string
+                  startMs: number
+                  endMs: number
+                }>
               }
 
               const ctx = yield* Effect.promise(getAudioContext)
@@ -539,7 +570,9 @@ export function AudioProvider({
                 createPlayerCallbacks(),
               )
 
-              yield* Effect.promise(() => playerRef.current!.loadFromUrl(data.audioUrl))
+              yield* Effect.promise(() =>
+                playerRef.current!.loadFromUrl(data.audioUrl),
+              )
 
               store.setState({
                 playback: {
@@ -558,8 +591,15 @@ export function AudioProvider({
               } else if (seekFromEndSeconds !== undefined) {
                 const dur = playerRef.current.getDuration()
                 playerRef.current.seek(Math.max(0, dur - seekFromEndSeconds))
-              } else if (wordIndex !== undefined && wordIndex >= 0 && data.wordTimestamps?.length) {
-                const timestamp = data.wordTimestamps[Math.min(wordIndex, data.wordTimestamps.length - 1)]
+              } else if (
+                wordIndex !== undefined &&
+                wordIndex >= 0 &&
+                data.wordTimestamps?.length
+              ) {
+                const timestamp =
+                  data.wordTimestamps[
+                    Math.min(wordIndex, data.wordTimestamps.length - 1)
+                  ]
                 if (timestamp) {
                   playerRef.current.seek(timestamp.startMs / 1000)
                 }
@@ -595,12 +635,17 @@ export function AudioProvider({
 
                   if (event.type === "progress") {
                     toast.loading(
-                      event.stage === "rewriting" ? "Preparing text..." : "Generating speech...",
+                      event.stage === "rewriting"
+                        ? "Preparing text..."
+                        : "Generating speech...",
                       { id: toastId },
                     )
                   } else if (event.type === "text") {
                     store.setState({
-                      playback: { ...store.getState().playback, text: event.text },
+                      playback: {
+                        ...store.getState().playback,
+                        text: event.text,
+                      },
                     })
                   } else if (event.type === "audio-chunk") {
                     if (firstChunk) {
@@ -608,13 +653,19 @@ export function AudioProvider({
                       firstChunk = false
 
                       if (backendMode !== "local") {
-                        prefetchNextBlock(blockId, store.getState().narrator.voice)
+                        prefetchNextBlock(
+                          blockId,
+                          store.getState().narrator.voice,
+                        )
                       }
                     }
                     playerRef.current?.addPcmChunk(event.data)
                   } else if (event.type === "timestamps") {
                     store.setState({
-                      playback: { ...store.getState().playback, wordTimestamps: event.wordTimestamps },
+                      playback: {
+                        ...store.getState().playback,
+                        wordTimestamps: event.wordTimestamps,
+                      },
                     })
                   } else if (event.type === "complete") {
                     playerRef.current?.finishStreaming()
@@ -623,9 +674,14 @@ export function AudioProvider({
                       AppRuntime.runFork(
                         unloadTTS().pipe(
                           Effect.catchAll(() => Effect.void),
-                          Effect.ensuring(Effect.sync(() =>
-                            prefetchNextBlock(blockId, store.getState().narrator.voice),
-                          )),
+                          Effect.ensuring(
+                            Effect.sync(() =>
+                              prefetchNextBlock(
+                                blockId,
+                                store.getState().narrator.voice,
+                              ),
+                            ),
+                          ),
                         ),
                       )
                     }
@@ -643,7 +699,8 @@ export function AudioProvider({
             Effect.sync(() => {
               console.error("[TTS] Streaming error:", err)
               cleanupPlayer()
-              const errorMsg = err instanceof Error ? err.message : "TTS processing failed"
+              const errorMsg =
+                err instanceof Error ? err.message : "TTS processing failed"
               store.setState({
                 playback: {
                   ...store.getState().playback,
@@ -657,14 +714,23 @@ export function AudioProvider({
               toast.error(errorMsg, { id: toastId })
             }),
           ),
-          Effect.ensuring(Effect.sync(() => {
-            synthInFlightRef.current.delete(inFlightKey)
-            resolveInFlight()
-          })),
+          Effect.ensuring(
+            Effect.sync(() => {
+              synthInFlightRef.current.delete(inFlightKey)
+              resolveInFlight()
+            }),
+          ),
         ),
       )
     },
-    [store, documentId, getAudioContext, cleanupPlayer, createPlayerCallbacks, prefetchNextBlock],
+    [
+      store,
+      documentId,
+      getAudioContext,
+      cleanupPlayer,
+      createPlayerCallbacks,
+      prefetchNextBlock,
+    ],
   )
   loadBlockTTSRef.current = loadBlockTTS
 
@@ -731,7 +797,9 @@ export function AudioProvider({
             Effect.sync(() => {
               batchProcessingRef.current = false
               store.setState({ batchStarted: false })
-              toast.error(err instanceof Error ? err.message : "Batch processing failed")
+              toast.error(
+                err instanceof Error ? err.message : "Batch processing failed",
+              )
             }),
           ),
         ),
@@ -801,9 +869,13 @@ export function AudioProvider({
   const seekToWord = useCallback(
     (wordIndex: number) => {
       const state = store.getState()
-      if (!playerRef.current?.canSeek || !state.playback.wordTimestamps.length) return
+      if (!playerRef.current?.canSeek || !state.playback.wordTimestamps.length)
+        return
 
-      const timestamp = state.playback.wordTimestamps[Math.min(wordIndex, state.playback.wordTimestamps.length - 1)]
+      const timestamp =
+        state.playback.wordTimestamps[
+          Math.min(wordIndex, state.playback.wordTimestamps.length - 1)
+        ]
       if (timestamp) {
         playerRef.current.seek(timestamp.startMs / 1000)
       }

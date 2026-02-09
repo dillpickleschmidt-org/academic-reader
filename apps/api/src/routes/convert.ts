@@ -1,16 +1,27 @@
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerResponse,
+} from "@effect/platform"
 import { Effect } from "effect"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
 import { Storage } from "../services/storage"
 import { ConversionBackend } from "../services/backends/conversion"
-import { JobFileMap, getWorkerFromProcessingMode } from "../services/job-file-map"
+import {
+  JobFileMap,
+  getWorkerFromProcessingMode,
+} from "../services/job-file-map"
 import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
 
 function migrateToUserStorage(
-  storage: { exists: (k: string) => Effect.Effect<boolean, any>, copyPrefix: (s: string, d: string) => Effect.Effect<number, any>, deletePrefix: (p: string) => Effect.Effect<number, any> },
+  storage: {
+    exists: (k: string) => Effect.Effect<boolean, any>
+    copyPrefix: (s: string, d: string) => Effect.Effect<number, any>
+    deletePrefix: (p: string) => Effect.Effect<number, any>
+  },
   fileId: string,
   userId: string,
 ) {
@@ -49,7 +60,9 @@ export const convertRouter = HttpRouter.empty.pipe(
       const filename = query.filename
       const mimeType = query.mime_type
       if (!filename) {
-        return yield* new ValidationError({ message: "Missing filename parameter" })
+        return yield* new ValidationError({
+          message: "Missing filename parameter",
+        })
       }
 
       const processingMode = (query.mode as ProcessingMode) || "fast"
@@ -86,9 +99,10 @@ export const convertRouter = HttpRouter.empty.pipe(
 
       yield* enrichEvent({ jobId })
 
-      const workerType = config.backendMode === "local"
-        ? getWorkerFromProcessingMode(processingMode)
-        : "marker" as const
+      const workerType =
+        config.backendMode === "local"
+          ? getWorkerFromProcessingMode(processingMode)
+          : ("marker" as const)
       yield* jobFileMap.set(jobId, {
         fileId,
         userId,

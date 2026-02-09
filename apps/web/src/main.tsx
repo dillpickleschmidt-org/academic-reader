@@ -1,7 +1,10 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { convex } from "@academic-reader/convex/client"
-import { authClient, ConvexBetterAuthProvider } from "@academic-reader/convex/auth-client"
+import {
+  authClient,
+  ConvexBetterAuthProvider,
+} from "@academic-reader/convex/auth-client"
 import { Toaster } from "@academic-reader/ui/primitives/sonner"
 import "./styles/App.css"
 import App from "./App.tsx"

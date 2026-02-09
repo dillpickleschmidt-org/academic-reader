@@ -48,7 +48,7 @@ export interface ChunkOutput {
     section_hierarchy?: Record<string, string>
     images?: Record<string, string>
   }>
-  page_info: Record<string, { bbox: number[], polygon: number[][] }>
+  page_info: Record<string, { bbox: number[]; polygon: number[][] }>
   metadata: Record<string, unknown>
 }
 
@@ -72,7 +72,10 @@ export interface ConversionBackendService {
   cancelJob(jobId: string): Effect.Effect<boolean, BackendError>
 }
 
-export class ConversionBackend extends Context.Tag("ConversionBackend")<ConversionBackend, ConversionBackendService>() {
+export class ConversionBackend extends Context.Tag("ConversionBackend")<
+  ConversionBackend,
+  ConversionBackendService
+>() {
   static Live = Layer.effect(
     ConversionBackend,
     Effect.gen(function* () {
@@ -98,7 +101,13 @@ const LIGHTONOCR_URL = "http://lightonocr:8001"
 
 interface LocalWorkerResponse {
   job_id: string
-  status: "pending" | "processing" | "html_ready" | "completed" | "failed" | "cancelled"
+  status:
+    | "pending"
+    | "processing"
+    | "html_ready"
+    | "completed"
+    | "failed"
+    | "cancelled"
   result?: ConversionResult
   html_content?: string
   error?: string
@@ -115,7 +124,7 @@ const LOCAL_STATUS_MAP: Record<string, JobStatus> = {
 }
 
 function createLocalBackend(): ConversionBackendService {
-  function getWorkerUrl(jobId: string): { baseUrl: string, rawJobId: string } {
+  function getWorkerUrl(jobId: string): { baseUrl: string; rawJobId: string } {
     const { worker, rawId } = parseJobId(jobId)
     const baseUrl = worker === "lightonocr" ? LIGHTONOCR_URL : MARKER_URL
     return { baseUrl, rawJobId: rawId }
@@ -128,7 +137,9 @@ function createLocalBackend(): ConversionBackendService {
       Effect.tryPromise({
         try: async () => {
           if (input.processingMode === "aggressive") {
-            throw new Error("[local] Aggressive mode requires modal backend (CHANDRA needs >16GB VRAM)")
+            throw new Error(
+              "[local] Aggressive mode requires modal backend (CHANDRA needs >16GB VRAM)",
+            )
           }
 
           if (input.processingMode === "balanced") {
@@ -137,11 +148,17 @@ function createLocalBackend(): ConversionBackendService {
             if (input.mimeType) params.set("mime_type", input.mimeType)
             if (input.pageRange) params.set("page_range", input.pageRange)
 
-            const response = await fetch(`${LIGHTONOCR_URL}/convert?${params}`, {
-              method: "POST",
-              signal: AbortSignal.timeout(TIMEOUT_MS),
-            })
-            if (!response.ok) throw new Error(`[local] LightOnOCR submit failed: ${await response.text()}`)
+            const response = await fetch(
+              `${LIGHTONOCR_URL}/convert?${params}`,
+              {
+                method: "POST",
+                signal: AbortSignal.timeout(TIMEOUT_MS),
+              },
+            )
+            if (!response.ok)
+              throw new Error(
+                `[local] LightOnOCR submit failed: ${await response.text()}`,
+              )
             const data = (await response.json()) as { job_id: string }
             return prefixJobId(data.job_id, "lightonocr")
           }
@@ -150,15 +167,22 @@ function createLocalBackend(): ConversionBackendService {
           if (input.pageRange) params.set("page_range", input.pageRange)
           if (input.fileUrl) params.set("file_url", input.fileUrl)
 
-          const response = await fetch(`${MARKER_URL}/convert/${input.fileId}?${params}`, {
-            method: "POST",
-            signal: AbortSignal.timeout(TIMEOUT_MS),
-          })
-          if (!response.ok) throw new Error(`[local] Marker submit failed: ${await response.text()}`)
+          const response = await fetch(
+            `${MARKER_URL}/convert/${input.fileId}?${params}`,
+            {
+              method: "POST",
+              signal: AbortSignal.timeout(TIMEOUT_MS),
+            },
+          )
+          if (!response.ok)
+            throw new Error(
+              `[local] Marker submit failed: ${await response.text()}`,
+            )
           const data = (await response.json()) as { job_id: string }
           return prefixJobId(data.job_id, "marker")
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "local" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "local" }),
       }),
 
     getJobStatus: (jobId) =>
@@ -168,11 +192,15 @@ function createLocalBackend(): ConversionBackendService {
           const response = await fetch(`${baseUrl}/jobs/${rawJobId}`, {
             signal: AbortSignal.timeout(TIMEOUT_MS),
           })
-          if (!response.ok) throw new Error(`[local] Failed to get job status: ${await response.text()}`)
+          if (!response.ok)
+            throw new Error(
+              `[local] Failed to get job status: ${await response.text()}`,
+            )
           const data = (await response.json()) as LocalWorkerResponse
           return mapLocalResponse(data)
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "local" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "local" }),
       }),
 
     supportsStreaming: () => true,
@@ -194,7 +222,8 @@ function createLocalBackend(): ConversionBackendService {
           })
           return response.ok
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "local" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "local" }),
       }),
   }
 }
@@ -208,16 +237,21 @@ function mapLocalResponse(data: LocalWorkerResponse): ConversionJob {
     jobId: data.job_id,
     status,
     htmlContent: data.html_content || result?.formats?.html,
-    result: isComplete && result
-      ? {
-          content: result.content,
-          metadata: result.metadata,
-          formats: result.formats
-            ? { html: result.formats.html, markdown: result.formats.markdown, chunks: result.formats.chunks }
-            : undefined,
-          images: result.images,
-        }
-      : undefined,
+    result:
+      isComplete && result
+        ? {
+            content: result.content,
+            metadata: result.metadata,
+            formats: result.formats
+              ? {
+                  html: result.formats.html,
+                  markdown: result.formats.markdown,
+                  chunks: result.formats.chunks,
+                }
+              : undefined,
+            images: result.images,
+          }
+        : undefined,
     error: data.error,
     progress: data.progress,
   }
@@ -255,7 +289,8 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
     submitJob: (input) =>
       Effect.tryPromise({
         try: async () => {
-          if (!input.fileData) throw new Error("[datalab] fileData is required for direct upload")
+          if (!input.fileData)
+            throw new Error("[datalab] fileData is required for direct upload")
 
           const formData = new FormData()
           const fileBytes = Buffer.isBuffer(input.fileData)
@@ -274,11 +309,13 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
             body: formData,
             signal: AbortSignal.timeout(DATALAB_TIMEOUT_MS),
           })
-          if (!response.ok) throw new Error(`[datalab] Submit failed: ${await response.text()}`)
+          if (!response.ok)
+            throw new Error(`[datalab] Submit failed: ${await response.text()}`)
           const data = (await response.json()) as { request_id: string }
           return data.request_id
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "datalab" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "datalab" }),
       }),
 
     getJobStatus: (jobId) =>
@@ -288,11 +325,15 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
             headers: { "X-API-Key": apiKey },
             signal: AbortSignal.timeout(DATALAB_TIMEOUT_MS),
           })
-          if (!response.ok) throw new Error(`[datalab] Failed to get job status: ${await response.text()}`)
+          if (!response.ok)
+            throw new Error(
+              `[datalab] Failed to get job status: ${await response.text()}`,
+            )
           const data = (await response.json()) as DatalabResponse
           return mapDatalabResponse(data)
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "datalab" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "datalab" }),
       }),
 
     supportsStreaming: () => false,
@@ -303,7 +344,8 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
 }
 
 function mapDatalabResponse(data: DatalabResponse): ConversionJob {
-  const rawStatus = data.status === "complete" && !data.success ? "failed" : data.status
+  const rawStatus =
+    data.status === "complete" && !data.success ? "failed" : data.status
   const status = DATALAB_STATUS_MAP[rawStatus] ?? "failed"
   const isComplete = status === "completed"
   const rawHtml = data.html ?? ""
@@ -316,7 +358,11 @@ function mapDatalabResponse(data: DatalabResponse): ConversionJob {
       ? {
           content: rawHtml,
           metadata: {},
-          formats: { html: rawHtml, markdown: data.markdown ?? "", chunks: data.chunks },
+          formats: {
+            html: rawHtml,
+            markdown: data.markdown ?? "",
+            chunks: data.chunks,
+          },
           images: data.images,
         }
       : undefined,
@@ -340,7 +386,11 @@ const MODAL_STATUS_MAP: Record<string, JobStatus> = {
 
 function createModalBackend(
   endpoints: ModalEndpoints,
-  storage: { getPresignedUploadUrl(key: string): Effect.Effect<{ uploadUrl: string, expiresAt: string }, any> },
+  storage: {
+    getPresignedUploadUrl(
+      key: string,
+    ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, any>
+  },
 ): ConversionBackendService {
   function getEndpoint(worker: WorkerType): string | undefined {
     if (worker === "chandra") return endpoints.chandraUrl
@@ -376,7 +426,8 @@ function createModalBackend(
         }
 
         const resultKey = `${input.documentPath}/result.json`
-        const { uploadUrl: resultUploadUrl } = yield* storage.getPresignedUploadUrl(resultKey)
+        const { uploadUrl: resultUploadUrl } =
+          yield* storage.getPresignedUploadUrl(resultKey)
 
         return yield* Effect.tryPromise({
           try: async () => {
@@ -391,11 +442,13 @@ function createModalBackend(
               }),
               signal: AbortSignal.timeout(TIMEOUT_MS),
             })
-            if (!res.ok) throw new Error(`[modal] Submit failed: ${await res.text()}`)
+            if (!res.ok)
+              throw new Error(`[modal] Submit failed: ${await res.text()}`)
             const data = (await res.json()) as { id: string }
             return prefixJobId(data.id, workerType)
           },
-          catch: (e) => new BackendError({ message: String(e), backend: "modal" }),
+          catch: (e) =>
+            new BackendError({ message: String(e), backend: "modal" }),
         })
       }),
 
@@ -404,12 +457,16 @@ function createModalBackend(
         try: async () => {
           const { worker, rawId } = parseJobId(jobId)
           const endpoint = getEndpoint(worker)
-          if (!endpoint) throw new Error(`[modal] ${worker} worker is not configured`)
+          if (!endpoint)
+            throw new Error(`[modal] ${worker} worker is not configured`)
 
           const res = await fetch(`${endpoint}/status/${rawId}`, {
             signal: AbortSignal.timeout(TIMEOUT_MS),
           })
-          if (!res.ok) throw new Error(`[modal] Failed to get job status: ${await res.text()}`)
+          if (!res.ok)
+            throw new Error(
+              `[modal] Failed to get job status: ${await res.text()}`,
+            )
 
           const data = (await res.json()) as {
             status: string
@@ -424,7 +481,8 @@ function createModalBackend(
             error: data.error,
           }
         },
-        catch: (e) => new BackendError({ message: String(e), backend: "modal" }),
+        catch: (e) =>
+          new BackendError({ message: String(e), backend: "modal" }),
       }),
 
     supportsStreaming: () => false,

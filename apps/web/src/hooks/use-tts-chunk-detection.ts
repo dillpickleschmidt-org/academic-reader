@@ -73,8 +73,13 @@ export function useTTSChunkDetection(
       // Re-resolve click target after wrapping in case spans were just created
       let wordSpan = target.closest("[data-word-index]") as HTMLElement | null
       if (!wordSpan) {
-        const freshTarget = document.elementFromPoint(event.clientX, event.clientY)
-        wordSpan = freshTarget?.closest("[data-word-index]") as HTMLElement | null
+        const freshTarget = document.elementFromPoint(
+          event.clientX,
+          event.clientY,
+        )
+        wordSpan = freshTarget?.closest(
+          "[data-word-index]",
+        ) as HTMLElement | null
       }
 
       if (!wordSpan) {

@@ -30,16 +30,22 @@ export const requireAuth: Effect.Effect<
 
   const result = yield* Effect.tryPromise({
     try: async () => {
-      const response = await fetch(`${config.convex.httpUrl}/api/auth/get-session`, {
-        headers: { Cookie: `${cookieName}=${sessionToken}` },
-        signal: AbortSignal.timeout(5000),
-      })
+      const response = await fetch(
+        `${config.convex.httpUrl}/api/auth/get-session`,
+        {
+          headers: { Cookie: `${cookieName}=${sessionToken}` },
+          signal: AbortSignal.timeout(5000),
+        },
+      )
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           return { error: "UNAUTHORIZED" as const }
         }
-        return { error: "AUTH_UPSTREAM_ERROR" as const, status: response.status }
+        return {
+          error: "AUTH_UPSTREAM_ERROR" as const,
+          status: response.status,
+        }
       }
 
       const session = (await response.json()) as { user?: { id?: string } }
@@ -50,8 +56,14 @@ export const requireAuth: Effect.Effect<
       return { userId: session.user.id }
     },
     catch: (error) => {
-      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-        return new AuthError({ message: "Auth service timeout", code: "AUTH_TIMEOUT" })
+      if (
+        error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError")
+      ) {
+        return new AuthError({
+          message: "Auth service timeout",
+          code: "AUTH_TIMEOUT",
+        })
       }
       return new AuthError({
         message: error instanceof Error ? error.message : "Unknown error",
@@ -69,9 +81,15 @@ export const requireAuth: Effect.Effect<
           code: "AUTH_UPSTREAM_ERROR",
         },
       })
-      return yield* new AuthError({ message: "Auth service unavailable", code: "AUTH_UPSTREAM_ERROR" })
+      return yield* new AuthError({
+        message: "Auth service unavailable",
+        code: "AUTH_UPSTREAM_ERROR",
+      })
     }
-    return yield* new AuthError({ message: "Unauthorized", code: "UNAUTHORIZED" })
+    return yield* new AuthError({
+      message: "Unauthorized",
+      code: "UNAUTHORIZED",
+    })
   }
 
   yield* enrichEvent({ userId: result.userId } as Record<string, unknown>)

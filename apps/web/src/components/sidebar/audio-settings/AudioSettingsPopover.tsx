@@ -25,7 +25,8 @@ export function AudioSettingsPopover() {
   const hasActiveAmbience = useAudioSelector((s) =>
     s.ambience.sounds.some((sound) => sound.enabled),
   )
-  const isAudioActive = isNarrationPlaying || isMusicPlaying || hasActiveAmbience
+  const isAudioActive =
+    isNarrationPlaying || isMusicPlaying || hasActiveAmbience
 
   return (
     <Popover>
@@ -48,7 +49,10 @@ export function AudioSettingsPopover() {
         className="w-[360px] p-0"
       >
         <Tabs defaultValue="narrator" className="w-full gap-0">
-          <TabsList variant="line" className="w-full justify-start border-b px-2">
+          <TabsList
+            variant="line"
+            className="w-full justify-start border-b px-2"
+          >
             <TabsTrigger value="narrator">Narrator</TabsTrigger>
             <TabsTrigger value="ambience">Ambience</TabsTrigger>
             <TabsTrigger value="music">Music</TabsTrigger>

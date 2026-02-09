@@ -33,7 +33,7 @@ function Slider({
         : Array.isArray(defaultValue)
           ? defaultValue
           : [min, max],
-    [value, defaultValue, min, max]
+    [value, defaultValue, min, max],
   )
 
   return (
@@ -50,14 +50,14 @@ function Slider({
       <SliderPrimitive.Control
         className={cn(
           "data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
-          className
+          className,
         )}
       >
         <SliderPrimitive.Track
           data-slot="slider-track"
           className={cn(
             "bg-muted rounded-full data-horizontal:w-full data-vertical:h-full relative overflow-hidden select-none",
-            trackSizes[size]
+            trackSizes[size],
           )}
         >
           <SliderPrimitive.Indicator
@@ -71,7 +71,7 @@ function Slider({
             key={index}
             className={cn(
               "border-primary ring-ring/50 rounded-full border bg-white shadow-sm transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50",
-              thumbSizes[size]
+              thumbSizes[size],
             )}
           />
         ))}

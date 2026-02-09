@@ -67,7 +67,11 @@ function Header({ user }: { user: unknown }) {
           Pricing
         </a>
         {user ? (
-          <Button variant="ghost" size="sm" onClick={() => authClient.signOut()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => authClient.signOut()}
+          >
             Logout
           </Button>
         ) : (
@@ -143,8 +147,8 @@ function HeroSection({ onFileSelect }: { onFileSelect: (file: File) => void }) {
           className="text-center mt-5 max-w-lg text-lg leading-relaxed text-foreground/75"
           style={{ fontWeight: 300 }}
         >
-          All the content, none of the friction. Comfortable formatting plus
-          clean text-to-speech that skips the noise.
+          Convert any reading material into a comfortable kindle-like reading
+          experience, with additional tools and narration.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-2.5 mt-6">

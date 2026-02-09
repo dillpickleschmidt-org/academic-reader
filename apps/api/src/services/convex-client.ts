@@ -6,10 +6,17 @@ import { AuthError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
 
 export interface ConvexClientService {
-  fromRequest(): Effect.Effect<ConvexHttpClient, AuthError, HttpServerRequest.HttpServerRequest>
+  fromRequest(): Effect.Effect<
+    ConvexHttpClient,
+    AuthError,
+    HttpServerRequest.HttpServerRequest
+  >
 }
 
-export class ConvexClient extends Context.Tag("ConvexClient")<ConvexClient, ConvexClientService>() {
+export class ConvexClient extends Context.Tag("ConvexClient")<
+  ConvexClient,
+  ConvexClientService
+>() {
   static Live = Layer.effect(
     ConvexClient,
     Effect.gen(function* () {

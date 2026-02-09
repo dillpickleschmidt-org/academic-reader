@@ -12,7 +12,10 @@ export interface ModelProviderService {
   embeddingModel(): EmbeddingModel
 }
 
-export class ModelProvider extends Context.Tag("ModelProvider")<ModelProvider, ModelProviderService>() {
+export class ModelProvider extends Context.Tag("ModelProvider")<
+  ModelProvider,
+  ModelProviderService
+>() {
   static Live = Layer.effect(
     ModelProvider,
     Effect.gen(function* () {
@@ -20,7 +23,9 @@ export class ModelProvider extends Context.Tag("ModelProvider")<ModelProvider, M
 
       function createModel(provider: string, model: string): LanguageModel {
         if (provider === "openrouter") {
-          const openrouter = createOpenRouter({ apiKey: config.ai.openrouterApiKey! })
+          const openrouter = createOpenRouter({
+            apiKey: config.ai.openrouterApiKey!,
+          })
           return openrouter.chat(model)
         }
 
@@ -29,16 +34,26 @@ export class ModelProvider extends Context.Tag("ModelProvider")<ModelProvider, M
           return groq(model)
         }
 
-        const google = createGoogleGenerativeAI({ apiKey: config.ai.googleApiKey })
+        const google = createGoogleGenerativeAI({
+          apiKey: config.ai.googleApiKey,
+        })
         return google(model)
       }
 
       return {
-        chatModel: () => createModel(config.ai.chat.provider, config.ai.chat.model),
-        processingModel: () => createModel(config.ai.processing.provider, config.ai.processing.model),
-        summaryModel: () => createModel(config.ai.summary.provider, config.ai.summary.model),
+        chatModel: () =>
+          createModel(config.ai.chat.provider, config.ai.chat.model),
+        processingModel: () =>
+          createModel(
+            config.ai.processing.provider,
+            config.ai.processing.model,
+          ),
+        summaryModel: () =>
+          createModel(config.ai.summary.provider, config.ai.summary.model),
         embeddingModel: () => {
-          const google = createGoogleGenerativeAI({ apiKey: config.ai.googleApiKey })
+          const google = createGoogleGenerativeAI({
+            apiKey: config.ai.googleApiKey,
+          })
           return google.embeddingModel("gemini-embedding-001")
         },
       }

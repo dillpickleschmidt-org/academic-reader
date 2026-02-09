@@ -48,7 +48,7 @@ export function InfoTooltip({
         className={cn(
           "inline-flex cursor-help text-muted-foreground/60 hover:text-muted-foreground transition-colors",
           isPinned && "text-muted-foreground",
-          className
+          className,
         )}
         onClick={(e) => {
           e.preventDefault()

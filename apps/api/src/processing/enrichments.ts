@@ -12,20 +12,29 @@ export function runBackgroundEnrichments(
 ) {
   const chunkHtml = chunks.map((c) => c.html).join("\n")
 
-  return Effect.all([
-    tocEnrichment(documentId, convex).pipe(Effect.catchAll((e) => {
-      console.warn("[enrichments] TOC enrichment failed:", e)
-      return Effect.void
-    })),
-    ttsEnrichment(chunks, documentId, convex).pipe(Effect.catchAll((e) => {
-      console.warn("[enrichments] TTS enrichment failed:", e)
-      return Effect.void
-    })),
-    summaryEnrichment(chunkHtml, documentId, convex).pipe(Effect.catchAll((e) => {
-      console.warn("[enrichments] Summary enrichment failed:", e)
-      return Effect.void
-    })),
-  ], { concurrency: "unbounded" })
+  return Effect.all(
+    [
+      tocEnrichment(documentId, convex).pipe(
+        Effect.catchAll((e) => {
+          console.warn("[enrichments] TOC enrichment failed:", e)
+          return Effect.void
+        }),
+      ),
+      ttsEnrichment(chunks, documentId, convex).pipe(
+        Effect.catchAll((e) => {
+          console.warn("[enrichments] TTS enrichment failed:", e)
+          return Effect.void
+        }),
+      ),
+      summaryEnrichment(chunkHtml, documentId, convex).pipe(
+        Effect.catchAll((e) => {
+          console.warn("[enrichments] Summary enrichment failed:", e)
+          return Effect.void
+        }),
+      ),
+    ],
+    { concurrency: "unbounded" },
+  )
 }
 
 function tocEnrichment(documentId: string, convex: ConvexHttpClient) {

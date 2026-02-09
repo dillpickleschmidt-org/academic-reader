@@ -15,7 +15,10 @@ export function generateEmbedding(
           model,
           value: text.replace(/\n/g, " ").trim(),
         }),
-      catch: (e) => new Error(`Embedding failed: ${e instanceof Error ? e.message : String(e)}`),
+      catch: (e) =>
+        new Error(
+          `Embedding failed: ${e instanceof Error ? e.message : String(e)}`,
+        ),
     }).pipe(Effect.orDie)
 
     return embedding
@@ -44,7 +47,10 @@ export function generateEmbeddings(
             model,
             values: cleanedBatch,
           }),
-        catch: (e) => new Error(`Batch embedding failed: ${e instanceof Error ? e.message : String(e)}`),
+        catch: (e) =>
+          new Error(
+            `Batch embedding failed: ${e instanceof Error ? e.message : String(e)}`,
+          ),
       }).pipe(Effect.orDie)
 
       allEmbeddings.push(...embeddings)

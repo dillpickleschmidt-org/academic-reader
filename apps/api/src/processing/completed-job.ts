@@ -3,11 +3,8 @@ import { ConvexHttpClient } from "convex/browser"
 import { getToken } from "@convex-dev/better-auth/utils"
 import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
-import {
-  enrichEvent,
-  type WideEvent,
-  emitStreamingEvent,
-} from "../middleware/wide-event"
+import { ModelProvider } from "../services/model-provider"
+import type { WideEvent } from "../middleware/wide-event"
 import {
   processHtml,
   HTML_TRANSFORMS,
@@ -21,6 +18,7 @@ import {
   type ChunkInput,
 } from "./chunk-normalizer"
 import { runBackgroundEnrichments } from "./enrichments"
+import { extractAndInjectLinks } from "../services/link-extraction"
 import type { JobFileEntry } from "../services/job-file-map"
 
 export const SSE_HEADERS = {
@@ -106,6 +104,33 @@ export function processCompletedJob(
     const normalizedChunks = normalizeChunks(rawChunks)
     event.chunkCount = normalizedChunks.length
 
+    // Extract and inject links from PDF (datalab only — Marker/CHANDRA preserve links correctly)
+    if (
+      normalizedChunks.length &&
+      fileInfo?.documentPath &&
+      config.backendMode === "datalab"
+    ) {
+      const pdfResult = yield* storage
+        .readFile(`${fileInfo.documentPath}/original.pdf`)
+        .pipe(Effect.either)
+      if (pdfResult._tag === "Right") {
+        try {
+          const { html: linkedHtml, linkCount } = extractAndInjectLinks(
+            pdfResult.right,
+            processedContent,
+          )
+          processedContent = linkedHtml
+          if (linkCount > 0) event.linkCount = linkCount
+          if (result.formats?.html) {
+            result.formats.html = extractAndInjectLinks(
+              pdfResult.right,
+              result.formats.html,
+            ).html
+          }
+        } catch {}
+      }
+    }
+
     // Inject page markers with offset=0
     try {
       const pageMarkerResult = injectPageMarkers(processedContent, 0)
@@ -165,8 +190,19 @@ export function processCompletedJob(
 
           // Fire-and-forget enrichments
           if (normalizedChunks.length && fileInfo.documentPath) {
+            const textContent = result.formats?.markdown || result.content || ""
             Effect.runFork(
-              runBackgroundEnrichments(normalizedChunks, documentId, convex),
+              runBackgroundEnrichments(
+                normalizedChunks,
+                documentId,
+                convex,
+                fileInfo.documentPath,
+                textContent,
+              ).pipe(
+                Effect.provide(ModelProvider.Live),
+                Effect.provideService(AppConfig, config),
+                Effect.provideService(Storage, storage),
+              ),
             )
           }
         }

@@ -3,7 +3,6 @@ import { generateText, Output } from "ai"
 import { z } from "zod"
 import { Effect } from "effect"
 import { ModelProvider } from "../model-provider"
-import { Storage } from "../storage"
 
 export interface TocSection {
   id: string

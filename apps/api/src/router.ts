@@ -5,6 +5,7 @@ import {
 } from "@effect/platform"
 import { Effect } from "effect"
 import { resolve, join } from "path"
+import { statSync } from "fs"
 import { AppConfig } from "./config"
 import { healthRouter } from "./routes/health"
 import { uploadRouter } from "./routes/upload"
@@ -78,10 +79,11 @@ const serveStaticApp = Effect.gen(function* () {
     return HttpServerResponse.text("Forbidden", { status: 403 })
   }
 
-  return yield* HttpServerResponse.file(filePath).pipe(
-    Effect.catchAll(() =>
-      HttpServerResponse.file(join(STATIC_DIR, "index.html")),
-    ),
+  let isFile = false
+  try { isFile = statSync(filePath).isFile() } catch {}
+
+  const target = isFile ? filePath : join(STATIC_DIR, "index.html")
+  return yield* HttpServerResponse.file(target).pipe(
     Effect.catchAll(() =>
       Effect.succeed(HttpServerResponse.text("Not Found", { status: 404 })),
     ),

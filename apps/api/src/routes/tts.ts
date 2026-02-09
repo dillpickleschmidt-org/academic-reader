@@ -6,7 +6,7 @@ import {
 import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import { requireAuth } from "../middleware/auth"
-import { enrichEvent } from "../middleware/wide-event"
+import { getEvent, emitStreamingEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
 import { ConvexClient } from "../services/convex-client"
 import { TtsService, type TTSEngine } from "../services/backends/tts"
@@ -63,20 +63,23 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const convexService = yield* ConvexClient
       const convex = yield* convexService.fromRequest()
       const request = yield* HttpServerRequest.HttpServerRequest
+      const event = yield* getEvent
+      const streamStart = performance.now()
 
       const body = (yield* request.json) as TTSSynthesizeRequest
       const { documentId, blockId, ttsText, voiceId = "female_1" } = body
 
       if (!documentId || !blockId) {
+        emitStreamingEvent(event, {
+          status: 400,
+          durationMs: Math.round(performance.now() - streamStart),
+        })
         return yield* new ValidationError({
           message: "Missing required fields: documentId, blockId",
         })
       }
 
-      yield* enrichEvent({ documentId, blockId, voiceId } as Record<
-        string,
-        unknown
-      >)
+      Object.assign(event, { documentId, blockId, voiceId })
 
       // Check document exists
       const rawDoc = yield* Effect.tryPromise({
@@ -86,6 +89,15 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const doc = rawDoc as unknown as { storageId: string } | null
 
       if (!doc) {
+        event.error = {
+          category: "convex",
+          message: "Document not found",
+          code: "DOC_NOT_FOUND",
+        }
+        emitStreamingEvent(event, {
+          status: 404,
+          durationMs: Math.round(performance.now() - streamStart),
+        })
         return HttpServerResponse.unsafeJson(
           { error: "Document not found" },
           { status: 404 },
@@ -106,6 +118,11 @@ export const ttsRouter = HttpRouter.empty.pipe(
 
       if (cachedAudio) {
         const audioUrl = yield* storage.getFileUrl(cachedAudio.storagePath)
+        emitStreamingEvent(event, {
+          status: 200,
+          durationMs: Math.round(performance.now() - streamStart),
+          cached: true,
+        } as Record<string, unknown>)
         return HttpServerResponse.unsafeJson({
           audioUrl,
           text: ttsText || "",
@@ -117,6 +134,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
       }
 
       if (!ttsText) {
+        emitStreamingEvent(event, {
+          status: 400,
+          durationMs: Math.round(performance.now() - streamStart),
+        })
         return yield* new ValidationError({
           message: "ttsText required for uncached synthesis",
         })
@@ -173,7 +194,14 @@ export const ttsRouter = HttpRouter.empty.pipe(
             sendEvent({ type: "complete" })
 
             if (pcmChunks.length === 0) {
-              console.warn("[tts] No audio chunks received, skipping cache")
+              event.warning = {
+                message: "No audio chunks received",
+                code: "TTS_EMPTY_STREAM",
+              }
+              emitStreamingEvent(event, {
+                status: 200,
+                durationMs: Math.round(performance.now() - streamStart),
+              })
               controller.close()
               return
             }
@@ -199,7 +227,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
               blockId,
             )
 
-            Effect.runPromise(
+            void Effect.runPromise(
               storage
                 .saveFile(storagePath, wavBuffer, {
                   contentType: "audio/wav",
@@ -221,14 +249,26 @@ export const ttsRouter = HttpRouter.empty.pipe(
                       catch: (e) => e as Error,
                     }),
                   ),
-                  Effect.catchAll((e) => {
-                    console.warn("[tts] Cache save failed:", e)
-                    return Effect.void
-                  }),
+                  Effect.catchAll(() => Effect.void),
                 ),
+            ).catch((e) =>
+              console.warn("[tts] Cache save failed:", e),
             )
+
+            emitStreamingEvent(event, {
+              status: 200,
+              durationMs: Math.round(performance.now() - streamStart),
+            })
           } catch (e) {
-            console.error("[tts] Stream error:", e)
+            event.error = {
+              category: "backend",
+              message: e instanceof Error ? e.message : "Synthesis failed",
+              code: "TTS_STREAM_ERROR",
+            }
+            emitStreamingEvent(event, {
+              status: 500,
+              durationMs: Math.round(performance.now() - streamStart),
+            })
             sendEvent({
               type: "error",
               error: e instanceof Error ? e.message : "Synthesis failed",

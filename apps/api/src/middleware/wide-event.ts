@@ -155,8 +155,7 @@ export function emitStreamingEvent(
 const MANUAL_EMIT_ROUTES = [
   "/api/jobs/*/stream",
   "/api/chat",
-  "/api/documents/*/embeddings",
-  "/api/tts/chunk",
+  "/api/tts/synthesize",
 ]
 
 function isManualEmitRoute(path: string): boolean {

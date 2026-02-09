@@ -106,6 +106,18 @@ export class TtsService extends Context.Tag("TtsService")<
           : config.modal.kokoroTtsUrl
       }
 
+      function tryParseJSON<T>(line: string, label: string): T | null {
+        try {
+          return JSON.parse(line) as T
+        } catch {
+          console.warn(
+            `[tts] Malformed ${label} JSON, skipping:`,
+            line.slice(0, 200),
+          )
+          return null
+        }
+      }
+
       function createHttpBackend(baseUrl: string): TTSBackend {
         return {
           async synthesize(text, voiceId) {
@@ -142,12 +154,14 @@ export class TtsService extends Context.Tag("TtsService")<
               buffer = lines.pop() ?? ""
               for (const line of lines) {
                 if (line.trim()) {
-                  yield JSON.parse(line) as StreamChunk
+                  const parsed = tryParseJSON<StreamChunk>(line, "stream")
+                  if (parsed) yield parsed
                 }
               }
             }
             if (buffer.trim()) {
-              yield JSON.parse(buffer) as StreamChunk
+              const parsed = tryParseJSON<StreamChunk>(buffer, "stream")
+              if (parsed) yield parsed
             }
           },
 
@@ -174,12 +188,14 @@ export class TtsService extends Context.Tag("TtsService")<
               buffer = lines.pop() ?? ""
               for (const line of lines) {
                 if (line.trim()) {
-                  yield JSON.parse(line) as BatchResult
+                  const parsed = tryParseJSON<BatchResult>(line, "batch")
+                  if (parsed) yield parsed
                 }
               }
             }
             if (buffer.trim()) {
-              yield JSON.parse(buffer) as BatchResult
+              const parsed = tryParseJSON<BatchResult>(buffer, "batch")
+              if (parsed) yield parsed
             }
           },
 

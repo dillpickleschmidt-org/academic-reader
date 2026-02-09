@@ -13,6 +13,8 @@ import { ModelProvider, type ModelProviderService } from "../model-provider"
 import { generateEmbedding } from "./embeddings"
 import { generateChatTitle } from "./title-generation"
 import { AppConfig } from "../../config"
+import type { WideEvent } from "../../middleware/wide-event"
+import { emitStreamingEvent } from "../../middleware/wide-event"
 
 interface ChatInput {
   messages: UIMessage[]
@@ -20,6 +22,7 @@ interface ChatInput {
   documentId: string
   summary?: string
   convex: ConvexHttpClient
+  event: WideEvent
 }
 
 const activeStreams = new Map<string, AbortController>()
@@ -31,7 +34,8 @@ export function runChatStream(
     const models = yield* ModelProvider
     const config = yield* AppConfig
 
-    const { messages, threadId, documentId, summary, convex } = input
+    const { messages, threadId, documentId, summary, convex, event } = input
+    const streamStart = performance.now()
 
     // Cancel any in-flight stream for this thread
     const existing = activeStreams.get(threadId)
@@ -159,12 +163,22 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       abortSignal: abortController.signal,
       stopWhen: stepCountIs(20),
       onError: ({ error }) => {
-        convex.mutation("api/chat:setStreaming" as any, {
+        void convex.mutation("api/chat:setStreaming" as any, {
           threadId,
           isStreaming: false,
-        })
+        }).catch((e: unknown) =>
+          console.warn("[chat] Failed to clear streaming flag:", e),
+        )
         activeStreams.delete(threadId)
-        console.error("[chat] Stream error:", error)
+        event.error = {
+          category: "internal",
+          message: error instanceof Error ? error.message : "Chat stream error",
+          code: "CHAT_STREAM_ERROR",
+        }
+        emitStreamingEvent(event, {
+          status: 500,
+          durationMs: Math.round(performance.now() - streamStart),
+        })
       },
       onFinish: async ({
         usage,
@@ -230,6 +244,13 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
               console.warn("[chat] Background title generation failed:", err),
             )
         }
+
+        emitStreamingEvent(event, {
+          status: 200,
+          durationMs: Math.round(performance.now() - streamStart),
+          chatSteps: steps.length,
+          chatFinishReason: finishReason,
+        } as Record<string, unknown>)
       },
     })
 

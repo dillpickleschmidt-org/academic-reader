@@ -95,6 +95,6 @@ const serveStaticApp = Effect.gen(function* () {
 
 export const app = HttpRouter.empty.pipe(
   HttpRouter.mountApp("/api/auth", authProxyApp),
-  HttpRouter.mount("/api", apiRouter),
+  HttpRouter.mountApp("/api", apiRouter),
   HttpRouter.mountApp("/", serveStaticApp),
 )

@@ -3,6 +3,9 @@ import { z } from "zod"
 import { Effect } from "effect"
 import { ModelProvider } from "../model-provider"
 
+const BATCH_SIZE = 300
+const MAX_CONCURRENT = 3
+
 const BlockFilterElement = z.object({
   id: z.string(),
   include: z.boolean(),
@@ -67,38 +70,59 @@ export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {
     const models = yield* ModelProvider
     const textBlocks = blocks.filter((b) => b.id.includes("Text"))
 
-    if (textBlocks.length === 0) return {}
+    const map: Record<string, boolean> = {}
+    for (const b of blocks) {
+      map[b.id] = false
+    }
 
-    const prompt = textBlocks
-      .map((b) => `[${b.id}]\n${b.html}`)
-      .join("\n\n---\n\n")
+    if (textBlocks.length === 0) return map
 
     const model = models.processingModel()
+    const groups: (typeof textBlocks)[] = []
+    for (let i = 0; i < textBlocks.length; i += BATCH_SIZE) {
+      groups.push(textBlocks.slice(i, i + BATCH_SIZE))
+    }
 
-    const result = yield* Effect.tryPromise({
-      try: () =>
-        generateText({
-          model,
-          output: Output.array({ element: BlockFilterElement }),
-          system: SYSTEM_PROMPT,
-          prompt,
-        }),
-      catch: (e) => e as Error,
-    }).pipe(
-      Effect.catchAll(() => {
-        console.warn("[tts-block-filter] AI classification failed")
-        return Effect.succeed({ output: null as any })
-      }),
+    const results = yield* Effect.forEach(
+      groups,
+      (group) =>
+        Effect.tryPromise({
+          try: () =>
+            generateText({
+              model,
+              output: Output.array({ element: BlockFilterElement }),
+              system: SYSTEM_PROMPT,
+              prompt: group
+                .map((b) => `[${b.id}]\n${b.html}`)
+                .join("\n\n---\n\n"),
+            }),
+          catch: (e) => e as Error,
+        }).pipe(
+          Effect.map((result) => {
+            if (result.output?.length) {
+              return result.output as { id: string; include: boolean }[]
+            }
+            console.warn(
+              "[tts-block-filter] No output for batch, including all",
+            )
+            return group.map((b) => ({ id: b.id, include: true }))
+          }),
+          Effect.catchAll((err) => {
+            console.warn("[tts-block-filter] Batch failed, including all:", err)
+            return Effect.succeed(
+              group.map((b) => ({ id: b.id, include: true })),
+            )
+          }),
+        ),
+      { concurrency: MAX_CONCURRENT },
     )
 
-    if (!result.output) {
-      return Object.fromEntries(textBlocks.map((b) => [b.id, true]))
+    for (const entries of results) {
+      for (const entry of entries) {
+        map[entry.id] = entry.include
+      }
     }
 
-    const map: Record<string, boolean> = {}
-    for (const entry of result.output as { id: string; include: boolean }[]) {
-      map[entry.id] = entry.include
-    }
     return map
   })
 }

@@ -22,20 +22,20 @@ export function runBackgroundEnrichments(
   return Effect.all(
     [
       tocEnrichment(documentId, convex, documentPath, textContent).pipe(
-        Effect.catchAll((e) => {
-          console.warn("[enrichments] TOC enrichment failed:", e)
+        Effect.catchAllCause((cause) => {
+          console.warn("[enrichments] TOC enrichment failed:", cause)
           return Effect.void
         }),
       ),
       ttsEnrichment(chunks, documentId, convex).pipe(
-        Effect.catchAll((e) => {
-          console.warn("[enrichments] TTS enrichment failed:", e)
+        Effect.catchAllCause((cause) => {
+          console.warn("[enrichments] TTS enrichment failed:", cause)
           return Effect.void
         }),
       ),
       summaryEnrichment(chunkHtml, documentId, convex).pipe(
-        Effect.catchAll((e) => {
-          console.warn("[enrichments] Summary enrichment failed:", e)
+        Effect.catchAllCause((cause) => {
+          console.warn("[enrichments] Summary enrichment failed:", cause)
           return Effect.void
         }),
       ),
@@ -85,7 +85,7 @@ function ttsEnrichment(
 
     if (filterResult._tag === "Right") {
       filterMap = filterResult.right
-      includedChunks = chunks.filter((c) => filterMap[c.id] !== false)
+      includedChunks = chunks.filter((c) => filterMap[c.id] === true)
     } else {
       console.warn("[enrichments] TTS filter failed, including all blocks")
       filterMap = Object.fromEntries(chunks.map((c) => [c.id, true]))
@@ -94,7 +94,7 @@ function ttsEnrichment(
 
     const allTtsFlags = chunks.map((c) => ({
       blockId: c.id,
-      includeTts: filterMap[c.id] !== false,
+      includeTts: filterMap[c.id] === true,
     }))
     for (let i = 0; i < allTtsFlags.length; i += TTS_BATCH_SIZE) {
       yield* Effect.tryPromise({

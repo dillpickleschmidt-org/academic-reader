@@ -2,10 +2,9 @@ import { generateText, Output } from "ai"
 import { z } from "zod"
 import { Effect } from "effect"
 import { ModelProvider } from "../model-provider"
-import { stripHtml } from "../../utils/sanitize"
 
 const BATCH_SIZE = 15
-const MAX_CONCURRENT_GROUPS = 3
+const MAX_CONCURRENT = 3
 
 const RewriteElement = z.object({
   id: z.string(),
@@ -13,7 +12,7 @@ const RewriteElement = z.object({
 })
 
 const SYSTEM_PROMPT = `**Role & Output Rule**
-You are an audio-preparation editor. You will receive multiple text blocks, each prefixed with a line "ID: <blockId>". For each block, rewrite the text so it sounds natural when read aloud by a TTS model, but alter <10% of the content. Generally, return the text **word-for-word** except for the **four passes** below.
+You are an audio-preparation editor. You will receive multiple HTML blocks, each prefixed with a line "ID: <blockId>". For each block, rewrite the text so it sounds natural when read aloud by a TTS model, but alter <10% of the content. Generally, return the text **word-for-word** except for the **four passes** below.
 
 **Pass 1 – Remove Inline Citations**
 \`[Author et al. 20XX]\` → \`\`
@@ -43,7 +42,7 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
   return Effect.gen(function* () {
     const models = yield* ModelProvider
     const textBlocks = blocks
-      .map((b) => ({ id: b.id, text: stripHtml(b.html) }))
+      .map((b) => ({ id: b.id, text: b.html }))
       .filter((b) => b.text.length > 0)
 
     if (textBlocks.length === 0) {
@@ -57,62 +56,51 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
       groups.push(textBlocks.slice(i, i + BATCH_SIZE))
     }
 
+    const results = yield* Effect.forEach(
+      groups,
+      (group) =>
+        Effect.tryPromise({
+          try: () =>
+            generateText({
+              model,
+              output: Output.array({ element: RewriteElement }),
+              system: SYSTEM_PROMPT,
+              prompt: group
+                .map((b) => `ID: ${b.id}\n${b.text}`)
+                .join("\n\n---\n\n"),
+            }),
+          catch: (e) => e as Error,
+        }).pipe(
+          Effect.map((result) => {
+            if (result.output?.length) {
+              return {
+                entries: result.output as { id: string; text: string }[],
+                failed: false,
+              }
+            }
+            console.warn("[tts-rewrite] No output for group, using plain text")
+            return {
+              entries: group.map((b) => ({ id: b.id, text: b.text })),
+              failed: true,
+            }
+          }),
+          Effect.catchAll((err) => {
+            console.warn("[tts-rewrite] Group failed, using plain text:", err)
+            return Effect.succeed({
+              entries: group.map((b) => ({ id: b.id, text: b.text })),
+              failed: true,
+            })
+          }),
+        ),
+      { concurrency: MAX_CONCURRENT },
+    )
+
     const texts: Record<string, string> = {}
     let failedGroups = 0
-
-    for (let i = 0; i < groups.length; i += MAX_CONCURRENT_GROUPS) {
-      const batch = groups.slice(i, i + MAX_CONCURRENT_GROUPS)
-      const batchResults = yield* Effect.tryPromise({
-        try: () =>
-          Promise.all(
-            batch.map(async (group) => {
-              const prompt = group
-                .map((b) => `ID: ${b.id}\n${b.text}`)
-                .join("\n\n---\n\n")
-
-              try {
-                const result = await generateText({
-                  model,
-                  output: Output.array({ element: RewriteElement }),
-                  system: SYSTEM_PROMPT,
-                  prompt,
-                })
-
-                if (result.output?.length) {
-                  return {
-                    entries: result.output as { id: string; text: string }[],
-                    failed: false,
-                  }
-                }
-
-                console.error(
-                  "[tts-rewrite] LLM rewrite failed for group, falling back to plain text: no output",
-                )
-                return {
-                  entries: group.map((b) => ({ id: b.id, text: b.text })),
-                  failed: true,
-                }
-              } catch (err) {
-                console.error(
-                  "[tts-rewrite] LLM rewrite failed for group, falling back to plain text:",
-                  err,
-                )
-                return {
-                  entries: group.map((b) => ({ id: b.id, text: b.text })),
-                  failed: true,
-                }
-              }
-            }),
-          ),
-        catch: () =>
-          [] as { entries: { id: string; text: string }[]; failed: boolean }[],
-      })
-
-      for (const { entries, failed } of batchResults) {
-        if (failed) failedGroups++
-        for (const entry of entries) {
-          texts[entry.id] = entry.text
-        }
+    for (const { entries, failed } of results) {
+      if (failed) failedGroups++
+      for (const entry of entries) {
+        texts[entry.id] = entry.text
       }
     }
 

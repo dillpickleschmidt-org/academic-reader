@@ -104,6 +104,7 @@ export default defineSchema({
     embedding: v.optional(v.array(v.float64())), // 3072-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])
+    .index("by_document_block", ["documentId", "blockId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 3072, // Gemini gemini-embedding-001

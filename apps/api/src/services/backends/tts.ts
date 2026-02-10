@@ -264,7 +264,7 @@ export class TtsService extends Context.Tag("TtsService")<
                   ? config.ttsWorkers.qwen3Url
                   : config.ttsWorkers.kokoroUrl
               await fetch(`${url}/health`, {
-                signal: AbortSignal.timeout(10000),
+                signal: AbortSignal.timeout(60000),
               })
             },
             catch: (e) =>

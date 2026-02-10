@@ -9,7 +9,8 @@ import { requireAuth } from "../middleware/auth"
 import { getEvent, emitStreamingEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
 import { ConvexClient } from "../services/convex-client"
-import { TtsService, type TTSEngine } from "../services/backends/tts"
+import { TtsService } from "../services/backends/tts"
+import { VOICES } from "@academic-reader/api-client/schemas/tts"
 import { AppConfig } from "../config"
 import { pcmToWav } from "../utils/pcm-to-wav"
 
@@ -42,10 +43,8 @@ interface TTSBatchRequest {
   blocks: Array<{ blockId: string; ttsText: string }>
 }
 
-const VOICE_ENGINES: Record<string, TTSEngine> = {
-  male_1: "qwen3",
-  female_1: "kokoro",
-  female_2: "kokoro",
+function getEngine(voiceId: string) {
+  return VOICES.find((v) => v.id === voiceId)?.engine ?? "kokoro"
 }
 
 const WORKERS: Record<string, { url: string; category: string }> = {
@@ -144,7 +143,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       }
 
       // Activate worker and create backend
-      const engine = VOICE_ENGINES[voiceId] ?? "kokoro"
+      const engine = getEngine(voiceId)
       yield* ttsService.activateWorker(engine)
       const backend = yield* ttsService.createBackend(voiceId)
 
@@ -310,7 +309,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
         })
       }
 
-      const engine = VOICE_ENGINES[voiceId] ?? "kokoro"
+      const engine = getEngine(voiceId)
       if (engine !== "kokoro") {
         return HttpServerResponse.unsafeJson(
           { error: "Batch processing not yet available for this voice" },
@@ -387,15 +386,6 @@ export const ttsRouter = HttpRouter.empty.pipe(
       })
 
       return HttpServerResponse.unsafeJson({ success: true, processed, failed })
-    }),
-  ),
-
-  HttpRouter.get(
-    "/voices",
-    Effect.gen(function* () {
-      const ttsService = yield* TtsService
-      const voices = ttsService.listVoices()
-      return HttpServerResponse.unsafeJson({ voices })
     }),
   ),
 
@@ -485,7 +475,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       }
 
       // Activate worker and create backend
-      const engine = VOICE_ENGINES[voiceId] ?? "kokoro"
+      const engine = getEngine(voiceId)
       yield* ttsService.activateWorker(engine)
       const backend = yield* ttsService.createBackend(voiceId)
 

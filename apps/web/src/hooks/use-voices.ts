@@ -1,44 +1,21 @@
-import { useState, useEffect, useMemo } from "react"
-import { fetchVoices as apiFetchVoices } from "@academic-reader/api-client/client"
-import type {
-  Voice,
-  VoiceCapabilities,
+import { useEffect, useMemo } from "react"
+import {
+  VOICES,
+  type Voice,
+  type VoiceCapabilities,
 } from "@academic-reader/api-client/schemas/tts"
-import { AppRuntime } from "@/lib/runtime"
 
 export type { Voice, VoiceCapabilities }
 
 export function useVoices() {
-  const [voices, setVoices] = useState<Voice[]>(cachedVoices ?? [])
-  const [loading, setLoading] = useState(!cachedVoices)
-
-  useEffect(() => {
-    if (cachedVoices) {
-      setVoices(cachedVoices)
-      setLoading(false)
-      return
-    }
-
-    loadVoices()
-      .then((data) => {
-        cachedVoices = data
-        setVoices(data)
-        setLoading(false)
-      })
-      .catch(() => {
-        fetchPromise = null
-        setLoading(false)
-      })
-  }, [])
-
-  return { voices, loading }
+  return { voices: VOICES, loading: false }
 }
 
 export function useVoiceSelection(
   currentVoice: string,
   onChange: (voiceId: string) => void,
 ) {
-  const { voices, loading } = useVoices()
+  const { voices } = useVoices()
 
   useEffect(() => {
     if (!voices.length) return
@@ -49,7 +26,7 @@ export function useVoiceSelection(
     }
   }, [voices, currentVoice, onChange])
 
-  return { voices, loading }
+  return { voices, loading: false }
 }
 
 export function useCurrentVoiceCapabilities(
@@ -60,17 +37,4 @@ export function useCurrentVoiceCapabilities(
     () => voices.find((v) => v.id === voiceId)?.capabilities ?? null,
     [voices, voiceId],
   )
-}
-
-let cachedVoices: Voice[] | null = null
-let fetchPromise: Promise<Voice[]> | null = null
-
-function loadVoices(): Promise<Voice[]> {
-  if (!fetchPromise) {
-    fetchPromise = AppRuntime.runPromise(apiFetchVoices()).then((r) => [
-      ...r.voices,
-    ])
-  }
-
-  return fetchPromise
 }

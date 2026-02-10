@@ -6,7 +6,7 @@ import type { ConversionProgress } from "./schemas/job"
 import type { ChunkOutput, TocResult } from "./schemas/document"
 import { SavedDocumentResponse } from "./schemas/document"
 import { UploadResponse, type ConversionOptions } from "./schemas/upload"
-import { VoicesResponse } from "./schemas/tts"
+
 
 export type { ConversionOptions }
 
@@ -267,16 +267,6 @@ export const unloadTTS = () =>
     const client = yield* HttpClient.HttpClient
     return yield* client.post("/api/tts/unload").pipe(
       Effect.asVoid,
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
-  })
-
-export const fetchVoices = () =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
-    return yield* client.get("/api/tts/voices").pipe(
-      Effect.flatMap(HttpClientResponse.schemaBodyJson(VoicesResponse)),
       Effect.scoped,
       Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
     )

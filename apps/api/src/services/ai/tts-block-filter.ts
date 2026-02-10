@@ -11,15 +11,15 @@ const BlockFilterElement = z.object({
   include: z.boolean(),
 })
 
-const SYSTEM_PROMPT = `You are a document filter for a text-to-speech system. You will receive a list of HTML text blocks extracted from an academic document. Your job is to determine which blocks contain text that meaningfully contributes to the reading material versus blocks that are noise.
+const SYSTEM_PROMPT = `You are a document filter for a text-to-speech system. You will receive a list of HTML text blocks extracted from a document. Your job is to determine which blocks contain text that meaningfully contributes to the reading material versus blocks that are noise.
 
-Mark a block as true (include) if it contains substantive content a reader would want to hear read aloud — body paragraphs, arguments, explanations, methodology, results, discussion, conclusions, abstracts, etc.
+Mark a block as true (include) if it contains substantive content a reader would want to hear read aloud — body paragraphs, narrative, dialogue, arguments, explanations, stories, instructions, anecdotes, methodology, results, discussion, conclusions, abstracts, etc.
 
 Mark a block as false (skip) if it is noise that does not contribute to understanding the document's content.
 
 Blocks may have block-type "Text" or "TextInlineMath". Both types can contain substantive body text — TextInlineMath blocks simply contain inline math notation alongside prose. Evaluate them the same way: include if the surrounding text is substantive content, skip if it's noise. Do not let inline math, figure references, or citations cause you to skip an otherwise substantive paragraph.
 
-When in doubt, include the block.
+When in doubt, include the block. Short paragraphs, dialogue, and informal prose are usually substantive content — do not skip them.
 
 ## Examples
 
@@ -32,6 +32,10 @@ Each block is presented as "[block_id]" on one line followed by its HTML.
 ### INCLUDE (true) — body text with inline math:
 [/page/4/TextInlineMath/12]
 <p block-type="TextInlineMath">We provide a set of module prototypes <math display="inline">S = \\{G_1, G_2, \\ldots, G_{|S|}\\}</math>. A module prototype can either be generated procedurally or manually designed by an artist (examples are shown in Fig. 4, a). We use <i>G </i>to create skeletal graphs of the module prototypes based on tree architectures discussed in Hallé et al. [1978]. A branch module is an instance of a specific module prototype <math display="inline">G_i \\in S</math> and describes the branching structure along with parameters associated with each node <i>n</i>, which are position, physiological age, branch length, and a thickening factor (<math display="inline">\\phi</math>). The parameters associated with each node <i>n</i> describe how to generate the surface mesh for each branch segment <i>e</i>.</p>
+
+### INCLUDE (true) — narrative / dialogue:
+[/page/15/Text/4]
+<p block-type="Text">"That's insane," I said.</p>
 
 ### SKIP (false) — DOI / pricing metadata:
 [/page/1/Text/11]
@@ -62,7 +66,8 @@ Return every block id from the input with its include decision. Example:
   { "id": "/page/1/Text/10", "include": false },
   { "id": "/page/1/Text/11", "include": false },
   { "id": "/page/1/Text/14", "include": true },
-  { "id": "/page/4/TextInlineMath/12", "include": true }
+  { "id": "/page/4/TextInlineMath/12", "include": true },
+  { "id": "/page/15/Text/4", "include": true }
 ]`
 
 export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {

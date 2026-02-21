@@ -198,6 +198,12 @@ export function processCompletedJob(
                 convex,
                 fileInfo.documentPath,
                 textContent,
+                {
+                  requestId: event.requestId,
+                  documentId,
+                  environment: event.environment,
+                  deployment: event.deployment,
+                },
               ).pipe(
                 Effect.provide(ModelProvider.Live),
                 Effect.provideService(AppConfig, config),

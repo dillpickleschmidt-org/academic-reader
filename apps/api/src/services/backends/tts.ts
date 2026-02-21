@@ -197,20 +197,18 @@ export class TtsService extends Context.Tag("TtsService")<
             return createHttpBackend(url)
           }),
 
-        activateWorker: (workerName) =>
+        activateWorker: (engine) =>
           Effect.tryPromise({
             try: async () => {
-              const url =
-                workerName === "qwen3"
-                  ? config.ttsWorkers.qwen3Url
-                  : config.ttsWorkers.kokoroUrl
+              const url = getEngineUrl(engine as TTSEngine)
+              if (!url) throw new Error(`No URL configured for engine: ${engine}`)
               await fetch(`${url}/health`, {
                 signal: AbortSignal.timeout(60000),
               })
             },
             catch: (e) =>
               new BackendError({
-                message: `Failed to activate ${workerName}: ${e instanceof Error ? e.message : String(e)}`,
+                message: `Failed to activate ${engine}: ${e instanceof Error ? e.message : String(e)}`,
                 backend: "tts",
               }),
           }),

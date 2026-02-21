@@ -1,15 +1,9 @@
-import { generateText, Output } from "ai"
-import { z } from "zod"
+import { generateText } from "ai"
 import { Effect } from "effect"
 import { ModelProvider } from "../model-provider"
 
 const BATCH_SIZE = 15
 const MAX_CONCURRENT = 3
-
-const RewriteElement = z.object({
-  id: z.string(),
-  text: z.string(),
-})
 
 const SYSTEM_PROMPT = `**Role & Output Rule**
 You are an audio-preparation editor. You will receive multiple HTML blocks, each prefixed with a line "ID: <blockId>". For each block, rewrite the text so it sounds natural when read aloud by a TTS model, but alter <10% of the content. Generally, return the text **word-for-word** except for the **four passes** below.
@@ -31,11 +25,36 @@ If a sentence exceeds ~40 words, break it at an existing comma or conjunction; k
 You should perform **glue word changes** wherever the cadence feels stilted **when read aloud**; do **as many or as few** as needed—no quota, no ceiling.
 Never change verbs, adjectives, or technical nouns.
 
-After these four passes, output a JSON array with one object per block. Each object must have "id" (the exact block ID from the input, e.g. "/page/1/Text/4") and "text" (the rewritten text). Return every block from the input.`
+**Output format** – For each block, output § followed by the exact block ID, then the rewritten text on the following lines.
+§/page/1/Text/0
+The rewritten text for the first block.
+§/page/1/Text/1
+The rewritten text for the second block.`
 
 export interface RewriteResult {
   texts: Record<string, string>
   failedGroups: number
+  fallbackBlockCount: number
+}
+
+function parseDelimitedOutput(
+  output: string,
+  validIds: Set<string>,
+): { entries: { id: string; text: string }[]; fallbackBlockCount: number } {
+  const entries: { id: string; text: string }[] = []
+  const parts = output.split(/\n?§(\/page\/[^\n]+)\n/)
+  let fallbackBlockCount = 0
+
+  for (let i = 1; i < parts.length - 1; i += 2) {
+    const id = parts[i].trim()
+    const text = parts[i + 1].trim()
+    if (!validIds.has(id) || !text) {
+      fallbackBlockCount++
+      continue
+    }
+    entries.push({ id, text })
+  }
+  return { entries, fallbackBlockCount }
 }
 
 export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
@@ -46,7 +65,7 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
       .filter((b) => b.text.length > 0)
 
     if (textBlocks.length === 0) {
-      return { texts: {}, failedGroups: 0 } satisfies RewriteResult
+      return { texts: {}, failedGroups: 0, fallbackBlockCount: 0 } satisfies RewriteResult
     }
 
     const model = models.processingModel()
@@ -58,12 +77,12 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
 
     const results = yield* Effect.forEach(
       groups,
-      (group) =>
-        Effect.tryPromise({
+      (group) => {
+        const groupIds = new Set(group.map((b) => b.id))
+        return Effect.tryPromise({
           try: () =>
             generateText({
               model,
-              output: Output.array({ element: RewriteElement }),
               system: SYSTEM_PROMPT,
               prompt: group
                 .map((b) => `ID: ${b.id}\n${b.text}`)
@@ -72,38 +91,39 @@ export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {
           catch: (e) => e as Error,
         }).pipe(
           Effect.map((result) => {
-            if (result.output?.length) {
-              return {
-                entries: result.output as { id: string; text: string }[],
-                failed: false,
-              }
+            const parsed = parseDelimitedOutput(result.text, groupIds)
+            if (parsed.entries.length > 0) {
+              return { ...parsed, failed: false }
             }
-            console.warn("[tts-rewrite] No output for group, using plain text")
             return {
               entries: group.map((b) => ({ id: b.id, text: b.text })),
+              fallbackBlockCount: group.length,
               failed: true,
             }
           }),
-          Effect.catchAll((err) => {
-            console.warn("[tts-rewrite] Group failed, using plain text:", err)
-            return Effect.succeed({
+          Effect.catchAll(() =>
+            Effect.succeed({
               entries: group.map((b) => ({ id: b.id, text: b.text })),
+              fallbackBlockCount: group.length,
               failed: true,
-            })
-          }),
-        ),
+            }),
+          ),
+        )
+      },
       { concurrency: MAX_CONCURRENT },
     )
 
     const texts: Record<string, string> = {}
     let failedGroups = 0
-    for (const { entries, failed } of results) {
-      if (failed) failedGroups++
-      for (const entry of entries) {
+    let fallbackBlockCount = 0
+    for (const result of results) {
+      if (result.failed) failedGroups++
+      fallbackBlockCount += result.fallbackBlockCount
+      for (const entry of result.entries) {
         texts[entry.id] = entry.text
       }
     }
 
-    return { texts, failedGroups } satisfies RewriteResult
+    return { texts, failedGroups, fallbackBlockCount } satisfies RewriteResult
   })
 }

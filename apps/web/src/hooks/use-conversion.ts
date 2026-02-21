@@ -8,6 +8,7 @@ import {
   downloadFile,
   loadSavedDocument as apiLoadSavedDocument,
 } from "@academic-reader/api-client/client"
+import { resolveDownloadSettings } from "@/settings/download"
 import type { ConversionProgress } from "@academic-reader/api-client/schemas/job"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import type {
@@ -302,7 +303,7 @@ export function useConversion() {
   const handleDownload = async () => {
     try {
       if (fileId) {
-        await downloadFile(fileId, fileName)
+        await downloadFile(fileId, fileName, resolveDownloadSettings())
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed")

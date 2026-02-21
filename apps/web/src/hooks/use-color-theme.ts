@@ -1,30 +1,15 @@
-import { useState, useEffect } from "react"
+import { createSetting } from "@/settings/create-setting"
 import { COLOR_THEMES, type ColorTheme } from "@/constants/color-themes"
 
-const STORAGE_KEY = "color-theme"
 const VALID_THEMES = new Set(COLOR_THEMES.map((t) => t.id))
 
-export function useColorTheme() {
-  const [theme, setTheme] = useState<ColorTheme>(() => {
-    if (typeof window === "undefined") return "basic"
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved && VALID_THEMES.has(saved as ColorTheme)) {
-        return saved as ColorTheme
-      }
-      return "basic"
-    } catch {
-      return "basic"
-    }
-  })
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
-
-    // Apply to document
-    document.documentElement.setAttribute("data-color-theme", theme)
-
-    // Dynamically load theme fonts
+export const useColorTheme = createSetting<ColorTheme>({
+  key: "color-theme",
+  attribute: "data-color-theme",
+  defaultValue: "basic",
+  validate: (v): v is ColorTheme => VALID_THEMES.has(v as ColorTheme),
+  label: "Color theme",
+  onApply: (theme) => {
     if (theme === "amethyst-haze") {
       import("@fontsource-variable/geist")
       import("@fontsource-variable/lora")
@@ -37,14 +22,5 @@ export function useColorTheme() {
       import("@fontsource-variable/lora")
       import("@fontsource/ibm-plex-mono")
     }
-
-    // Persist to localStorage
-    try {
-      localStorage.setItem(STORAGE_KEY, theme)
-    } catch (error) {
-      console.warn("Failed to save color theme preference:", error)
-    }
-  }, [theme])
-
-  return [theme, setTheme] as const
-}
+  },
+})

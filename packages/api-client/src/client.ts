@@ -150,9 +150,11 @@ export const subscribeToJobStream = (jobId: string) =>
 export const downloadFile = async (
   fileId: string,
   fileName: string,
+  settings?: Record<string, string>,
 ): Promise<void> => {
   const baseName = fileName.replace(/\.[^/.]+$/, "")
-  const url = `/api/files/${fileId}/download?title=${encodeURIComponent(baseName)}`
+  const params = new URLSearchParams({ title: baseName, ...settings })
+  const url = `/api/files/${fileId}/download?${params}`
 
   if (import.meta.env.PROD) {
     window.location.href = url

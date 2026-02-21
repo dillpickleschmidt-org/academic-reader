@@ -15,6 +15,7 @@ import { NavMain } from "@/components/sidebar/nav-main"
 import { NavActions } from "@/components/sidebar/nav-actions"
 import { ColorThemeSelector } from "@/components/sidebar/ColorThemeSelector"
 import { TypographyStyleToggle } from "@/components/sidebar/TypographyStyleToggle"
+import { SettingsDialog } from "@/components/sidebar/SettingsDialog"
 import { AudioSettingsPopover } from "@/components/sidebar/audio-settings"
 import {
   Sidebar,
@@ -262,6 +263,9 @@ export function ReaderSidebar({
     },
     {
       render: <TypographyStyleToggle />,
+    },
+    {
+      render: <SettingsDialog />,
     },
     {
       name: "Download",

@@ -39,12 +39,16 @@ function getImageMimeType(filename: string): string {
   return IMAGE_MIME_TYPES[ext] ?? "image/png"
 }
 
-const htmlResultCss = `
+function getHtmlResultCss(tabIndent: boolean): string {
+  return `
 .reader-content { font-family: Georgia, "Times New Roman", serif; }
 .reader-content h2, .reader-content h3, .reader-content h4, .reader-content h5, .reader-content h6 { font-family: "Source Sans 3", "Source Sans Pro", sans-serif; }
 .reader-content th { font-family: "Source Sans 3", sans-serif; }
 .reader-content code { font-family: "SF Mono", "Fira Code", Consolas, monospace; }
+${tabIndent ? `.reader-content p { text-indent: 1.5em; }
+.reader-content :is(h1, h2, h3, h4, h5, h6, img, figure, blockquote, ul, ol, table, pre) + p { text-indent: 0; }` : ""}
 `
+}
 
 const SUN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`
 const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>`
@@ -64,6 +68,7 @@ export const downloadRouter = HttpRouter.empty.pipe(
 
       const url = new URL(request.url, "http://localhost")
       const title = sanitizeTitle(url.searchParams.get("title") || "")
+      const tabIndent = url.searchParams.get("tabIndent") !== "off"
 
       yield* enrichEvent({ fileId } as Record<string, unknown>)
 
@@ -102,11 +107,13 @@ export const downloadRouter = HttpRouter.empty.pipe(
       const [sourceSansCss, katexFontsCss] = fontsResult.right
       const fontCss = `${sourceSansCss}\n${katexFontsCss}`
       const finalHtml = $("body").html() || html
+      const htmlResultCss = getHtmlResultCss(tabIndent)
       const fullHtml = generateHtmlDocument(
         finalHtml,
         title,
         fontCss,
         katexCssRules,
+        htmlResultCss,
       )
 
       const minifyResult = yield* Effect.tryPromise({
@@ -143,6 +150,7 @@ function generateHtmlDocument(
   title: string,
   fontCss: string,
   katexCss: string,
+  htmlResultCss: string,
 ): string {
   return `<!DOCTYPE html>
 <html lang="en">

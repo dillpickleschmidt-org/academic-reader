@@ -114,17 +114,21 @@
   margin-bottom: 0.5rem;
 }
 
-/* Paragraphs - keep text-indent for traditional style */
+/* Paragraphs */
 .reader-content p {
   margin: 0;
-  text-indent: 1.5em;
 }
 
 .reader-content p:not(:first-child) {
   margin-top: 1.5rem;
 }
 
-.reader-content
+[data-tab-indent="on"] .reader-content p {
+  text-indent: 1.5em;
+}
+
+[data-tab-indent="on"]
+  .reader-content
   :is(h1, h2, h3, h4, h5, h6, img, figure, blockquote, ul, ol, table, pre)
   + p {
   text-indent: 0;

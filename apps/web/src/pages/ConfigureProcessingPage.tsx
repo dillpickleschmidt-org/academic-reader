@@ -6,6 +6,7 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
+  ScanText,
   Circle,
   X,
   ChevronDown,
@@ -74,6 +75,7 @@ interface Props {
   backendMode: BackendType
   processingMode: ProcessingMode
   useLlm: boolean
+  forceOcr: boolean
   pageRange: string
   error: string
   isProcessing: boolean
@@ -81,6 +83,7 @@ interface Props {
   stages: StageInfo[]
   onProcessingModeChange: (mode: ProcessingMode) => void
   onUseLlmChange: (value: boolean) => void
+  onForceOcrChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
   onStartConversion: () => void
   onCancel: () => void
@@ -366,6 +369,7 @@ export function ConfigureProcessingPage({
   backendMode,
   processingMode,
   useLlm,
+  forceOcr,
   pageRange,
   error,
   isProcessing,
@@ -373,6 +377,7 @@ export function ConfigureProcessingPage({
   stages,
   onProcessingModeChange,
   onUseLlmChange,
+  onForceOcrChange,
   onPageRangeChange,
   onStartConversion,
   onCancel,
@@ -508,6 +513,28 @@ export function ConfigureProcessingPage({
                   fileMimeType={fileMimeType}
                   backendMode={backendMode}
                 />
+
+                {processingMode === "fast" && (
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-md flex items-center justify-center bg-muted text-muted-foreground">
+                        <ScanText className="w-4 h-4" strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-foreground">
+                          Force OCR
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Re-OCR all pages, even those with extractable text
+                        </div>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={forceOcr}
+                      onCheckedChange={onForceOcrChange}
+                    />
+                  </div>
+                )}
 
                 {processingMode === "fast" && backendMode !== "datalab" && (
                   <div className="flex items-center justify-between py-2">

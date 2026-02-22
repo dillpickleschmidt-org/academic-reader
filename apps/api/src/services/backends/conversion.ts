@@ -14,6 +14,7 @@ export interface ConversionInput {
   mimeType?: string
   processingMode: string
   useLlm: boolean
+  forceOcr?: boolean
   pageRange?: string
   documentPath?: string
   fileData?: Buffer
@@ -164,6 +165,7 @@ function createLocalBackend(): ConversionBackendService {
           }
 
           const params = new URLSearchParams({ use_llm: String(input.useLlm) })
+          if (input.forceOcr) params.set("force_ocr", "true")
           if (input.pageRange) params.set("page_range", input.pageRange)
           if (input.fileUrl) params.set("file_url", input.fileUrl)
 
@@ -301,6 +303,7 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
           formData.append("output_format", "html,markdown,json,chunks")
           formData.append("add_block_ids", "true")
           formData.append("mode", input.processingMode)
+          if (input.forceOcr) formData.append("force_ocr", "true")
           if (input.pageRange) formData.append("page_range", input.pageRange)
 
           const response = await fetch(baseUrl, {
@@ -438,6 +441,7 @@ function createModalBackend(
                 file_url: input.fileUrl,
                 result_upload_url: resultUploadUrl,
                 use_llm: input.useLlm,
+                force_ocr: input.forceOcr ?? false,
                 page_range: input.pageRange || null,
               }),
               signal: AbortSignal.timeout(TIMEOUT_MS),

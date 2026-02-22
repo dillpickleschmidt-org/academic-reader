@@ -189,6 +189,7 @@ function App() {
               backendMode={backendMode}
               processingMode={conversion.processingMode}
               useLlm={conversion.useLlm}
+              forceOcr={conversion.forceOcr}
               pageRange={conversion.pageRange}
               error={conversion.error}
               isProcessing={conversion.page === "processing"}
@@ -196,6 +197,7 @@ function App() {
               stages={conversion.stages}
               onProcessingModeChange={conversion.setProcessingMode}
               onUseLlmChange={conversion.setUseLlm}
+              onForceOcrChange={conversion.setForceOcr}
               onPageRangeChange={conversion.setPageRange}
               onStartConversion={conversion.startConversion}
               onCancel={conversion.cancelConversion}

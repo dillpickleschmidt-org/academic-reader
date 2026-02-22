@@ -17,6 +17,7 @@ import type {
 } from "@academic-reader/api-client/schemas/document"
 import { authClient } from "@academic-reader/convex/auth-client"
 import { AppRuntime } from "@/lib/runtime"
+import { toast } from "sonner"
 import { useAppConfig } from "./use-app-config"
 import { preloadResultPage } from "../utils/preload"
 
@@ -29,6 +30,7 @@ interface PendingConversionState {
   pageCount?: number
   processingMode: ProcessingMode
   useLlm: boolean
+  forceOcr: boolean
   pageRange: string
 }
 
@@ -75,6 +77,7 @@ export function useConversion() {
   // Config options
   const [processingMode, setProcessingMode] = useState<ProcessingMode>("fast")
   const [useLlm, setUseLlm] = useState(true)
+  const [forceOcr, setForceOcr] = useState(false)
   const [pageRange, setPageRange] = useState("")
 
   // Processing state
@@ -139,6 +142,7 @@ export function useConversion() {
     setUploadComplete(false)
     setProcessingMode("fast")
     setUseLlm(false)
+    setForceOcr(false)
     setPageRange("")
     setJobId("")
     setContent("")
@@ -190,6 +194,7 @@ export function useConversion() {
       pageCount,
       processingMode,
       useLlm,
+      forceOcr,
       pageRange,
     }
 
@@ -224,6 +229,7 @@ export function useConversion() {
           {
             processingMode: params.processingMode,
             useLlm: params.useLlm,
+            forceOcr: params.forceOcr,
             pageRange: params.pageRange,
           },
         ),
@@ -362,7 +368,7 @@ export function useConversion() {
       )
       setPage("result")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load document")
+      toast.error(err instanceof Error ? err.message : "Failed to load document")
     }
   }
 
@@ -377,6 +383,7 @@ export function useConversion() {
     uploadComplete,
     processingMode,
     useLlm,
+    forceOcr,
     pageRange,
     content,
     error,
@@ -396,6 +403,7 @@ export function useConversion() {
     setPage,
     setProcessingMode,
     setUseLlm,
+    setForceOcr,
     setPageRange,
     setPendingConversion,
 

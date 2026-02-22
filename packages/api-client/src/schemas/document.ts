@@ -90,7 +90,7 @@ export type SavedDocumentChunk = typeof SavedDocumentChunk.Type
 export const SavedDocumentResponse = Schema.Struct({
   html: Schema.String,
   storageId: Schema.String,
-  toc: TocResult,
+  toc: Schema.optional(TocResult),
   chunks: Schema.optional(Schema.Array(SavedDocumentChunk)),
 })
 export type SavedDocumentResponse = typeof SavedDocumentResponse.Type

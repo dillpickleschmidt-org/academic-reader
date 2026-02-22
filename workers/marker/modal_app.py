@@ -45,6 +45,7 @@ class Marker:
         file_url: str,
         result_upload_url: str,
         use_llm: bool = False,
+        force_ocr: bool = False,
         page_range: str | None = None,
     ) -> dict:
         """Download file, convert with Marker, upload result to S3."""
@@ -73,7 +74,7 @@ class Marker:
         try:
             # Convert
             import os
-            config = {"output_format": "html", "use_llm": use_llm}
+            config = {"output_format": "html", "use_llm": use_llm, "force_ocr": force_ocr}
             if use_llm:
                 config["gemini_api_key"] = os.getenv("GOOGLE_API_KEY")
             if page_range:
@@ -124,12 +125,13 @@ def api():
         file_url: str
         result_upload_url: str
         use_llm: bool = False
+        force_ocr: bool = False
         page_range: str | None = None
 
     @web.post("/run")
     async def run(req: ConvertRequest):
         call = await worker.convert.spawn.aio(
-            req.file_url, req.result_upload_url, req.use_llm, req.page_range
+            req.file_url, req.result_upload_url, req.use_llm, req.force_ocr, req.page_range
         )
         return {"id": call.object_id}
 

@@ -65,6 +65,7 @@ export const startConversion = (
     const params = new URLSearchParams({
       mode: options.processingMode,
       use_llm: String(options.useLlm),
+      force_ocr: String(options.forceOcr),
       filename,
       mime_type: mimeType,
     })

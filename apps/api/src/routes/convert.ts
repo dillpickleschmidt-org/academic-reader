@@ -67,6 +67,7 @@ export const convertRouter = HttpRouter.empty.pipe(
 
       const processingMode = (query.mode as ProcessingMode) || "fast"
       const useLlm = query.use_llm === "true"
+      const forceOcr = query.force_ocr === "true"
       const pageRange = query.page_range || ""
 
       yield* enrichEvent({
@@ -75,12 +76,13 @@ export const convertRouter = HttpRouter.empty.pipe(
         filename,
         processingMode,
         useLlm,
+        forceOcr,
       })
 
       const docPath = yield* migrateToUserStorage(storage, fileId, userId)
       const originalFilePath = `${docPath}/original.pdf`
 
-      const baseInput = { fileId, processingMode, useLlm, pageRange }
+      const baseInput = { fileId, processingMode, useLlm, forceOcr, pageRange }
 
       let input: Parameters<typeof backend.submitJob>[0]
 

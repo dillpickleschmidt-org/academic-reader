@@ -48,6 +48,7 @@ async def convert(
     file_id: str,
     output_format: str = "html",
     use_llm: bool = False,
+    force_ocr: bool = False,
     page_range: str | None = None,
     file_url: str | None = None,
 ):
@@ -79,6 +80,7 @@ async def convert(
         file_path,
         output_format,
         use_llm,
+        force_ocr,
         page_range,
     )
 

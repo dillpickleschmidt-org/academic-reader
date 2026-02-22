@@ -4,6 +4,7 @@ services:
   # Profile: local
   marker:
     build: ./workers/marker
+    image: academic-reader-marker
     profiles: ["local"]
     env_file:
       - .env.local
@@ -21,6 +22,7 @@ services:
   # Profile: local
   lightonocr:
     build: ./workers/lightonocr
+    image: academic-reader-lightonocr
     profiles: ["local"]
     volumes:
       - ./workers/lightonocr/app:/app/app
@@ -39,6 +41,7 @@ services:
   # Profile: local
   kokoro-tts:
     build: ./workers/kokoro-tts
+    image: academic-reader-kokoro-tts
     profiles: ["local"]
     volumes:
       - ./workers/kokoro-tts/app:/app/app
@@ -55,6 +58,7 @@ services:
   # Profile: local
   qwen3-tts:
     build: ./workers/qwen3-tts
+    image: academic-reader-qwen3-tts
     profiles: ["local"]
     volumes:
       - ./workers/qwen3-tts/app:/app/app

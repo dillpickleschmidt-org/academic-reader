@@ -9,6 +9,7 @@ image = (
     .apt_install("build-essential", "poppler-utils")
     .pip_install(
         "vllm>=0.9",
+        "xformers",
         "pillow",
         "pypdfium2",
         "markdown",

@@ -397,6 +397,7 @@ export function AudioProvider({
       store.setState({
         narrator: { ...state.narrator, speed },
       })
+      playerRef.current?.setPlaybackRate(speed)
     },
     [store],
   )
@@ -569,6 +570,7 @@ export function AudioProvider({
                 state.narrator.volume * state.master.volume,
                 createPlayerCallbacks(),
               )
+              playerRef.current.setPlaybackRate(state.narrator.speed)
 
               yield* Effect.promise(() =>
                 playerRef.current!.loadFromUrl(data.audioUrl),
@@ -621,6 +623,7 @@ export function AudioProvider({
               state.narrator.volume * state.master.volume,
               createPlayerCallbacks(),
             )
+            playerRef.current.setPlaybackRate(state.narrator.speed)
             playerRef.current.startStreaming()
 
             const decoder = new TextDecoder()

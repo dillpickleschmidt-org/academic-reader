@@ -172,13 +172,14 @@ export const ttsRouter = HttpRouter.empty.pipe(
               ttsText,
               voiceId,
             )) {
-              if (chunk.type === "audio" && chunk.audio) {
-                const data = Buffer.from(chunk.audio, "base64")
+              const audio = chunk.type === "audio" ? chunk.audio ?? chunk.data : undefined
+              if (audio) {
+                const data = Buffer.from(audio, "base64")
                 if (data.length > 0) {
                   pcmChunks.push(data)
                   sendEvent({
                     type: "audio-chunk",
-                    data: chunk.audio,
+                    data: audio,
                   })
                 }
               } else if (chunk.type === "timestamps" && chunk.wordTimestamps) {

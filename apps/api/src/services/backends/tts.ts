@@ -15,6 +15,7 @@ export interface SynthesizeResult {
 export interface StreamChunk {
   type: "audio" | "timestamps"
   audio?: string
+  data?: string
   sampleRate?: number
   durationMs?: number
   wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>

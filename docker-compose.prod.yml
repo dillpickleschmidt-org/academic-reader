@@ -1,0 +1,131 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./.infra/generated/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_started
+      convex-backend:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      SITE_URL: ${SITE_URL}
+      CONVERSION_BACKEND: ${CONVERSION_BACKEND}
+      TTS_BACKEND: ${TTS_BACKEND}
+      PUBLIC_CONVEX_API_URL: ${PUBLIC_CONVEX_API_URL}
+      CONVEX_API_URL: http://convex-backend:3210
+      CONVEX_HTTP_ACTIONS_URL: http://convex-backend:3211
+      API_TO_CONVEX_SERVICE_SECRET: ${API_TO_CONVEX_SERVICE_SECRET}
+      S3_API_ENDPOINT: ${S3_API_ENDPOINT}
+      S3_PRESIGNED_URL_ENDPOINT: ${S3_PRESIGNED_URL_ENDPOINT}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      EXA_API_KEY: ${EXA_API_KEY}
+      CHAT_PROVIDER: ${CHAT_PROVIDER}
+      CHAT_MODEL: ${CHAT_MODEL}
+      PROCESSING_PROVIDER: ${PROCESSING_PROVIDER}
+      PROCESSING_MODEL: ${PROCESSING_MODEL}
+      SUMMARY_PROVIDER: ${SUMMARY_PROVIDER}
+      SUMMARY_MODEL: ${SUMMARY_MODEL}
+      DATALAB_API_KEY: ${DATALAB_API_KEY}
+      MODAL_MARKER_URL: ${MODAL_MARKER_URL}
+      MODAL_LIGHTONOCR_URL: ${MODAL_LIGHTONOCR_URL}
+      MODAL_CHANDRA_URL: ${MODAL_CHANDRA_URL}
+      MODAL_KOKORO_TTS_URL: ${MODAL_KOKORO_TTS_URL}
+      MODAL_QWEN3_TTS_URL: ${MODAL_QWEN3_TTS_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+    expose:
+      - "8787"
+
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:f96e9891f9097a4ca1f028d7aaa2a83e63b315a1
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    environment:
+      CONVEX_CLOUD_ORIGIN: ${PUBLIC_CONVEX_API_URL}
+      CONVEX_SITE_ORIGIN: ${SITE_URL}
+      DISABLE_BEACON: "true"
+    ports:
+      - "127.0.0.1:3210:3210"
+      - "127.0.0.1:3211:3211"
+    volumes:
+      - convex_data:/convex/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: http://localhost:3210
+    ports:
+      - "127.0.0.1:6791:6791"
+    depends_on:
+      convex-backend:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio
+    profiles: ["minio"]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc
+    profiles: ["minio"]
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      mc mb myminio/$$S3_BUCKET --ignore-existing;
+      mc ilm rule add myminio/$$S3_BUCKET --prefix 'temp_documents/' --expire-days 7 2>/dev/null || true;
+      exit 0;
+      "
+
+volumes:
+  caddy_data:
+  caddy_config:
+  convex_data:
+  minio_data:

@@ -6,7 +6,6 @@ import {
 import { Effect } from "effect"
 import { resolve, join } from "path"
 import { statSync } from "fs"
-import { AppConfig } from "./config"
 import { healthRouter } from "./routes/health"
 import { uploadRouter } from "./routes/upload"
 import { convertRouter } from "./routes/convert"
@@ -16,6 +15,8 @@ import { downloadRouter } from "./routes/download"
 import { chatRouter } from "./routes/chat"
 import { documentEmbeddingsRouter } from "./routes/document-embeddings"
 import { ttsRouter } from "./routes/tts"
+import { runtimeConfigRouter } from "./routes/runtime-config"
+import { assetsRouter } from "./routes/assets"
 
 const apiRouter = HttpRouter.empty.pipe(
   HttpRouter.mount("/health", healthRouter),
@@ -27,48 +28,9 @@ const apiRouter = HttpRouter.empty.pipe(
   HttpRouter.mount("/chat", chatRouter),
   HttpRouter.mount("/documents", documentEmbeddingsRouter),
   HttpRouter.mount("/tts", ttsRouter),
+  HttpRouter.mount("/runtime-config", runtimeConfigRouter),
+  HttpRouter.mount("/assets", assetsRouter),
 )
-
-const authProxyApp = Effect.gen(function* () {
-  const config = yield* AppConfig
-  const request = yield* HttpServerRequest.HttpServerRequest
-  const webRequest = yield* HttpServerRequest.toWeb(request)
-  const url = new URL(request.url, "http://localhost")
-  const targetUrl = `${config.convex.httpUrl}/api/auth${url.pathname}${url.search}`
-  const targetHost = new URL(config.convex.httpUrl).host
-
-  const headers = new Headers(request.headers as Record<string, string>)
-  headers.set("host", targetHost)
-
-  const cookies = request.cookies
-  const cookieStr = Object.entries(cookies)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ")
-  if (cookieStr) headers.set("Cookie", cookieStr)
-
-  return yield* Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(targetUrl, {
-        method: request.method,
-        headers,
-        body: ["GET", "HEAD"].includes(request.method)
-          ? undefined
-          : webRequest.body,
-        redirect: "manual",
-        duplex: "half",
-      } as RequestInit)
-      return HttpServerResponse.fromWeb(response)
-    },
-    catch: () => null,
-  }).pipe(
-    Effect.orElseSucceed(() =>
-      HttpServerResponse.unsafeJson(
-        { error: "Auth service unavailable" },
-        { status: 502 },
-      ),
-    ),
-  )
-})
 
 const STATIC_DIR = resolve(import.meta.dirname, "../../web/dist")
 
@@ -94,7 +56,6 @@ const serveStaticApp = Effect.gen(function* () {
 })
 
 export const app = HttpRouter.empty.pipe(
-  HttpRouter.mountApp("/api/auth", authProxyApp),
   HttpRouter.mountApp("/api", apiRouter),
   HttpRouter.mountApp("/", serveStaticApp),
 )

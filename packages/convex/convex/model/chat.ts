@@ -157,6 +157,21 @@ export async function listAllThreads(ctx: QueryCtx) {
   )
 }
 
+export async function listThreadsForDocument(
+  ctx: QueryCtx,
+  documentId: Id<"documents">,
+) {
+  const user = await requireAuth(ctx)
+
+  return ctx.db
+    .query("chatThreads")
+    .withIndex("by_document", (q) =>
+      q.eq("userId", user._id).eq("documentId", documentId),
+    )
+    .order("desc")
+    .collect()
+}
+
 export async function countThreadsForDocument(
   ctx: QueryCtx,
   documentId: Id<"documents">,

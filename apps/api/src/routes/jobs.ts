@@ -25,6 +25,12 @@ export const jobsRouter = HttpRouter.empty.pipe(
       yield* enrichEvent({ jobId } as Record<string, unknown>)
 
       const fileInfo = yield* jobFileMap.get(jobId)
+      if (!fileInfo || fileInfo.userId !== userId) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Job not found" },
+          { status: 404 },
+        )
+      }
 
       const cookies = request.cookies
       const requestCookies = cookies as Record<string, string>
@@ -58,12 +64,21 @@ export const jobsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     "/:jobId/cancel",
     Effect.gen(function* () {
-      yield* requireAuth
+      const { userId } = yield* requireAuth
       const params = yield* HttpRouter.params
       const jobId = params.jobId!
       const backend = yield* ConversionBackend
+      const jobFileMap = yield* JobFileMap
 
       yield* enrichEvent({ jobId } as Record<string, unknown>)
+
+      const fileInfo = yield* jobFileMap.get(jobId)
+      if (!fileInfo || fileInfo.userId !== userId) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Job not found" },
+          { status: 404 },
+        )
+      }
 
       if (!backend.supportsCancellation()) {
         return HttpServerResponse.unsafeJson(

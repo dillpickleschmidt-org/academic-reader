@@ -16,6 +16,7 @@ import { LandingPage } from "./pages/LandingPage"
 import { PricingPage } from "./pages/PricingPage"
 import { resultPageImport } from "./utils/preload"
 import { useNarratorVoice } from "@/hooks/use-narrator-voice"
+import { useRuntimeConfig } from "./context/RuntimeConfigContext"
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -31,9 +32,8 @@ const ConfigureProcessingPage = lazy(() =>
 
 const ResultPage = lazy(resultPageImport)
 
-const backendMode = import.meta.env.VITE_BACKEND_MODE
-
 function App() {
+  const runtimeConfig = useRuntimeConfig()
   const conversion = useConversion()
   const { user } = useAppConfig()
   const [narratorVoice, setNarratorVoice] = useNarratorVoice()
@@ -188,7 +188,9 @@ function App() {
               pageCount={conversion.pageCount}
               uploadProgress={conversion.uploadProgress}
               uploadComplete={conversion.uploadComplete}
-              backendMode={backendMode}
+              conversionBackend={runtimeConfig.conversionBackend}
+              processingModes={runtimeConfig.processingModes}
+              ttsEnabled={runtimeConfig.ttsEnabled}
               processingMode={conversion.processingMode}
               useLlm={conversion.useLlm}
               forceOcr={conversion.forceOcr}

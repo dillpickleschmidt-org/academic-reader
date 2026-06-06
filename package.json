@@ -2,7 +2,7 @@
   "name": "academic-reader",
   "private": true,
   "packageManager": "bun@1.3.9",
-    "workspaces": [
+  "workspaces": [
     "apps/*",
     "packages/*"
   ],
@@ -15,7 +15,13 @@
     "check:api": "turbo check --filter=@academic-reader/api",
     "check:web": "turbo check --filter=@academic-reader/web",
     "infra": "bun scripts/infra.ts up",
-    "infra:down": "bun scripts/infra.ts down"
+    "infra:down": "bun scripts/infra.ts down",
+    "setup:prod": "bun scripts/prod.ts setup",
+    "prod:up": "bun scripts/prod.ts up",
+    "prod:down": "bun scripts/prod.ts down",
+    "prod:sync-convex": "bun scripts/prod.ts sync-convex",
+    "prod:print": "bun scripts/prod.ts print",
+    "prod:doctor": "bun scripts/prod.ts doctor"
   },
   "devDependencies": {
     "@types/bun": "^1.3.5",

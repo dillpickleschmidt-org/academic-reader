@@ -98,9 +98,9 @@ export async function setChunkPreparation(
   ctx: MutationCtx,
   documentId: Id<"documents">,
   chunks: ChunkPreparationInput[],
-  serverSecret: string,
+  apiToConvexServiceSecret: string,
 ) {
-  requireServerSecret(serverSecret)
+  requireApiToConvexServiceSecret(apiToConvexServiceSecret)
 
   const doc = await ctx.db.get(documentId)
   if (!doc) throw new Error("Document not found")
@@ -144,9 +144,9 @@ export async function setChunkPreparation(
 
 export async function createAudioForServer(
   ctx: MutationCtx,
-  input: CreateAudioInput & { serverSecret: string },
+  input: CreateAudioInput & { apiToConvexServiceSecret: string },
 ): Promise<Id<"ttsAudio">> {
-  requireServerSecret(input.serverSecret)
+  requireApiToConvexServiceSecret(input.apiToConvexServiceSecret)
 
   const doc = await ctx.db.get(input.documentId)
   if (!doc) throw new Error("Document not found")
@@ -158,9 +158,9 @@ export async function getGenerationState(
   ctx: QueryCtx,
   documentId: Id<"documents">,
   voiceId: string,
-  serverSecret: string,
+  apiToConvexServiceSecret: string,
 ): Promise<ServerGenerationState> {
-  requireServerSecret(serverSecret)
+  requireApiToConvexServiceSecret(apiToConvexServiceSecret)
 
   const doc = await ctx.db.get(documentId)
   if (!doc) throw new Error("Document not found")
@@ -316,7 +316,7 @@ async function upsertAudio(
   })
 }
 
-function requireServerSecret(serverSecret: string) {
-  const expected = process.env.CONVEX_SERVER_SECRET
-  if (!expected || serverSecret !== expected) throw new Error("Unauthorized")
+function requireApiToConvexServiceSecret(secret: string) {
+  const expected = process.env.API_TO_CONVEX_SERVICE_SECRET
+  if (!expected || secret !== expected) throw new Error("Unauthorized")
 }

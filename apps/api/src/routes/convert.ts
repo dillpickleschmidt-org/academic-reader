@@ -70,8 +70,11 @@ export const convertRouter = HttpRouter.empty.pipe(
       const useLlm = query.use_llm === "true"
       const forceOcr = query.force_ocr === "true"
       const pageRange = query.page_range || ""
-      const audioVoiceId = query.audio_voice_id || DEFAULT_VOICE_ID
-      if (!getVoice(audioVoiceId)) {
+      const audioVoiceId =
+        config.ttsBackend === "none"
+          ? undefined
+          : query.audio_voice_id || DEFAULT_VOICE_ID
+      if (audioVoiceId && !getVoice(audioVoiceId)) {
         return yield* new ValidationError({
           message: `Unknown voice: ${audioVoiceId}`,
         })
@@ -79,7 +82,7 @@ export const convertRouter = HttpRouter.empty.pipe(
 
       yield* enrichEvent({
         fileId,
-        backend: config.backendMode,
+        backend: config.conversionBackend,
         filename,
         processingMode,
         useLlm,
@@ -94,14 +97,14 @@ export const convertRouter = HttpRouter.empty.pipe(
 
       let input: Parameters<typeof backend.submitJob>[0]
 
-      if (config.backendMode === "datalab") {
+      if (config.conversionBackend === "datalab") {
         const fileData = yield* storage.readFile(originalFilePath)
         input = { ...baseInput, fileData, filename }
-      } else if (config.backendMode === "local") {
-        const fileUrl = yield* storage.getFileUrl(originalFilePath, true)
+      } else if (config.conversionBackend === "local") {
+        const fileUrl = yield* storage.getPresignedReadUrl(originalFilePath)
         input = { ...baseInput, fileUrl, mimeType, documentPath: docPath }
       } else {
-        const fileUrl = yield* storage.getFileUrl(originalFilePath, false)
+        const fileUrl = yield* storage.getPresignedReadUrl(originalFilePath)
         input = { ...baseInput, fileUrl, mimeType, documentPath: docPath }
       }
 
@@ -110,7 +113,7 @@ export const convertRouter = HttpRouter.empty.pipe(
       yield* enrichEvent({ jobId })
 
       const workerType =
-        config.backendMode === "local"
+        config.conversionBackend === "local"
           ? getWorkerFromProcessingMode(processingMode)
           : ("marker" as const)
       yield* jobFileMap.set(jobId, {

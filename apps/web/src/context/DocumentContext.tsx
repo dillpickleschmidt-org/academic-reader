@@ -7,6 +7,7 @@ import type {
   TocResult,
 } from "@academic-reader/api-client/schemas/document"
 import { useDocumentEnrichments } from "@/hooks/use-document-enrichments"
+import { useRuntimeConfig } from "@/context/RuntimeConfigContext"
 
 export interface AudioReadinessVoice {
   audioBlockIds: string[]
@@ -50,12 +51,13 @@ export function DocumentProvider({
   initialAudioVoiceId = null,
   children,
 }: DocumentProviderProps) {
+  const { ttsEnabled } = useRuntimeConfig()
   const { toc: enrichedToc, summary } = useDocumentEnrichments(documentId)
 
   const typedId = documentId as Id<"documents"> | null
   const audioReadiness = useQuery(
     api.api.ttsAudio.getDocumentAudioReadiness,
-    typedId ? { documentId: typedId } : "skip",
+    typedId && ttsEnabled ? { documentId: typedId } : "skip",
   ) as AudioReadiness | undefined
 
   const toc = enrichedToc === undefined ? initialToc : enrichedToc

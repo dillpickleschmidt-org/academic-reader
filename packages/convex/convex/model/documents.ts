@@ -332,10 +332,8 @@ export async function hasEmbeddings(
 
 interface ChunkSearchResult {
   html: string
-  blockType: string
   page: number
   section: string | null
-  score: number
 }
 
 /**
@@ -358,42 +356,28 @@ export async function searchChunks(
     documentId,
   })
 
-  // Vector search
   const results = await ctx.vectorSearch("chunks", "by_embedding", {
     vector: queryEmbedding,
-    limit: limit * 2, // Fetch extra to filter by document
+    limit,
+    filter: (q) => q.eq("documentId", documentId),
   })
 
-  // Filter by document and take top N
-  // Note: Convex vector search doesn't support filtering in the query itself yet
-  // So we fetch more and filter client-side
-  const chunksWithScores = await Promise.all(
-    results.map(async (r) => {
-      const chunk = await ctx.runQuery(
-        internal.api.documents.getChunkInternal,
-        {
-          chunkId: r._id,
-        },
-      )
-      if (!chunk) return null
-      return { chunk, score: r._score }
-    }),
+  const chunks = await Promise.all(
+    results.map((r) =>
+      ctx.runQuery(internal.api.documents.getChunkInternal, {
+        chunkId: r._id,
+      }),
+    ),
   )
 
-  return chunksWithScores
-    .filter(
-      (c): c is NonNullable<typeof c> =>
-        c !== null && c.chunk.documentId === documentId,
-    )
-    .slice(0, limit)
-    .map((c) => {
-      const pageMatch = c.chunk.blockId.match(/^\/page\/(\d+)\//)
+  return chunks
+    .filter((chunk): chunk is NonNullable<typeof chunk> => chunk !== null)
+    .map((chunk) => {
+      const pageMatch = chunk.blockId.match(/^\/page\/(\d+)\//)
       return {
-        html: c.chunk.html,
-        blockType: c.chunk.blockType,
+        html: chunk.html,
         page: pageMatch ? Number(pageMatch[1]) : 0,
-        section: c.chunk.section,
-        score: c.score,
+        section: chunk.section,
       }
     })
 }

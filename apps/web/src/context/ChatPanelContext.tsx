@@ -15,7 +15,7 @@ import type {
 import { useDocumentContext } from "./DocumentContext"
 
 type ViewMode = "all" | "document"
-type ThreadWithColor = Doc<"chatThreads"> & {
+type ThreadListItem = Doc<"chatThreads"> & {
   documentColor?: number
   documentName?: string
 }
@@ -25,7 +25,7 @@ interface ChatPanelContextValue {
   activeThreadId: string | null
   pendingMessage: string | null
   setPendingMessage: (message: string | null) => void
-  threads: ThreadWithColor[] | undefined
+  threads: ThreadListItem[] | undefined
   viewMode: ViewMode
   setViewMode: (mode: ViewMode) => void
   open: () => void
@@ -45,14 +45,22 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId ?? null
 
-  const allThreads = useQuery(api.api.chat.listAllThreads)
+  const allThreads = useQuery(
+    api.api.chat.listAllThreads,
+    viewMode === "all" ? {} : "skip",
+  )
+  const documentThreads = useQuery(
+    api.api.chat.listThreadsForDocument,
+    viewMode === "document" && documentId
+      ? { documentId: documentId as Id<"documents"> }
+      : "skip",
+  )
 
   const threads = useMemo(() => {
-    if (!allThreads) return undefined
     if (viewMode === "all") return allThreads
     if (documentId === null) return []
-    return allThreads.filter((t) => t.documentId === documentId)
-  }, [allThreads, viewMode, documentId])
+    return documentThreads
+  }, [allThreads, documentThreads, viewMode, documentId])
 
   const createThreadMutation = useMutation(api.api.chat.createThread)
   const deleteThreadMutation = useMutation(api.api.chat.deleteThread)

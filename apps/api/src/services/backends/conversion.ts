@@ -83,11 +83,11 @@ export class ConversionBackend extends Context.Tag("ConversionBackend")<
       const config = yield* AppConfig
       const storage = yield* Storage
 
-      switch (config.backendMode) {
+      switch (config.conversionBackend) {
         case "local":
           return createLocalBackend()
         case "datalab":
-          return createDatalabBackend(config.datalabApiKey!)
+          return createDatalabBackend(config.datalabApiKey ?? "")
         case "modal":
           return createModalBackend(config.modal, storage)
       }

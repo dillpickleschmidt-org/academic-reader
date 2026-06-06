@@ -40,20 +40,30 @@ export const setChunkPreparation = mutation({
   args: {
     documentId: v.id("documents"),
     chunks: v.array(chunkPreparationValidator),
-    serverSecret: v.string(),
+    apiToConvexServiceSecret: v.string(),
   },
-  handler: (ctx, { documentId, chunks, serverSecret }) =>
-    TtsAudio.setChunkPreparation(ctx, documentId, chunks, serverSecret),
+  handler: (ctx, { documentId, chunks, apiToConvexServiceSecret }) =>
+    TtsAudio.setChunkPreparation(
+      ctx,
+      documentId,
+      chunks,
+      apiToConvexServiceSecret,
+    ),
 })
 
 export const getGenerationState = query({
   args: {
     documentId: v.id("documents"),
     voiceId: v.string(),
-    serverSecret: v.string(),
+    apiToConvexServiceSecret: v.string(),
   },
-  handler: (ctx, { documentId, voiceId, serverSecret }) =>
-    TtsAudio.getGenerationState(ctx, documentId, voiceId, serverSecret),
+  handler: (ctx, { documentId, voiceId, apiToConvexServiceSecret }) =>
+    TtsAudio.getGenerationState(
+      ctx,
+      documentId,
+      voiceId,
+      apiToConvexServiceSecret,
+    ),
 })
 
 export const createAudioForServer = mutation({
@@ -65,7 +75,7 @@ export const createAudioForServer = mutation({
     durationMs: v.number(),
     sampleRate: v.number(),
     wordTimestamps: v.array(wordTimestampValidator),
-    serverSecret: v.string(),
+    apiToConvexServiceSecret: v.string(),
   },
   handler: (ctx, args) => TtsAudio.createAudioForServer(ctx, args),
 })

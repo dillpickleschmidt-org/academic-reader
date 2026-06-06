@@ -23,10 +23,6 @@ COPY apps/web/ ./apps/web/
 COPY packages/ ./packages/
 
 # Build
-ARG VITE_CONVEX_URL
-ARG BACKEND_MODE
-ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
-ENV BACKEND_MODE=$BACKEND_MODE
 RUN bun run --cwd apps/web build
 
 # ─────────────────────────────────────────────────────────────

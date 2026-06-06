@@ -11,7 +11,6 @@ import { Storage, getDocumentPath } from "../services/storage"
 import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
 import { sanitizeFilename } from "../utils/sanitize"
-import { validateExternalUrl } from "../utils/url-validation"
 
 function getOptionalAuth() {
   return requireAuth.pipe(Effect.catchAll(() => Effect.succeed(null)))
@@ -41,7 +40,7 @@ export const uploadRouter = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       const config = yield* AppConfig
       const storage = yield* Storage
-      yield* enrichEvent({ backend: config.backendMode })
+      yield* enrichEvent({ backend: config.conversionBackend })
 
       const request = yield* HttpServerRequest.HttpServerRequest
       const webRequest = yield* HttpServerRequest.toWeb(request)
@@ -81,107 +80,6 @@ export const uploadRouter = HttpRouter.empty.pipe(
         filename,
         size: arrayBuffer.byteLength,
         content_type: file.type,
-        page_count: pageCount,
-      })
-    }),
-  ),
-
-  HttpRouter.post(
-    "/upload-url",
-    Effect.gen(function* () {
-      const config = yield* AppConfig
-      const storage = yield* Storage
-      yield* enrichEvent({ backend: config.backendMode })
-
-      const request = yield* HttpServerRequest.HttpServerRequest
-      const body = (yield* request.json) as { filename: string }
-
-      const { filename: rawFilename } = body as { filename: string }
-      if (!rawFilename) {
-        return yield* new ValidationError({ message: "Missing filename" })
-      }
-
-      const filename = sanitizeFilename(rawFilename)
-      yield* enrichEvent({ filename })
-
-      const auth = yield* getOptionalAuth()
-      const fileId = crypto.randomUUID()
-      const docPath = getDocumentPath(fileId, auth?.userId)
-      const key = `${docPath}/original.pdf`
-
-      const { uploadUrl, expiresAt } = yield* storage.getPresignedUploadUrl(key)
-
-      yield* enrichEvent({ fileId })
-      return HttpServerResponse.unsafeJson({ uploadUrl, fileId, expiresAt })
-    }),
-  ),
-
-  HttpRouter.post(
-    "/fetch-url",
-    Effect.gen(function* () {
-      const config = yield* AppConfig
-      const storage = yield* Storage
-      const request = yield* HttpServerRequest.HttpServerRequest
-
-      const urlObj = new URL(request.url, "http://localhost")
-      const url = urlObj.searchParams.get("url")
-
-      if (!url) {
-        return yield* new ValidationError({ message: "Missing url parameter" })
-      }
-
-      const urlError = validateExternalUrl(url)
-      if (urlError) {
-        return yield* new ValidationError({ message: urlError })
-      }
-
-      yield* enrichEvent({ backend: config.backendMode })
-
-      const fileResponse = yield* Effect.tryPromise({
-        try: () => fetch(url, { signal: AbortSignal.timeout(30_000) }),
-        catch: () => new ValidationError({ message: "Failed to fetch URL" }),
-      })
-
-      if (!fileResponse.ok) {
-        return yield* new ValidationError({
-          message: `Failed to fetch URL: ${fileResponse.statusText}`,
-        })
-      }
-
-      const rawFilename = url.split("/").pop()?.split("?")[0] || ""
-      const filename = sanitizeFilename(rawFilename)
-      const contentType =
-        fileResponse.headers.get("content-type") || "application/pdf"
-
-      const arrayBuffer = yield* Effect.tryPromise({
-        try: () => fileResponse.arrayBuffer(),
-        catch: () =>
-          new ValidationError({ message: "Failed to read fetched content" }),
-      })
-
-      yield* enrichEvent({
-        filename,
-        contentType,
-        fileSize: arrayBuffer.byteLength,
-      })
-
-      const auth = yield* getOptionalAuth()
-      const fileId = crypto.randomUUID()
-      const docPath = getDocumentPath(fileId, auth?.userId)
-
-      yield* storage.saveFile(
-        `${docPath}/original.pdf`,
-        Buffer.from(arrayBuffer),
-      )
-
-      const pageCount = extractPageCount(arrayBuffer, contentType)
-
-      yield* enrichEvent({ fileId })
-      return HttpServerResponse.unsafeJson({
-        file_id: fileId,
-        filename,
-        size: arrayBuffer.byteLength,
-        content_type: contentType,
         page_count: pageCount,
       })
     }),

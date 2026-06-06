@@ -1,6 +1,5 @@
 import { HttpRouter, HttpServerResponse } from "@effect/platform"
 import { Effect } from "effect"
-import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
 import { ConvexClient } from "../services/convex-client"
 import { generateEmbeddings } from "../services/ai/embeddings"
@@ -9,9 +8,8 @@ export const documentEmbeddingsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     "/:documentId/embeddings",
     Effect.gen(function* () {
-      yield* requireAuth
       const convexService = yield* ConvexClient
-      const convex = yield* convexService.fromRequest()
+      const convex = yield* convexService.userSession()
       const params = yield* HttpRouter.params
       const documentId = params.documentId!
 

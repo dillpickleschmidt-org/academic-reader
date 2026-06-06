@@ -6,7 +6,6 @@ import {
 import { Effect } from "effect"
 import type { UIMessage } from "ai"
 import { ValidationError } from "@academic-reader/api-client/errors"
-import { requireAuth } from "../middleware/auth"
 import { getEvent, emitStreamingEvent } from "../middleware/wide-event"
 import { ConvexClient } from "../services/convex-client"
 import { runChatStream } from "../services/ai/chat-agent"
@@ -24,9 +23,8 @@ export const chatRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     "/",
     Effect.gen(function* () {
-      yield* requireAuth
       const convexService = yield* ConvexClient
-      const convex = yield* convexService.fromRequest()
+      const convex = yield* convexService.userSession()
       const request = yield* HttpServerRequest.HttpServerRequest
       const event = yield* getEvent
 

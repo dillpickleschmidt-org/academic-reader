@@ -12,9 +12,9 @@ import { AuthError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
 
 interface ConvexConnectionConfig {
-  httpUrl: string
-  siteUrl: string
-  serverSecret: string
+  apiUrl: string
+  httpActionsUrl: string
+  apiToConvexServiceSecret: string
 }
 
 export interface DocumentChunkInput {
@@ -166,7 +166,7 @@ export interface ConvexServerSession {
 }
 
 export interface ConvexClientService {
-  fromRequest(): Effect.Effect<
+  userSession(): Effect.Effect<
     ConvexSession,
     AuthError,
     HttpServerRequest.HttpServerRequest
@@ -184,7 +184,7 @@ export class ConvexClient extends Context.Tag("ConvexClient")<
       const config = yield* AppConfig
 
       return {
-        fromRequest: () =>
+        userSession: () =>
           Effect.gen(function* () {
             const request = yield* HttpServerRequest.HttpServerRequest
             const session = yield* connectConvexSessionFromCookies(
@@ -228,10 +228,10 @@ function connectConvexSessionFromCookies(
         .join("; ")
       if (cookieStr) headers.set("Cookie", cookieStr)
 
-      const { token } = await getToken(config.httpUrl, headers)
+      const { token } = await getToken(config.httpActionsUrl, headers)
       if (!token) return null
 
-      const client = new ConvexHttpClient(config.siteUrl)
+      const client = new ConvexHttpClient(config.apiUrl)
       client.setAuth(token)
       return makeConvexSession(client)
     },
@@ -244,22 +244,25 @@ function connectConvexSessionFromCookies(
 }
 
 export function createConvexServerSession(
-  config: Pick<ConvexConnectionConfig, "siteUrl" | "serverSecret">,
+  config: Pick<
+    ConvexConnectionConfig,
+    "apiUrl" | "apiToConvexServiceSecret"
+  >,
 ): ConvexServerSession {
-  const client = new ConvexHttpClient(config.siteUrl)
+  const client = new ConvexHttpClient(config.apiUrl)
 
   return {
     setTtsChunkPreparation: (documentId, chunks) =>
       client.mutation(api.api.ttsAudio.setChunkPreparation, {
         documentId: documentId as Id<"documents">,
         chunks,
-        serverSecret: config.serverSecret,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
       }),
     getTtsGenerationState: (documentId, voiceId) =>
       client.query(api.api.ttsAudio.getGenerationState, {
         documentId: documentId as Id<"documents">,
         voiceId,
-        serverSecret: config.serverSecret,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
       }),
     createTtsAudio: (input) =>
       client.mutation(api.api.ttsAudio.createAudioForServer, {
@@ -270,7 +273,7 @@ export function createConvexServerSession(
         durationMs: input.durationMs,
         sampleRate: input.sampleRate,
         wordTimestamps: input.wordTimestamps,
-        serverSecret: config.serverSecret,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
       }),
   }
 }

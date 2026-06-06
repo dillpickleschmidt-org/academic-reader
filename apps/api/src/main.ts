@@ -16,12 +16,13 @@ const program = Effect.gen(function* () {
   const config = yield* AppConfig
 
   console.log(`Starting server on port ${config.port}`)
-  console.log(`Backend: ${config.backendMode}`)
+  console.log(`Conversion backend: ${config.conversionBackend}`)
+  console.log(`TTS backend: ${config.ttsBackend}`)
   if (config.tlsCert && config.tlsKey) console.log("TLS: enabled")
 
   const middleware = HttpMiddleware.make((httpApp) =>
     wideEventMiddleware(
-      config.backendMode,
+      config.conversionBackend,
       config.siteUrl,
       config.otelEndpoint,
     )(

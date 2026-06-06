@@ -1,306 +1,332 @@
 # Academic Reader
 
-PDF → readable HTML converter using [Marker](https://github.com/datalab-to/marker).
+Academic Reader converts documents into readable HTML/Markdown and adds document chat, table-of-contents extraction, summaries, and optional text-to-speech narration.
 
 Supports PDF, DOCX, XLSX, PPTX, HTML, EPUB, and images.
 
 ## Quick Start
 
 ```bash
-cp .env.local.example .env.local   # Configure dev environment
-bun run infra                      # Start MinIO + Convex (Docker)
-bun run dev                        # Start development servers (Turborepo)
+cp .env.local.example .env.local
+bun install
+bun run infra
+bun run dev
 ```
+
+`bun run infra` starts local MinIO + self-hosted Convex and generates app-owned secrets in `.env.local` if they are missing.
 
 ## Monorepo Structure
 
-```
+```txt
 apps/
   web/          React SPA (Vite)
-  api/          Hono API server (Effect.ts)
+  api/          Effect HTTP API server
 packages/
   convex/       Convex functions + better-auth
-  ui/           Shared UI components (shadcn/ui)
-  api-client/   Typed API client + shared errors
+  ui/           Shared UI components
+  api-client/   Typed API client + shared schemas/errors
 workers/        GPU workers (marker, lightonocr, chandra, kokoro-tts, qwen3-tts)
+scripts/        Local/prod bootstrap scripts
 ```
 
-## Backend Modes
+## System Architecture
 
-| Mode      | GPU           | File Storage | Setup                      |
-| --------- | ------------- | ------------ | -------------------------- |
-| `local`   | Your machine  | MinIO        | NVIDIA GPU + Docker        |
-| `datalab` | Datalab cloud | MinIO / R2   | Datalab API key            |
-| `modal`   | Modal cloud   | MinIO / R2   | Modal account + S3 config  |
-
-Set `BACKEND_MODE` in `.env.local` for development.
-
-### Backend Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Server (Hono)                                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  BACKEND_MODE=local       │  BACKEND_MODE=datalab    │  BACKEND_MODE=modal  │
-│  ───────────────────────  │  ──────────────────────  │  ────────────────────│
-│  LocalBackend             │  DatalabBackend          │  ModalBackend        │
-│  - Docker: marker         │  - Datalab API           │  - Modal: marker     │
-│  - Docker: lightonocr     │                          │  - Modal: lightonocr │
-│  LocalTTSBackend          │  ModalTTSBackend         │  - Modal: chandra    │
-│  - Docker: kokoro         │  - Modal: kokoro         │  ModalTTSBackend     │
-│  - Docker: qwen3          │  - Modal: qwen3          │  - Modal: kokoro     │
-│                           │                          │  - Modal: qwen3      │
-└─────────────────────────────────────────────────────────────────────────────┘
+```txt
+                                      Browser
+                                         │
+                 ┌───────────────────────┴───────────────────────┐
+                 │                                               │
+           Static React app                               Convex client
+                 │                                               │
+                 ▼                                               ▼
+┌────────────────────────────────┐              ┌──────────────────────────────┐
+│ App API server                 │              │ Convex backend               │
+│ - serves web build             │◀──auth/api──▶│ - Better Auth HTTP actions   │
+│ - owns uploads/conversion jobs │              │ - documents/chunks/chat/TTS  │
+│ - serves private assets        │              │ - reactive browser queries   │
+└───────────────┬────────────────┘              └──────────────────────────────┘
+                │
+      ┌─────────┴──────────┬───────────────────────┐
+      ▼                    ▼                       ▼
+Private S3 storage   Conversion backend       TTS backend
+MinIO or R2          local / Datalab / Modal   local / Modal / none
 ```
 
-**Workers:**
-- `marker` - Fast PDF/document conversion (Marker)
-- `lightonocr` - Balanced OCR conversion (LightOnOCR + vLLM)
-- `chandra` - Aggressive OCR conversion (CHANDRA + vLLM)
-- `kokoro` - TTS synthesis (Kokoro - female voices)
-- `qwen3` - TTS synthesis (Qwen3-TTS - male voices)
+Browser uploads and document assets stay API-mediated. Workers receive presigned URLs only when they need to read or write storage directly.
 
-## Deployment Architecture
+## Backend Choices
 
-```
-                                 Browser
-                                    │
-                                    ▼
-                           Cloudflare (proxy/protection)
-                                    │
-                                    ▼
-                             VPS port 443
-                                    │
-                                    ▼
-                          Traefik (Dokploy's proxy)
-                                    │
-                    ┌───────────────┴───────────────┐
-                    │                               │
-            Host: academic-reader.com    Host: convex-api.academic-reader.com
-                    │                               │
-                    ▼                               ▼
-              app container               convex-backend container
-                    │
-                    ▼
-        ┌────────── OR ──────────┐
-        │                        │
-     Datalab               Modal ◀──▶ S3/R2
+Academic Reader separates conversion, TTS, and storage choices:
+
+| Variable | Values | Purpose |
+| --- | --- | --- |
+| `CONVERSION_BACKEND` | `local`, `datalab`, `modal` | Document conversion/OCR |
+| `TTS_BACKEND` | `local`, `modal`, `none` | Narration audio generation |
+| `STORAGE_BACKEND` | `minio`, `r2` | Deployment storage provider |
+
+Development defaults in `.env.local.example` use local GPU workers and MinIO:
+
+```txt
+CONVERSION_BACKEND=local
+TTS_BACKEND=local
+STORAGE_BACKEND=minio
 ```
 
-Frontend and API served from VPS via Dokploy. Cloudflare proxy provides DDoS protection and caching.
+Production defaults generated by `bun run setup:prod` use Datalab conversion, no TTS, and self-hosted MinIO unless changed.
 
-### API Endpoints
+### Backend architecture
 
-| Endpoint                                    | Purpose                          |
-| ------------------------------------------- | -------------------------------- |
-| `POST /api/upload`                          | Upload file (to S3 or temp)      |
-| `POST /api/upload/upload-url`               | Get presigned upload URL         |
-| `POST /api/upload/fetch-url`                | Fetch document from URL          |
-| `POST /api/convert/:fileId`                 | Start conversion job             |
-| `GET /api/jobs/:jobId/stream`               | SSE progress stream              |
-| `POST /api/jobs/:jobId/cancel`              | Cancel a running job             |
-| `GET /api/files/:fileId/download`           | Download converted HTML          |
-| `GET /api/saved-documents/:documentId`      | Load saved document              |
-| `DELETE /api/saved-documents/:documentId`   | Delete saved document            |
-| `GET /api/saved-documents/:id/page/:pageNum`| Get original PDF page            |
-| `POST /api/chat`                            | AI chat with document context    |
-| `POST /api/documents/:id/embeddings`        | Generate document embeddings     |
-| `POST /api/tts/generate-document-audio`     | Start cached document audio generation |
-| `POST /api/tts/get-block-audio`             | Get cached audio for a block     |
-| `POST /api/tts/unload`                      | Unload local TTS workers (dev only) |
-| `GET /api/auth/*`                           | Auth (proxied to Convex)         |
+```txt
+                              App API server
+                                   │
+        ┌──────────────────────────┴──────────────────────────┐
+        │                                                     │
+        ▼                                                     ▼
+  ConversionBackend                                      TtsService
+        │                                                     │
+  ┌─────┼───────────┐                                ┌────────┼────────┐
+  ▼     ▼           ▼                                ▼        ▼        ▼
+local  datalab     modal                            local    modal    none
+  │     │           │                                │        │
+  │     │           ├─ marker      fast              ├─ kokoro voices
+  │     │           ├─ lightonocr  balanced          └─ qwen3 voices
+  │     │           └─ chandra     aggressive
+  │     │
+  │     └─ Datalab Marker API
+  │
+  ├─ marker      fast
+  └─ lightonocr  balanced
+```
 
-### Storage
-
-All modes use S3-compatible storage (MinIO for dev, R2 for prod):
-
-- **Signed-out users**: `temp_documents/{fileId}/` - auto-deleted after 7 days
-- **Signed-in users**: `documents/{userId}/{fileId}/` - permanent, managed via UI
-
-Each document folder contains: `original.pdf`, `content.html`, `content.md`
+- `fast` uses Marker-style layout-aware extraction.
+- `balanced` uses LightOnOCR-style vision OCR.
+- `aggressive` uses CHANDRA and requires Modal/Datalab support.
 
 ## Development
 
 ```bash
 bun run infra          # Start MinIO + Convex via Docker
 bun run infra:down     # Stop infrastructure containers
-bun run dev            # Start all dev servers (Turborepo)
+bun run dev            # Start web + API dev servers
 bun run dev:api        # Start API server only
 bun run dev:web        # Start web client only
 bun run check          # Typecheck all packages
 ```
 
-Set `BACKEND_MODE` in `.env.local` to choose the conversion backend.
+All development modes use self-hosted Convex via Docker; no Convex Cloud account is required.
 
-All modes use self-hosted Convex via Docker - no account needed.
+### Development env
+
+User-provided values usually come only from third-party dashboards:
+
+- `GOOGLE_API_KEY` — required for the default chat/summary/embedding setup
+- `DATALAB_API_KEY` — required when `CONVERSION_BACKEND=datalab`
+- `MODAL_*_URL` — required when using Modal conversion or TTS
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — optional Google sign-in
+- `EXA_API_KEY` — optional web search in chat
+- `GROQ_API_KEY` / `OPENROUTER_API_KEY` — optional alternative AI providers
+
+Generated locally by `bun run infra`:
+
+- `BETTER_AUTH_SECRET`
+- `API_TO_CONVEX_SERVICE_SECRET`
+- `CONVEX_SELF_HOSTED_ADMIN_KEY`
 
 ## Production Deployment
 
-Production uses [Dokploy](https://dokploy.com) for container orchestration with automatic deployments via GitHub Actions.
+Production is a single Docker Compose deployment.
+
+```txt
+                                      Internet
+                                         │
+                                         ▼
+                                    VPS :443
+                                         │
+                                         ▼
+┌──────────────────────────────────── Caddy ───────────────────────────────────┐
+│                                                                              │
+│  https://app-domain.com                                                       │
+│    ├─ /api/auth* ───────────────▶ convex-backend:3211  Better Auth actions   │
+│    └─ everything else ──────────▶ app:8787             web + API             │
+│                                                                              │
+│  https://convex.app-domain.com ─▶ convex-backend:3210  Convex API/WebSocket  │
+│                                                                              │
+│  https://files.app-domain.com ──▶ minio:9000           only with MinIO        │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                     ┌───────────────────┴───────────────────┐
+                     ▼                                       ▼
+             Docker volumes                         External services
+             Convex data / MinIO data               Datalab, Modal, R2, AI APIs
+```
+
+The app container contains both the API server and the built React frontend. Caddy owns public routing and TLS; Convex dashboard access stays bound to localhost.
 
 ### Prerequisites
 
-1. VPS with Dokploy installed
-2. Domain with DNS on Cloudflare (proxy enabled)
-3. Docker Hub account
+1. A VPS with Docker and Docker Compose
+2. A domain pointing at the VPS
+3. Bun on the VPS for setup/deploy scripts
+4. Dashboard keys for the services you choose to use
 
-### Deployment Flow
+### Setup
 
-```
-Push to main
-    │
-    ├─► GitHub Actions builds image
-    │   └─► Pushes to Docker Hub
-    │       └─► Dokploy detects new tag and redeploys
-    │
-    └─► If packages/convex/* changed
-        └─► GitHub Actions deploys Convex functions
+```bash
+git clone <repo-url> academic-reader
+cd academic-reader
+bun install
+bun run setup:prod
+bun run prod:up
 ```
 
-### Initial Setup
+`bun run setup:prod` writes `.env.production`, generates app-owned secrets, and prints the DNS records and dashboard-provided values you still need.
 
-1. **Install Dokploy on VPS**
+`bun run prod:up` builds/starts:
 
-   ```bash
-   curl -sSL https://dokploy.com/install.sh | sh
-   ```
+- Caddy reverse proxy with HTTPS
+- Academic Reader app container
+- self-hosted Convex backend
+- Convex dashboard bound to localhost
+- MinIO object storage when `STORAGE_BACKEND=minio`
 
-2. **Deploy Convex** (via Dokploy Compose with the self-hosted Convex blueprint)
+### Production routes
 
-3. **Deploy App** (via Dokploy Docker Image from Docker Hub)
+| Public URL | Service |
+| --- | --- |
+| `https://your-domain.com` | App frontend/API |
+| `https://your-domain.com/api/auth/*` | Convex Better Auth HTTP actions |
+| `https://convex.your-domain.com` | Convex API/WebSocket endpoint |
+| `https://files.your-domain.com` | MinIO S3 API endpoint when `STORAGE_BACKEND=minio` |
 
-4. **Configure domains** in Dokploy:
-   - `yourdomain.com` → app container (port 8787)
-   - `convex.yourdomain.com` → convex-backend (port 3210)
+The Convex dashboard is intentionally local-only:
 
-5. **Set up Cloudflare DNS**:
+```bash
+ssh -L 6791:localhost:6791 user@your-vps
+# then open http://localhost:6791
+```
 
-   ```
-   A    @        <VPS_IP>    Proxied
-   A    convex   <VPS_IP>    Proxied
-   ```
+### Production commands
 
-6. **Generate Convex admin key**:
+```bash
+bun run setup:prod          # Generate/update .env.production and report
+bun run prod:up             # Compose up + Convex deploy/env sync
+bun run prod:down           # Compose down
+bun run prod:sync-convex    # Deploy Convex functions and sync function env
+bun run prod:doctor         # Print health/config status
+bun run prod:print          # Print masked deployment report
+bun run prod:print -- --reveal-secrets
+```
 
-   ```bash
-   docker exec <convex-container> ./generate_admin_key.sh
-   ```
+Generated report:
 
-7. **Add GitHub Secrets**:
-   - `DOCKERHUB_USERNAME`
-   - `DOCKERHUB_TOKEN`
-   - `CONVEX_ADMIN_KEY`
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `BETTER_AUTH_SECRET`
-   - `CONVEX_SERVER_SECRET`
+```txt
+.infra/generated/production.md
+```
 
-8. **Configure R2 lifecycle rule** (modal mode):
+### DNS
 
-   ```bash
-   # Auto-delete temp files after 7 days (signed-out user uploads)
-   npx wrangler r2 bucket lifecycle add <bucket-name> temp-cleanup temp_documents/ --expire-days 7
-   ```
+`setup:prod` prints the exact records, generally:
 
-9. **Configure SSRF protection** (required for `/fetch-url` endpoint):
+```txt
+A    your-domain.com          <VPS_IP>
+A    convex.your-domain.com   <VPS_IP>
+A    files.your-domain.com    <VPS_IP>  # only when STORAGE_BACKEND=minio
+```
 
-   ```bash
-   # Block containers from accessing private/internal IPs (IPv4)
-   iptables -I DOCKER-USER -d 169.254.0.0/16 -j REJECT  # Metadata/link-local
-   iptables -I DOCKER-USER -d 127.0.0.0/8 -j REJECT     # Localhost
-   iptables -I DOCKER-USER -d 10.0.0.0/8 -j REJECT      # Private
-   iptables -I DOCKER-USER -d 192.168.0.0/16 -j REJECT  # Private
+## Configuration model
 
-   # Block IPv6 private ranges
-   ip6tables -I DOCKER-USER -d ::1 -j REJECT            # Localhost
-   ip6tables -I DOCKER-USER -d fc00::/7 -j REJECT       # Private (ULA)
-   ip6tables -I DOCKER-USER -d fe80::/10 -j REJECT      # Link-local
+The app tries to minimize manual environment variables:
 
-   # Persist across reboots
-   apt install -y iptables-persistent
-   netfilter-persistent save
-   ```
+### Generated by setup scripts
 
-   This prevents the URL fetch endpoint from being used to access internal services.
+| Variable | Purpose |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Better Auth root secret |
+| `API_TO_CONVEX_SERVICE_SECRET` | Narrow API-to-Convex service auth for background jobs |
+| `CONVEX_SELF_HOSTED_ADMIN_KEY` | Self-hosted Convex deploy/env admin key |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO admin credentials |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | S3 credentials used by the app |
 
-### Convex Dashboard
+### Derived from domain / Docker Compose
 
-The dashboard is not publicly exposed. Access options:
+| Variable | Purpose |
+| --- | --- |
+| `SITE_URL` | Public app URL |
+| `PUBLIC_CONVEX_API_URL` | Browser Convex API/WebSocket URL |
+| `CONVEX_API_URL` | Internal app-to-Convex API URL |
+| `CONVEX_HTTP_ACTIONS_URL` | Internal app-to-Convex HTTP actions URL |
+| `S3_API_ENDPOINT` | S3-compatible API endpoint used by the app |
+| `S3_PRESIGNED_URL_ENDPOINT` | Endpoint embedded in generated presigned URLs |
 
-- Via Tailscale: `http://your-vps-tailscale-hostname:6791`
-- Via SSH tunnel: `ssh -L 6791:localhost:6791 user@your-vps`
+### Dashboard-provided
 
-### Monitoring (Optional)
+| Variable | Required when |
+| --- | --- |
+| `GOOGLE_API_KEY` | Always, with the default AI/embedding setup |
+| `S3_API_ENDPOINT` / `S3_PRESIGNED_URL_ENDPOINT` | `STORAGE_BACKEND=r2` |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `STORAGE_BACKEND=r2` |
+| `DATALAB_API_KEY` | `CONVERSION_BACKEND=datalab` |
+| `MODAL_MARKER_URL` | `CONVERSION_BACKEND=modal` |
+| `MODAL_LIGHTONOCR_URL` | Optional balanced Modal conversion |
+| `MODAL_CHANDRA_URL` | Optional aggressive Modal conversion |
+| `MODAL_KOKORO_TTS_URL` | `TTS_BACKEND=modal` |
+| `MODAL_QWEN3_TTS_URL` | `TTS_BACKEND=modal` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
+| `EXA_API_KEY` | Optional chat web search |
+| `GROQ_API_KEY` | Only if a provider is set to `groq` |
+| `OPENROUTER_API_KEY` | Only if a provider is set to `openrouter` |
 
-For structured logging via Grafana/Loki:
+See `.env.local.example` and `.env.production.example` for all supported variables.
 
-1. Deploy [dokploy-grafana-compose](https://github.com/quochuydev/dokploy-grafana-compose) as a Compose project in Dokploy
-2. Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318` in the app container
+## API Endpoints
 
-## Configuration
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/upload` | Upload file |
+| `POST /api/convert/:fileId` | Start conversion job |
+| `GET /api/jobs/:jobId/stream` | SSE progress stream |
+| `POST /api/jobs/:jobId/cancel` | Cancel a running job |
+| `GET /api/files/:fileId/download` | Download converted HTML |
+| `GET /api/saved-documents/:documentId` | Load saved document |
+| `DELETE /api/saved-documents/:documentId` | Delete saved document |
+| `GET /api/saved-documents/:id/page/:pageNum` | Get original PDF page |
+| `POST /api/chat` | AI chat with document context |
+| `POST /api/documents/:id/embeddings` | Generate document embeddings |
+| `POST /api/tts/generate-document-audio` | Start cached document audio generation |
+| `POST /api/tts/get-block-audio` | Get cached audio for a block |
+| `POST /api/tts/unload` | Unload local TTS workers |
+| `GET /api/assets/documents/:storageId/images/:filename` | Authenticated document image asset |
+| `GET /api/assets/documents/:documentId/audio` | Authenticated document audio asset |
+| `GET /api/runtime-config` | Public browser runtime configuration |
 
-### Development (.env.local)
+## Storage
 
-| Variable                   | Required     | Description                                  |
-| -------------------------- | ------------ | -------------------------------------------- |
-| `BACKEND_MODE`             | Yes          | `local`, `datalab`, or `modal`               |
-| `SITE_URL`                 | Yes          | Frontend URL (default: localhost:5173)        |
-| `CONVEX_SERVER_SECRET`     | Yes          | Shared API-to-Convex server auth secret       |
-| `DATALAB_API_KEY`          | datalab      | From [datalab.to](https://datalab.to)        |
-| `GOOGLE_API_KEY`           | Yes          | For Gemini (chat, summary)                   |
-| `GROQ_API_KEY`             | No           | For Groq (processing tasks)                  |
-| `OPENROUTER_API_KEY`       | No           | For OpenRouter (alternative provider)        |
-| `EXA_API_KEY`              | No           | For Exa search in chat                       |
-| `CHAT_PROVIDER`            | No           | `google` or `openrouter` (default: google)   |
-| `PROCESSING_PROVIDER`      | No           | `google`, `openrouter`, or `groq` (default: groq) |
-| `SUMMARY_PROVIDER`         | No           | `google`, `openrouter`, or `groq` (default: google) |
-| `MODAL_MARKER_URL`         | modal        | Modal marker endpoint URL                    |
-| `MODAL_LIGHTONOCR_URL`     | modal        | Modal lightonocr endpoint URL                |
-| `MODAL_CHANDRA_URL`        | modal        | Modal chandra endpoint URL                   |
-| `MODAL_KOKORO_TTS_URL`     | modal        | Modal kokoro TTS endpoint URL                |
-| `MODAL_QWEN3_TTS_URL`     | modal        | Modal qwen3 TTS endpoint URL                |
+All modes use private S3-compatible object storage:
 
-### Production (set in Dokploy UI)
+- development: MinIO via `docker-compose.yml`
+- production: MinIO via `docker-compose.prod.yml` or R2 with `STORAGE_BACKEND=r2`
 
-**App Container:**
+Buckets are private. Browser-facing document images/audio are served through authenticated API routes. Presigned URLs are used only for external worker handoff.
 
-| Variable                      | Required | Description                             |
-| ----------------------------- | -------- | --------------------------------------- |
-| `BACKEND_MODE`                | Yes      | `datalab` or `modal`                    |
-| `SITE_URL`                    | Yes      | <https://yourdomain.com>                |
-| `CONVEX_SERVER_SECRET`        | Yes      | Shared API-to-Convex server auth secret |
-| `DATALAB_API_KEY`             | datalab  | Production API key                      |
-| `GOOGLE_API_KEY`              | Yes      | For Gemini (chat, summary)              |
-| `GROQ_API_KEY`                | No       | For Groq (processing tasks)             |
-| `OPENROUTER_API_KEY`          | No       | For OpenRouter (alternative provider)   |
-| `EXA_API_KEY`                 | No       | For Exa search in chat                  |
-| `CHAT_PROVIDER`               | No       | AI provider for chat                    |
-| `PROCESSING_PROVIDER`         | No       | AI provider for TOC/TTS processing      |
-| `SUMMARY_PROVIDER`            | No       | AI provider for summaries               |
-| `MODAL_*_URL`                 | modal    | Modal endpoint URLs (see above)         |
-| `S3_*`                        | modal    | S3/R2 credentials                       |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No       | `http://alloy:4318` for Grafana logging |
+Storage prefixes:
 
-**Convex Container:**
+- signed-out uploads: `temp_documents/{fileId}/` — lifecycle cleanup after 7 days
+- signed-in documents: `documents/{userId}/{fileId}/` — permanent until deleted
 
-| Variable              | Required | Description                                  |
-| --------------------- | -------- | -------------------------------------------- |
-| `CONVEX_CLOUD_ORIGIN` | Yes      | <https://convex-api.yourdomain.com>          |
-| `CONVEX_SITE_ORIGIN`  | Yes      | <https://convex-http-actions.yourdomain.com> |
-| `DISABLE_BEACON`      | No       | Set to `true` to disable telemetry           |
+Each document folder contains:
 
-**GitHub Secrets:**
+```txt
+original.pdf
+content.html
+content.md
+images/*
+audio/*
+```
 
-| Secret                 | Description                |
-| ---------------------- | -------------------------- |
-| `DOCKERHUB_USERNAME`   | Docker Hub username        |
-| `DOCKERHUB_TOKEN`      | Docker Hub access token    |
-| `CONVEX_ADMIN_KEY`     | From generate_admin_key.sh |
-| `GOOGLE_CLIENT_ID`     | Google OAuth client ID     |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `BETTER_AUTH_SECRET`   | Auth encryption secret     |
-| `CONVEX_SERVER_SECRET` | API-to-Convex server auth  |
-| `MODAL_TOKEN_ID`       | Modal authentication       |
-| `MODAL_TOKEN_SECRET`   | Modal authentication       |
+## Validation
 
-See `.env.local.example` and `.env.production.example` for all options.
+```bash
+bun run check
+cd packages/convex && bunx convex codegen
+docker compose --env-file .env.production -f docker-compose.prod.yml config
+```

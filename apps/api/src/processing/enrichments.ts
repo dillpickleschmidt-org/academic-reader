@@ -224,7 +224,7 @@ function ttsEnrichment(
       fallbackBlockCount,
     })
 
-    if (ctx.audioVoiceId) {
+    if (ctx.audioVoiceId && config.ttsBackend !== "none") {
       const storage = yield* Storage
       const ttsService = yield* TtsService
       const result = startDocumentAudioGeneration({
@@ -233,7 +233,7 @@ function ttsEnrichment(
         ttsService,
         documentId,
         voiceId: ctx.audioVoiceId,
-        backendMode: config.backendMode,
+        ttsBackend: config.ttsBackend,
         documentPath,
       })
       emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/audio"), result)

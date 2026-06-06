@@ -9,6 +9,7 @@ import { useTTSChunkDetection } from "@/hooks/use-tts-chunk-detection"
 import { useWordHighlighting } from "@/hooks/use-word-highlighting"
 import { useAudioActions, useAudioSelector } from "@/context/AudioContext"
 import { PdfPageDialog } from "@/components/PdfPageDialog"
+import { useRuntimeConfig } from "@/context/RuntimeConfigContext"
 
 interface Props {
   content: string
@@ -23,6 +24,7 @@ export function ResultPage({
   onDownload,
   onReset,
 }: Props) {
+  const { ttsEnabled } = useRuntimeConfig()
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId ?? null
   const audioReadiness = documentContext?.audioReadiness
@@ -30,9 +32,9 @@ export function ResultPage({
   const { loadBlockTTS } = useAudioActions()
   const pageOffset = documentContext?.toc?.offset ?? 0
   const eligibleBlockIds = useMemo(() => {
-    if (!audioReadiness?.ttsReady) return undefined
+    if (!ttsEnabled || !audioReadiness?.ttsReady) return undefined
     return new Set(audioReadiness.eligibleBlockIds)
-  }, [audioReadiness])
+  }, [audioReadiness, ttsEnabled])
   const { handleContentClick } = useTTSChunkDetection(
     eligibleBlockIds,
     (blockId, wordIndex) => {
@@ -117,9 +119,9 @@ export function ResultPage({
         return
       }
 
-      handleContentClick(e)
+      if (ttsEnabled) handleContentClick(e)
     },
-    [handleContentClick, documentId, pageOffset],
+    [handleContentClick, documentId, pageOffset, ttsEnabled],
   )
 
   useEffect(() => {

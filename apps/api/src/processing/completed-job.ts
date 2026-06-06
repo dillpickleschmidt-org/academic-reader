@@ -113,7 +113,7 @@ export function processCompletedJob(
     if (
       normalizedChunks.length &&
       fileInfo?.documentPath &&
-      config.backendMode === "datalab"
+      config.conversionBackend === "datalab"
     ) {
       const pdfResult = yield* storage
         .readFile(`${fileInfo.documentPath}/original.pdf`)

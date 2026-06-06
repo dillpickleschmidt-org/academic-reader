@@ -18,9 +18,3 @@ export const ConversionOptions = Schema.Struct({
   audioVoiceId: Schema.String,
 })
 export type ConversionOptions = typeof ConversionOptions.Type
-
-export const PresignedUrlResult = Schema.Struct({
-  uploadUrl: Schema.String,
-  expiresAt: Schema.String,
-})
-export type PresignedUrlResult = typeof PresignedUrlResult.Type

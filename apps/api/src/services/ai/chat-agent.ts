@@ -87,6 +87,14 @@ export function runChatStream(
       ? `\nHere is a pre-generated summary of the document:\n<summary>\n${resolvedSummary}\n</summary>\n`
       : ""
 
+    const webSearchBlock = config.ai.exaApiKey
+      ? `
+You also have web search tools available:
+- Use the webSearch tool to find information online when the user asks about cited papers, external concepts, related work, or anything not in the document
+- Use the extractPage tool to read the full content of a specific URL from search results when you need more detail
+- When using web search results, cite the source URLs`
+      : ""
+
     const systemPrompt = `You are an academic assistant helping users understand research papers and documents.
 ${summaryBlock}
 The user has a document loaded and may ask questions about it. When answering:
@@ -95,11 +103,7 @@ The user has a document loaded and may ask questions about it. When answering:
 3. Cite page numbers when referencing specific information
 4. If the search doesn't return relevant results, say so honestly
 5. Be concise and directly answer what was asked
-
-You also have web search tools available:
-- Use the webSearch tool to find information online when the user asks about cited papers, external concepts, related work, or anything not in the document
-- Use the extractPage tool to read the full content of a specific URL from search results when you need more detail
-- When using web search results, cite the source URLs
+${webSearchBlock}
 
 Do not narrate or announce tool usage. Just use tools silently and provide the answer.`
 
@@ -112,41 +116,44 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       convex,
       models,
     ) as unknown as ToolSet[string]
-    tools.webSearch = webSearch({
-      apiKey: exaApiKey,
-      numResults: 10,
-      contents: {
-        highlights: {
-          numSentences: 5,
-          highlightsPerUrl: 3,
-        },
-      },
-    }) as unknown as ToolSet[string]
-    tools.extractPage = tool({
-      description:
-        "Extract the full content of a specific web page URL for detailed reading",
-      inputSchema: z.object({
-        url: z.url().describe("The URL to extract content from"),
-      }),
-      execute: async ({ url }) => {
-        const res = await fetch("https://api.exa.ai/contents", {
-          method: "POST",
-          headers: {
-            "x-api-key": exaApiKey,
-            "Content-Type": "application/json",
+
+    if (exaApiKey) {
+      tools.webSearch = webSearch({
+        apiKey: exaApiKey,
+        numResults: 10,
+        contents: {
+          highlights: {
+            numSentences: 5,
+            highlightsPerUrl: 3,
           },
-          body: JSON.stringify({ urls: [url], text: true }),
-          signal: AbortSignal.timeout(30_000),
-        })
-        if (!res.ok) return "Could not extract content from this URL."
-        const data = (await res.json()) as {
-          results?: { title?: string; url: string; text?: string }[]
-        }
-        const result = data.results?.[0]
-        if (!result?.text) return "Could not extract content from this URL."
-        return `# ${result.title ?? "Untitled"}\n${result.url}\n\n${result.text}`
-      },
-    }) as unknown as ToolSet[string]
+        },
+      }) as unknown as ToolSet[string]
+      tools.extractPage = tool({
+        description:
+          "Extract the full content of a specific web page URL for detailed reading",
+        inputSchema: z.object({
+          url: z.url().describe("The URL to extract content from"),
+        }),
+        execute: async ({ url }) => {
+          const res = await fetch("https://api.exa.ai/contents", {
+            method: "POST",
+            headers: {
+              "x-api-key": exaApiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ urls: [url], text: true }),
+            signal: AbortSignal.timeout(30_000),
+          })
+          if (!res.ok) return "Could not extract content from this URL."
+          const data = (await res.json()) as {
+            results?: { title?: string; url: string; text?: string }[]
+          }
+          const result = data.results?.[0]
+          if (!result?.text) return "Could not extract content from this URL."
+          return `# ${result.title ?? "Untitled"}\n${result.url}\n\n${result.text}`
+        },
+      }) as unknown as ToolSet[string]
+    }
 
     const abortController = new AbortController()
     activeStreams.set(threadId, abortController)

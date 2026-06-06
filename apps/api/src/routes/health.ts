@@ -9,7 +9,8 @@ export const healthRouter = HttpRouter.empty.pipe(
       const config = yield* AppConfig
       return HttpServerResponse.unsafeJson({
         status: "ok",
-        mode: config.backendMode,
+        conversionBackend: config.conversionBackend,
+        ttsBackend: config.ttsBackend,
       })
     }),
   ),

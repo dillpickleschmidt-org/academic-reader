@@ -4,25 +4,26 @@ import { resolve } from "path"
 
 const root = resolve(import.meta.dirname, "..")
 const envPath = resolve(root, ".env.local")
-
-let backendMode = "modal"
-try {
-  const envContent = readFileSync(envPath, "utf-8")
-  const match = envContent.match(/^BACKEND_MODE\s*=\s*(.+)$/m)
-  if (match) backendMode = match[1].trim()
-} catch {
-  console.warn("No .env.local found, defaulting to BACKEND_MODE=modal")
-}
-
 const action = process.argv[2] ?? "up"
-if (action !== "down") ensureConvexServerSecret()
+const env = parseEnvFile(envPath)
+const conversionBackend = env.CONVERSION_BACKEND ?? "datalab"
+const ttsBackend =
+  env.TTS_BACKEND ?? (conversionBackend === "local" ? "local" : "none")
+const composeProfile = selectComposeProfile(conversionBackend, ttsBackend)
+
+if (action !== "down") {
+  ensureGeneratedSecret("BETTER_AUTH_SECRET")
+  ensureGeneratedSecret("API_TO_CONVEX_SERVICE_SECRET")
+}
 
 const args =
   action === "down"
-    ? ["compose", "--profile", backendMode, "down"]
-    : ["compose", "--profile", backendMode, "up", "-d"]
+    ? ["compose", "--profile", composeProfile, "down"]
+    : ["compose", "--profile", composeProfile, "up", "-d"]
 
-console.log(`[infra] BACKEND_MODE=${backendMode} → docker ${args.join(" ")}`)
+console.log(
+  `[infra] CONVERSION_BACKEND=${conversionBackend} TTS_BACKEND=${ttsBackend} → docker ${args.join(" ")}`,
+)
 
 const proc = Bun.spawn(["docker", ...args], {
   cwd: root,
@@ -38,20 +39,23 @@ const adminKey = await generateConvexAdminKey()
 if (adminKey) await syncConvexEnvVars(adminKey)
 process.exit(0)
 
-function ensureConvexServerSecret() {
+function selectComposeProfile(conversionBackend: string, ttsBackend: string) {
+  if (conversionBackend === "local" || ttsBackend === "local") return "local"
+  if (conversionBackend === "modal" || ttsBackend === "modal") return "modal"
+  return "datalab"
+}
+
+function ensureGeneratedSecret(key: string) {
   if (!existsSync(envPath)) return
 
-  const env = parseEnvFile(envPath)
-  if (env.CONVEX_SERVER_SECRET) return
+  const currentEnv = parseEnvFile(envPath)
+  if (currentEnv[key]) return
 
   const secret = randomBytes(32).toString("hex")
   const envContent = readFileSync(envPath, "utf-8")
   const separator = envContent.endsWith("\n") ? "" : "\n"
-  writeFileSync(
-    envPath,
-    `${envContent}${separator}CONVEX_SERVER_SECRET=${secret}\n`,
-  )
-  console.log("[infra] Added CONVEX_SERVER_SECRET to .env.local")
+  writeFileSync(envPath, `${envContent}${separator}${key}=${secret}\n`)
+  console.log(`[infra] Added ${key} to .env.local`)
 }
 
 function parseEnvFile(path: string): Record<string, string> {
@@ -59,7 +63,7 @@ function parseEnvFile(path: string): Record<string, string> {
     const content = readFileSync(path, "utf-8")
     const vars: Record<string, string> = {}
     for (const line of content.split("\n")) {
-      const match = line.match(/^([A-Z_]+)\s*=\s*(.+)$/)
+      const match = line.match(/^([A-Z0-9_]+)\s*=\s*(.*)$/)
       if (match) vars[match[1]] = match[2].trim()
     }
     return vars
@@ -77,7 +81,7 @@ async function generateConvexAdminKey(): Promise<string | null> {
       "docker",
       "compose",
       "--profile",
-      backendMode,
+      composeProfile,
       "exec",
       "convex-backend",
       "./generate_admin_key.sh",
@@ -109,23 +113,13 @@ async function generateConvexAdminKey(): Promise<string | null> {
   )
   console.log("[infra] Generated packages/convex/.env.local")
 
-  try {
-    const rootEnv = readFileSync(envPath, "utf-8")
-    const updated = rootEnv.replace(
-      /^CONVEX_SELF_HOSTED_ADMIN_KEY=.+$/m,
-      `CONVEX_SELF_HOSTED_ADMIN_KEY=${adminKey}`,
-    )
-    if (updated !== rootEnv) {
-      writeFileSync(envPath, updated)
-      console.log("[infra] Updated admin key in .env.local")
-    }
-  } catch {}
+  updateEnvFile("CONVEX_SELF_HOSTED_ADMIN_KEY", adminKey)
 
   return adminKey
 }
 
 async function syncConvexEnvVars(adminKey: string) {
-  const env = parseEnvFile(envPath)
+  const currentEnv = parseEnvFile(envPath)
   const convexEnv = {
     CONVEX_SELF_HOSTED_URL: "http://localhost:3210",
     CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
@@ -137,13 +131,13 @@ async function syncConvexEnvVars(adminKey: string) {
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "BETTER_AUTH_SECRET",
-    "CONVEX_SERVER_SECRET",
+    "API_TO_CONVEX_SERVICE_SECRET",
   ]
 
   console.log("[infra] Syncing Convex environment variables...")
 
   for (const key of keysToSync) {
-    const value = env[key]
+    const value = currentEnv[key]
     if (!value) continue
 
     const proc = Bun.spawn(["bunx", "convex", "env", "set", key, value], {
@@ -162,4 +156,23 @@ async function syncConvexEnvVars(adminKey: string) {
       console.log(`  ${key} (skipped) ${stderr.trim()}`)
     }
   }
+}
+
+function updateEnvFile(key: string, value: string) {
+  if (!existsSync(envPath)) return
+
+  const envContent = readFileSync(envPath, "utf-8")
+  const line = `${key}=${value}`
+  if (new RegExp(`^${key}=.*$`, "m").test(envContent)) {
+    writeFileSync(
+      envPath,
+      envContent.replace(new RegExp(`^${key}=.*$`, "m"), line),
+    )
+    console.log(`[infra] Updated ${key} in .env.local`)
+    return
+  }
+
+  const separator = envContent.endsWith("\n") ? "" : "\n"
+  writeFileSync(envPath, `${envContent}${separator}${line}\n`)
+  console.log(`[infra] Added ${key} to .env.local`)
 }

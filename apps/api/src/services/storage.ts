@@ -34,10 +34,7 @@ export interface StorageService {
     srcPrefix: string,
     dstPrefix: string,
   ): Effect.Effect<number, StorageError>
-  getFileUrl(
-    key: string,
-    internal?: boolean,
-  ): Effect.Effect<string, StorageError>
+  getPresignedReadUrl(key: string): Effect.Effect<string, StorageError>
   getPresignedUploadUrl(
     key: string,
   ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, StorageError>
@@ -60,11 +57,15 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
       })
 
       function getObjectUrl(key: string): URL {
-        return new URL(`${s3.endpoint}/${s3.bucket}/${key}`)
+        return new URL(`${s3.apiEndpoint}/${s3.bucket}/${key}`)
+      }
+
+      function getPresignedObjectUrl(key: string): URL {
+        return new URL(`${s3.presignedUrlEndpoint}/${s3.bucket}/${key}`)
       }
 
       function getTunnelUrl(): string | undefined {
-        if (config.backendMode !== "modal") return undefined
+        if (config.conversionBackend !== "modal") return undefined
         try {
           if (existsSync(tunnelUrlPath)) {
             const url = readFileSync(tunnelUrlPath, "utf-8").trim()
@@ -77,7 +78,7 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
       async function waitForTunnelUrl(
         maxWaitMs = 30000,
       ): Promise<string | undefined> {
-        if (config.backendMode !== "modal") return undefined
+        if (config.conversionBackend !== "modal") return undefined
         const startTime = Date.now()
         while (Date.now() - startTime < maxWaitMs) {
           const url = getTunnelUrl()
@@ -161,7 +162,7 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
           Effect.tryPromise({
             try: async () => {
               const listUrl = new URL(
-                `${s3.endpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`,
+                `${s3.apiEndpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(prefix)}`,
               )
               const listResponse = await client.fetch(listUrl.toString(), {
                 method: "GET",
@@ -191,7 +192,7 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
           Effect.tryPromise({
             try: async () => {
               const listUrl = new URL(
-                `${s3.endpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(srcPrefix)}`,
+                `${s3.apiEndpoint}/${s3.bucket}?list-type=2&prefix=${encodeURIComponent(srcPrefix)}`,
               )
               const listResponse = await client.fetch(listUrl.toString(), {
                 method: "GET",
@@ -221,16 +222,15 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               new StorageError({ message: String(e), key: srcPrefix }),
           }),
 
-        getFileUrl: (key, internal) =>
+        getPresignedReadUrl: (key) =>
           Effect.tryPromise({
             try: async () => {
-              if (!internal) {
-                const tunnelUrl = getTunnelUrl()
-                if (tunnelUrl) return `${tunnelUrl}/${s3.bucket}/${key}`
-                return `${s3.publicUrl}/${key}`
-              }
+              const tunnelUrl = getTunnelUrl()
+              const url = tunnelUrl
+                ? new URL(`${tunnelUrl}/${s3.bucket}/${key}`)
+                : getPresignedObjectUrl(key)
               const signedRequest = await client.sign(
-                new Request(getObjectUrl(key).toString(), { method: "GET" }),
+                new Request(url.toString(), { method: "GET" }),
                 { aws: { signQuery: true } },
               )
               return signedRequest.url
@@ -243,16 +243,9 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
             try: async () => {
               const expiresInSeconds = 3600
               const tunnelUrl = await waitForTunnelUrl()
-              if (tunnelUrl) {
-                return {
-                  uploadUrl: `${tunnelUrl}/${s3.bucket}/${key}`,
-                  expiresAt: new Date(
-                    Date.now() + expiresInSeconds * 1000,
-                  ).toISOString(),
-                }
-              }
-
-              const url = getObjectUrl(key)
+              const url = tunnelUrl
+                ? new URL(`${tunnelUrl}/${s3.bucket}/${key}`)
+                : getPresignedObjectUrl(key)
               url.searchParams.set("X-Amz-Expires", String(expiresInSeconds))
               const signedRequest = await client.sign(
                 new Request(url.toString(), { method: "PUT" }),
@@ -271,7 +264,8 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
         uploadImages: (docPath, images) =>
           Effect.tryPromise({
             try: async () => {
-              const baseUrl = s3.publicUrl.replace(/\/+$/, "")
+              const storageId = docPath.split("/")[2]
+              const baseUrl = `/api/assets/documents/${encodeURIComponent(storageId)}/images`
               const entries = await Promise.all(
                 Object.entries(images).map(async ([filename, base64Data]) => {
                   const key = `${docPath}/images/${filename}`
@@ -291,7 +285,7 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
                       method: "PUT",
                       headers: {
                         "Content-Type": mimeTypes[ext] ?? "image/png",
-                        "Cache-Control": "public, max-age=31536000, immutable",
+                        "Cache-Control": "private, max-age=31536000, immutable",
                       },
                       body: new Uint8Array(buffer),
                     },
@@ -302,7 +296,7 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
                       `S3 image upload failed for ${filename}: ${error}`,
                     )
                   }
-                  return [filename, `${baseUrl}/${key}`] as const
+                  return [filename, `${baseUrl}/${encodeURIComponent(filename)}`] as const
                 }),
               )
               return Object.fromEntries(entries)

@@ -5,7 +5,6 @@ import {
 } from "@effect/platform"
 import { Effect } from "effect"
 import * as mupdf from "mupdf"
-import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
 import { ConvexClient } from "../services/convex-client"
@@ -15,7 +14,6 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/:documentId",
     Effect.gen(function* () {
-      const { userId } = yield* requireAuth
       const storage = yield* Storage
       const convexService = yield* ConvexClient
       const params = yield* HttpRouter.params
@@ -29,14 +27,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
 
       yield* enrichEvent({ documentId })
 
-      const convexResult = yield* Effect.either(convexService.fromRequest())
-      if (convexResult._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: "Authentication failed" },
-          { status: 401 },
-        )
-      }
-      const convex = convexResult.right
+      const convex = yield* convexService.userSession()
 
       const doc = yield* Effect.tryPromise({
         try: () => convex.getDocument(documentId),
@@ -50,8 +41,8 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const htmlPath = `documents/${userId}/${doc.storageId}/content.html`
-      const mdPath = `documents/${userId}/${doc.storageId}/content.md`
+      const htmlPath = `documents/${doc.userId}/${doc.storageId}/content.html`
+      const mdPath = `documents/${doc.userId}/${doc.storageId}/content.md`
 
       const [htmlResult, mdResult, chunksResult] = yield* Effect.all(
         [
@@ -92,7 +83,6 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
   HttpRouter.del(
     "/:documentId",
     Effect.gen(function* () {
-      const { userId } = yield* requireAuth
       const storage = yield* Storage
       const convexService = yield* ConvexClient
       const request = yield* HttpServerRequest.HttpServerRequest
@@ -117,14 +107,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const convexResult = yield* Effect.either(convexService.fromRequest())
-      if (convexResult._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: "Authentication failed" },
-          { status: 401 },
-        )
-      }
-      const convex = convexResult.right
+      const convex = yield* convexService.userSession()
 
       const doc = yield* Effect.tryPromise({
         try: () => convex.getDocument(documentId),
@@ -150,7 +133,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const folderPrefix = `documents/${userId}/${doc.storageId}/`
+      const folderPrefix = `documents/${doc.userId}/${doc.storageId}/`
       yield* storage.deletePrefix(folderPrefix).pipe(Effect.ignore)
 
       return HttpServerResponse.unsafeJson({ success: true })
@@ -160,7 +143,6 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/:documentId/page/:pageNum",
     Effect.gen(function* () {
-      const { userId } = yield* requireAuth
       const storage = yield* Storage
       const convexService = yield* ConvexClient
       const params = yield* HttpRouter.params
@@ -188,14 +170,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const convexResult = yield* Effect.either(convexService.fromRequest())
-      if (convexResult._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: "Authentication failed" },
-          { status: 401 },
-        )
-      }
-      const convex = convexResult.right
+      const convex = yield* convexService.userSession()
 
       const doc = yield* Effect.tryPromise({
         try: () => convex.getDocument(documentId),
@@ -209,7 +184,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const pdfPath = `documents/${userId}/${doc.storageId}/original.pdf`
+      const pdfPath = `documents/${doc.userId}/${doc.storageId}/original.pdf`
 
       const pdfResult = yield* storage.readFile(pdfPath).pipe(Effect.either)
       if (pdfResult._tag === "Left") {

@@ -45,18 +45,6 @@ export const uploadFile = (file: File) =>
       )
   })
 
-export const fetchFromUrl = (url: string) =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
-    return yield* client
-      .post(`/api/fetch-url?url=${encodeURIComponent(url)}`)
-      .pipe(
-        Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
-        Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-      )
-  })
-
 export const startConversion = (
   fileId: string,
   filename: string,

@@ -80,7 +80,9 @@ interface Props {
   pageCount?: number
   uploadProgress: number
   uploadComplete: boolean
-  backendMode: BackendType
+  conversionBackend: BackendType
+  processingModes: ProcessingMode[]
+  ttsEnabled: boolean
   processingMode: ProcessingMode
   useLlm: boolean
   forceOcr: boolean
@@ -254,12 +256,12 @@ function ProcessingModeSelector({
   processingMode,
   onProcessingModeChange,
   fileMimeType,
-  backendMode,
+  processingModes,
 }: {
   processingMode: ProcessingMode
   onProcessingModeChange: (mode: ProcessingMode) => void
   fileMimeType: string
-  backendMode: BackendType
+  processingModes: ProcessingMode[]
 }) {
   const [isExpanded, setIsExpanded] = useState(processingMode !== "fast")
   const currentMode = MODE_OPTIONS.find((m) => m.value === processingMode)
@@ -327,17 +329,17 @@ function ProcessingModeSelector({
       >
         {MODE_OPTIONS.map((opt) => {
           const isDisabled =
-            opt.value === "aggressive" &&
-            (!AGGRESSIVE_MODE_SUPPORTED_TYPES.includes(fileMimeType) ||
-              backendMode === "local")
+            !processingModes.includes(opt.value) ||
+            (opt.value === "aggressive" &&
+              !AGGRESSIVE_MODE_SUPPORTED_TYPES.includes(fileMimeType))
 
           return (
             <div
               key={opt.value}
               title={
                 isDisabled
-                  ? backendMode === "local"
-                    ? "Aggressive mode requires cloud GPU (CHANDRA needs >16GB VRAM)"
+                  ? !processingModes.includes(opt.value)
+                    ? "This processing mode is not configured"
                     : "Aggressive mode is only needed for PDFs and images (uses OCR)"
                   : undefined
               }
@@ -376,7 +378,9 @@ export function ConfigureProcessingPage({
   pageCount,
   uploadProgress,
   uploadComplete,
-  backendMode,
+  conversionBackend,
+  processingModes,
+  ttsEnabled,
   processingMode,
   useLlm,
   forceOcr,
@@ -523,32 +527,36 @@ export function ConfigureProcessingPage({
                   processingMode={processingMode}
                   onProcessingModeChange={onProcessingModeChange}
                   fileMimeType={fileMimeType}
-                  backendMode={backendMode}
+                  processingModes={processingModes}
                 />
 
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Narrator
-                  </label>
-                  <Select
-                    value={narratorVoice}
-                    onValueChange={(value) => value && onNarratorVoiceChange(value)}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {VOICES.find((voice) => voice.id === narratorVoice)
-                          ?.displayName ?? "Narrator"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {VOICES.map((voice) => (
-                        <SelectItem key={voice.id} value={voice.id}>
-                          {voice.displayName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {ttsEnabled && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Narrator
+                    </label>
+                    <Select
+                      value={narratorVoice}
+                      onValueChange={(value) =>
+                        value && onNarratorVoiceChange(value)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue>
+                          {VOICES.find((voice) => voice.id === narratorVoice)
+                            ?.displayName ?? "Narrator"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VOICES.map((voice) => (
+                          <SelectItem key={voice.id} value={voice.id}>
+                            {voice.displayName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {processingMode === "fast" && (
                   <div className="flex items-center justify-between py-2">
@@ -572,7 +580,7 @@ export function ConfigureProcessingPage({
                   </div>
                 )}
 
-                {processingMode === "fast" && backendMode !== "datalab" && (
+                {processingMode === "fast" && conversionBackend !== "datalab" && (
                   <div className="flex items-center justify-between py-2">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-md flex items-center justify-center bg-muted text-muted-foreground">

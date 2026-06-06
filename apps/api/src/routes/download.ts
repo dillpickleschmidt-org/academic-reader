@@ -219,18 +219,14 @@ function embedImagesFromStorage($: CheerioAPI, docPath: string) {
   return Effect.gen(function* () {
     const storage = yield* Storage
     const images = $("img").toArray()
-    const imagesPath = `${docPath}/images/`
 
     yield* Effect.all(
       images
-        .filter((el) => {
-          const src = $(el).attr("src")
-          return src && src.includes(imagesPath)
-        })
         .map((el) =>
           Effect.gen(function* () {
-            const src = $(el).attr("src")!
-            const filename = new URL(src).pathname.split("/").pop()
+            const src = $(el).attr("src")
+            if (!src) return
+            const filename = imageFilename(src)
             if (!filename) return
             const buffer = yield* storage.readFile(
               `${docPath}/images/${filename}`,
@@ -245,4 +241,15 @@ function embedImagesFromStorage($: CheerioAPI, docPath: string) {
       { concurrency: "unbounded" },
     )
   })
+}
+
+function imageFilename(src: string): string | null {
+  try {
+    const pathname = new URL(src, "http://localhost").pathname
+    if (!pathname.includes("/images/")) return null
+    const filename = pathname.split("/").pop()
+    return filename ? decodeURIComponent(filename) : null
+  } catch {
+    return null
+  }
 }

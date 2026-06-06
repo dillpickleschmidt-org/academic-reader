@@ -24,13 +24,13 @@ export class ModelProvider extends Context.Tag("ModelProvider")<
       function createModel(provider: string, model: string): LanguageModel {
         if (provider === "openrouter") {
           const openrouter = createOpenRouter({
-            apiKey: config.ai.openrouterApiKey!,
+            apiKey: config.ai.openrouterApiKey ?? "",
           })
           return openrouter.chat(model)
         }
 
         if (provider === "groq") {
-          const groq = createGroq({ apiKey: config.ai.groqApiKey! })
+          const groq = createGroq({ apiKey: config.ai.groqApiKey ?? "" })
           return groq(model)
         }
 

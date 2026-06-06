@@ -28,13 +28,19 @@ export const ttsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     "/get-block-audio",
     Effect.gen(function* () {
-      yield* requireAuth
-      const storage = yield* Storage
+      const config = yield* AppConfig
       const convexService = yield* ConvexClient
-      const convex = yield* convexService.fromRequest()
+      const convex = yield* convexService.userSession()
       const request = yield* HttpServerRequest.HttpServerRequest
       const body = (yield* request.json) as GetBlockAudioRequest
       const { documentId, blockId, voiceId } = body
+
+      if (config.ttsBackend === "none") {
+        return HttpServerResponse.unsafeJson(
+          { error: "TTS is disabled" },
+          { status: 404 },
+        )
+      }
 
       if (!documentId || !blockId || !voiceId) {
         return yield* new ValidationError({
@@ -57,7 +63,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
         return HttpServerResponse.unsafeJson({ ready: false })
       }
 
-      const audioUrl = yield* storage.getFileUrl(cachedAudio.storagePath)
+      const audioUrl = `/api/assets/documents/${encodeURIComponent(documentId)}/audio?${new URLSearchParams({ blockId, voiceId })}`
       return HttpServerResponse.unsafeJson({
         ready: true,
         audioUrl,
@@ -72,15 +78,21 @@ export const ttsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
     "/generate-document-audio",
     Effect.gen(function* () {
-      yield* requireAuth
       const config = yield* AppConfig
       const storage = yield* Storage
       const ttsService = yield* TtsService
       const convexService = yield* ConvexClient
-      const convex = yield* convexService.fromRequest()
+      const convex = yield* convexService.userSession()
       const request = yield* HttpServerRequest.HttpServerRequest
       const body = (yield* request.json) as GenerateDocumentAudioRequest
       const { documentId, voiceId } = body
+
+      if (config.ttsBackend === "none") {
+        return HttpServerResponse.unsafeJson(
+          { error: "TTS is disabled" },
+          { status: 404 },
+        )
+      }
 
       if (!documentId || !voiceId) {
         return yield* new ValidationError({
@@ -120,7 +132,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
         ttsService,
         documentId,
         voiceId,
-        backendMode: config.backendMode,
+        ttsBackend: config.ttsBackend,
       })
 
       return HttpServerResponse.unsafeJson(result)
@@ -134,7 +146,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const config = yield* AppConfig
 
       if (
-        config.backendMode !== "local" ||
+        config.ttsBackend !== "local" ||
         process.env.NODE_ENV === "production"
       ) {
         return HttpServerResponse.unsafeJson(

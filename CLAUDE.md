@@ -23,11 +23,11 @@ bun run typecheck
 
 Don't ever commit or push code to git unless I explicitly ask. If I allow you to commit, that does not necessarily mean I allow you to push.
 
-### Backend Modes (set `BACKEND_MODE` in `.env.local`)
+### Backend Choices (set in `.env.local`)
 
-- `local` - Local GPU via Docker (requires NVIDIA Docker)
-- `datalab` - Datalab API (no GPU required)
-- `modal` - Modal cloud GPU with S3/MinIO storage
+- `CONVERSION_BACKEND=local|datalab|modal`
+- `TTS_BACKEND=local|modal|none`
+- `STORAGE_BACKEND=minio|s3`
 
 ### Processing Modes
 

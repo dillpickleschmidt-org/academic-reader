@@ -3,8 +3,10 @@ import { Slider } from "@academic-reader/ui/primitives/slider"
 import { Label } from "@academic-reader/ui/primitives/label"
 import { useAudioSelector, useAudioActions } from "@/context/AudioContext"
 import { VoiceMenu } from "@/components/VoiceMenu"
+import { useRuntimeConfig } from "@/context/RuntimeConfigContext"
 
 export function NarratorTab() {
+  const { ttsEnabled } = useRuntimeConfig()
   const speed = useAudioSelector((s) => s.narrator.speed)
   const volume = useAudioSelector((s) => s.narrator.volume)
 
@@ -18,6 +20,14 @@ export function NarratorTab() {
   const handleVolumeChange = (value: number | readonly number[]) => {
     const v = Array.isArray(value) ? value[0] : value
     setNarratorVolume(v)
+  }
+
+  if (!ttsEnabled) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Narration is disabled for this deployment.
+      </p>
+    )
   }
 
   return (

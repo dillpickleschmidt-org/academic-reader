@@ -38,11 +38,14 @@ export class TtsService extends Context.Tag("TtsService")<
       const config = yield* AppConfig
 
       function getEngineUrl(engine: TTSEngine): string | undefined {
-        if (config.backendMode === "local") {
+        if (config.ttsBackend === "none") return undefined
+
+        if (config.ttsBackend === "local") {
           return engine === "qwen3"
             ? config.ttsWorkers.qwen3Url
             : config.ttsWorkers.kokoroUrl
         }
+
         return engine === "qwen3"
           ? config.modal.qwen3TtsUrl
           : config.modal.kokoroTtsUrl
@@ -113,7 +116,7 @@ export class TtsService extends Context.Tag("TtsService")<
             const url = getEngineUrl(voice.engine)
             if (!url) {
               return yield* new BackendError({
-                message: `TTS engine ${voice.engine} not configured for backend mode ${config.backendMode}`,
+                message: `TTS engine ${voice.engine} not configured for TTS backend ${config.ttsBackend}`,
                 backend: "tts",
               })
             }

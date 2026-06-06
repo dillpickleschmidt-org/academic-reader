@@ -13,7 +13,7 @@ export interface GenerateDocumentAudioOptions {
   ttsService: TtsServiceShape
   documentId: string
   voiceId: string
-  backendMode: string
+  ttsBackend: "local" | "modal"
   documentPath?: string
 }
 
@@ -115,7 +115,7 @@ export function generateDocumentAudio(options: GenerateDocumentAudioOptions) {
       }
     }).pipe(
       Effect.ensuring(
-        options.backendMode === "local"
+        options.ttsBackend === "local"
           ? options.ttsService.unloadWorker(voice.engine).pipe(Effect.ignore)
           : Effect.succeed(undefined),
       ),
@@ -144,7 +144,7 @@ function generateChunkAudio(
 
     yield* options.storage.saveFile(storagePath, wavBuffer, {
       contentType: "audio/wav",
-      cacheControl: "public, max-age=31536000, immutable",
+      cacheControl: "private, max-age=31536000, immutable",
     })
 
     yield* Effect.tryPromise({

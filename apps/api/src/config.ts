@@ -1,28 +1,30 @@
 import { Context, Effect, Layer, Schema } from "effect"
 
-const BackendMode = Schema.Literal("local", "datalab", "modal")
+const ConversionBackend = Schema.Literal("local", "datalab", "modal")
+const TtsBackend = Schema.Literal("local", "modal", "none")
 const Provider = Schema.Literal("google", "openrouter", "groq")
 const ChatProvider = Schema.Literal("google", "openrouter")
 
 const S3Config = Schema.Struct({
-  endpoint: Schema.String,
-  publicUrl: Schema.String,
+  apiEndpoint: Schema.String,
+  presignedUrlEndpoint: Schema.String,
   accessKeyId: Schema.String,
   secretAccessKey: Schema.String,
   bucket: Schema.String,
 })
 
 const ConvexConfig = Schema.Struct({
-  httpUrl: Schema.String,
-  siteUrl: Schema.String,
-  serverSecret: Schema.String,
+  apiUrl: Schema.String,
+  httpActionsUrl: Schema.String,
+  publicApiUrl: Schema.String,
+  apiToConvexServiceSecret: Schema.String,
 })
 
 const AiConfig = Schema.Struct({
   googleApiKey: Schema.String,
   openrouterApiKey: Schema.optional(Schema.String),
   groqApiKey: Schema.optional(Schema.String),
-  exaApiKey: Schema.String,
+  exaApiKey: Schema.optional(Schema.String),
   chat: Schema.Struct({
     provider: ChatProvider,
     model: Schema.String,
@@ -53,7 +55,8 @@ const ModalConfig = Schema.Struct({
 const AppConfigSchema = Schema.Struct({
   port: Schema.Number,
   siteUrl: Schema.optional(Schema.String),
-  backendMode: BackendMode,
+  conversionBackend: ConversionBackend,
+  ttsBackend: TtsBackend,
   s3: S3Config,
   convex: ConvexConfig,
   ai: AiConfig,
@@ -83,60 +86,70 @@ export class AppConfig extends Context.Tag("AppConfig")<
 
 function readEnv(): AppConfigShape {
   const e = process.env
+  const conversionBackend = (optionalEnv("CONVERSION_BACKEND") ??
+    "local") as AppConfigShape["conversionBackend"]
+  const ttsBackend = (optionalEnv("TTS_BACKEND") ??
+    (conversionBackend === "local" ? "local" : "none")) as AppConfigShape["ttsBackend"]
+
   return {
     port: Number(e.PORT) || 8787,
-    siteUrl: e.SITE_URL,
-    backendMode: (e.BACKEND_MODE as AppConfigShape["backendMode"]) ?? "local",
+    siteUrl: optionalEnv("SITE_URL"),
+    conversionBackend,
+    ttsBackend,
     s3: {
-      endpoint: e.S3_ENDPOINT!,
-      publicUrl: e.S3_PUBLIC_URL!,
-      accessKeyId: e.S3_ACCESS_KEY!,
-      secretAccessKey: e.S3_SECRET_KEY!,
-      bucket: e.S3_BUCKET!,
+      apiEndpoint: env("S3_API_ENDPOINT"),
+      presignedUrlEndpoint: env("S3_PRESIGNED_URL_ENDPOINT"),
+      accessKeyId: env("S3_ACCESS_KEY"),
+      secretAccessKey: env("S3_SECRET_KEY"),
+      bucket: env("S3_BUCKET"),
     },
     convex: {
-      httpUrl: e.CONVEX_HTTP_URL ?? "http://localhost:3211",
-      siteUrl: e.CONVEX_SITE_URL ?? "http://localhost:3210",
-      serverSecret: e.CONVEX_SERVER_SECRET!,
+      apiUrl: env("CONVEX_API_URL", "http://localhost:3210"),
+      httpActionsUrl: env("CONVEX_HTTP_ACTIONS_URL", "http://localhost:3211"),
+      publicApiUrl: env("PUBLIC_CONVEX_API_URL", "http://localhost:3210"),
+      apiToConvexServiceSecret: env("API_TO_CONVEX_SERVICE_SECRET"),
     },
     ai: {
-      googleApiKey: e.GOOGLE_API_KEY!,
-      openrouterApiKey: e.OPENROUTER_API_KEY,
-      groqApiKey: e.GROQ_API_KEY,
-      exaApiKey: e.EXA_API_KEY!,
+      googleApiKey: env("GOOGLE_API_KEY"),
+      openrouterApiKey: optionalEnv("OPENROUTER_API_KEY"),
+      groqApiKey: optionalEnv("GROQ_API_KEY"),
+      exaApiKey: optionalEnv("EXA_API_KEY"),
       chat: {
-        provider: (e.CHAT_PROVIDER as "google" | "openrouter") ?? "google",
-        model: e.CHAT_MODEL ?? "gemini-3-flash-preview",
+        provider: (optionalEnv("CHAT_PROVIDER") ?? "google") as
+          | "google"
+          | "openrouter",
+        model: optionalEnv("CHAT_MODEL") ?? "gemini-3-flash-preview",
       },
       processing: {
         provider:
-          (e.PROCESSING_PROVIDER as AppConfigShape["ai"]["processing"]["provider"]) ??
-          "groq",
-        model:
-          e.PROCESSING_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct",
+          (optionalEnv("PROCESSING_PROVIDER") as
+            | AppConfigShape["ai"]["processing"]["provider"]
+            | undefined) ?? "google",
+        model: optionalEnv("PROCESSING_MODEL") ?? "gemini-3-flash-preview",
       },
       summary: {
         provider:
-          (e.SUMMARY_PROVIDER as AppConfigShape["ai"]["summary"]["provider"]) ??
-          "google",
-        model: e.SUMMARY_MODEL ?? "gemini-3-flash-preview",
+          (optionalEnv("SUMMARY_PROVIDER") as
+            | AppConfigShape["ai"]["summary"]["provider"]
+            | undefined) ?? "google",
+        model: optionalEnv("SUMMARY_MODEL") ?? "gemini-3-flash-preview",
       },
     },
     ttsWorkers: {
-      qwen3Url: e.QWEN3_TTS_WORKER_URL ?? "http://qwen3-tts:8002",
-      kokoroUrl: e.KOKORO_TTS_WORKER_URL ?? "http://kokoro-tts:8001",
+      qwen3Url: env("QWEN3_TTS_WORKER_URL", "http://qwen3-tts:8002"),
+      kokoroUrl: env("KOKORO_TTS_WORKER_URL", "http://kokoro-tts:8001"),
     },
     modal: {
-      markerUrl: e.MODAL_MARKER_URL,
-      lightonocrUrl: e.MODAL_LIGHTONOCR_URL,
-      chandraUrl: e.MODAL_CHANDRA_URL,
-      qwen3TtsUrl: e.MODAL_QWEN3_TTS_URL,
-      kokoroTtsUrl: e.MODAL_KOKORO_TTS_URL,
+      markerUrl: optionalEnv("MODAL_MARKER_URL"),
+      lightonocrUrl: optionalEnv("MODAL_LIGHTONOCR_URL"),
+      chandraUrl: optionalEnv("MODAL_CHANDRA_URL"),
+      qwen3TtsUrl: optionalEnv("MODAL_QWEN3_TTS_URL"),
+      kokoroTtsUrl: optionalEnv("MODAL_KOKORO_TTS_URL"),
     },
-    datalabApiKey: e.DATALAB_API_KEY,
-    otelEndpoint: e.OTEL_EXPORTER_OTLP_ENDPOINT,
-    tlsCert: e.TLS_CERT,
-    tlsKey: e.TLS_KEY,
+    datalabApiKey: optionalEnv("DATALAB_API_KEY"),
+    otelEndpoint: optionalEnv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    tlsCert: optionalEnv("TLS_CERT"),
+    tlsKey: optionalEnv("TLS_KEY"),
   }
 }
 
@@ -151,9 +164,34 @@ function validate(config: AppConfigShape) {
       return yield* Effect.die("Invalid configuration")
     }
 
-    // Conditional validations
-    if (config.backendMode === "datalab" && !config.datalabApiKey) {
-      console.error("DATALAB_API_KEY required when BACKEND_MODE=datalab")
+    if (!config.siteUrl) {
+      console.error("SITE_URL is required")
+      return yield* Effect.die("Invalid configuration")
+    }
+
+    for (const [key, value] of [
+      ["S3_API_ENDPOINT", config.s3.apiEndpoint],
+      ["S3_PRESIGNED_URL_ENDPOINT", config.s3.presignedUrlEndpoint],
+      ["S3_ACCESS_KEY", config.s3.accessKeyId],
+      ["S3_SECRET_KEY", config.s3.secretAccessKey],
+      ["S3_BUCKET", config.s3.bucket],
+      ["API_TO_CONVEX_SERVICE_SECRET", config.convex.apiToConvexServiceSecret],
+    ] as const) {
+      if (!value) {
+        console.error(`${key} is required`)
+        return yield* Effect.die("Invalid configuration")
+      }
+    }
+
+    if (!config.ai.googleApiKey) {
+      console.error(
+        "GOOGLE_API_KEY is required for default chat, summaries, and document embeddings",
+      )
+      return yield* Effect.die("Invalid configuration")
+    }
+
+    if (config.conversionBackend === "datalab" && !config.datalabApiKey) {
+      console.error("DATALAB_API_KEY required when CONVERSION_BACKEND=datalab")
       return yield* Effect.die("Invalid configuration")
     }
 
@@ -175,19 +213,31 @@ function validate(config: AppConfigShape) {
       return yield* Effect.die("Invalid configuration")
     }
 
-    if (config.backendMode === "modal") {
+    if (config.conversionBackend === "modal") {
       if (!config.modal.markerUrl) {
-        console.error("MODAL_MARKER_URL required when BACKEND_MODE=modal")
+        console.error("MODAL_MARKER_URL required when CONVERSION_BACKEND=modal")
         return yield* Effect.die("Invalid configuration")
       }
+    }
+
+    if (config.ttsBackend === "modal") {
       if (!config.modal.qwen3TtsUrl) {
-        console.error("MODAL_QWEN3_TTS_URL required when BACKEND_MODE=modal")
+        console.error("MODAL_QWEN3_TTS_URL required when TTS_BACKEND=modal")
         return yield* Effect.die("Invalid configuration")
       }
       if (!config.modal.kokoroTtsUrl) {
-        console.error("MODAL_KOKORO_TTS_URL required when BACKEND_MODE=modal")
+        console.error("MODAL_KOKORO_TTS_URL required when TTS_BACKEND=modal")
         return yield* Effect.die("Invalid configuration")
       }
     }
   })
+}
+
+function env(name: string, fallback = ""): string {
+  return optionalEnv(name) ?? fallback
+}
+
+function optionalEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim()
+  return value ? value : undefined
 }

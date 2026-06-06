@@ -31,7 +31,7 @@ export const requireAuth: Effect.Effect<
   const result = yield* Effect.tryPromise({
     try: async () => {
       const response = await fetch(
-        `${config.convex.httpUrl}/api/auth/get-session`,
+        `${config.convex.httpActionsUrl}/api/auth/get-session`,
         {
           headers: { Cookie: `${cookieName}=${sessionToken}` },
           signal: AbortSignal.timeout(5000),

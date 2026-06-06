@@ -167,7 +167,7 @@ function isManualEmitRoute(path: string): boolean {
 }
 
 export const wideEventMiddleware = (
-  backendMode: string,
+  environment: string,
   siteUrl?: string,
   otelEndpoint?: string,
 ) =>
@@ -182,7 +182,7 @@ export const wideEventMiddleware = (
         timestamp: new Date().toISOString(),
         service: "academic-reader-api",
         version: SERVICE_VERSION,
-        environment: backendMode,
+        environment,
         deployment: siteUrl?.includes("localhost") ? "dev" : "prod",
         method: request.method,
         path,

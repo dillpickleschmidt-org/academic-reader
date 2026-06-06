@@ -37,6 +37,7 @@ if (action === "down") process.exit(0)
 
 const adminKey = await generateConvexAdminKey()
 if (adminKey) await syncConvexEnvVars(adminKey)
+await setupModalWorkersIfNeeded()
 process.exit(0)
 
 function selectComposeProfile(conversionBackend: string, ttsBackend: string) {
@@ -116,6 +117,28 @@ async function generateConvexAdminKey(): Promise<string | null> {
   updateEnvFile("CONVEX_SELF_HOSTED_ADMIN_KEY", adminKey)
 
   return adminKey
+}
+
+async function setupModalWorkersIfNeeded() {
+  const currentEnv = parseEnvFile(envPath)
+  const requiredKeys = [
+    ...(currentEnv.CONVERSION_BACKEND === "modal"
+      ? ["MODAL_MARKER_URL", "MODAL_LIGHTONOCR_URL", "MODAL_CHANDRA_URL"]
+      : []),
+    ...(currentEnv.TTS_BACKEND === "modal"
+      ? ["MODAL_KOKORO_TTS_URL", "MODAL_QWEN3_TTS_URL"]
+      : []),
+  ]
+
+  if (!requiredKeys.some((key) => !currentEnv[key])) return
+
+  const proc = Bun.spawn(
+    ["bun", "scripts/modal.ts", "setup", "--env-file", ".env.local"],
+    { cwd: root, stdio: ["inherit", "inherit", "inherit"] },
+  )
+
+  const code = await proc.exited
+  if (code !== 0) process.exit(code)
 }
 
 async function syncConvexEnvVars(adminKey: string) {

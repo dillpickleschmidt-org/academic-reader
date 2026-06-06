@@ -1,5 +1,8 @@
 """Modal worker for CHANDRA conversion."""
+from pathlib import Path
 import modal
+
+_here = Path(__file__).parent
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -18,6 +21,8 @@ image = (
         # Pre-download model
         "python -c \"from huggingface_hub import snapshot_download; snapshot_download('datalab-to/chandra')\""
     )
+    .add_local_file(_here / "app/__init__.py", "/root/app/__init__.py")
+    .add_local_file(_here / "app/conversion.py", "/root/app/conversion.py")
 )
 
 app = modal.App("chandra", image=image)

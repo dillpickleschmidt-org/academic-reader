@@ -16,6 +16,8 @@
     "check:web": "turbo check --filter=@academic-reader/web",
     "infra": "bun scripts/infra.ts up",
     "infra:down": "bun scripts/infra.ts down",
+    "modal:setup": "bun scripts/modal.ts setup",
+    "modal:print": "bun scripts/modal.ts print",
     "setup:prod": "bun scripts/prod.ts setup",
     "prod:up": "bun scripts/prod.ts up",
     "prod:down": "bun scripts/prod.ts down",

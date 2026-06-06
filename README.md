@@ -110,6 +110,8 @@ bun run infra:down     # Stop infrastructure containers
 bun run dev            # Start web + API dev servers
 bun run dev:api        # Start API server only
 bun run dev:web        # Start web client only
+bun run modal:setup    # Discover/deploy Modal workers and write MODAL_*_URL values
+bun run modal:print    # Print Modal worker URLs for current backend choices
 bun run check          # Typecheck all packages
 ```
 
@@ -131,6 +133,8 @@ Generated locally by `bun run infra`:
 - `BETTER_AUTH_SECRET`
 - `API_TO_CONVEX_SERVICE_SECRET`
 - `CONVEX_SELF_HOSTED_ADMIN_KEY`
+
+When `CONVERSION_BACKEND=modal` or `TTS_BACKEND=modal` and a required `MODAL_*_URL` is blank, `bun run infra` runs `bun run modal:setup`. It discovers existing Modal apps, deploys missing workers, syncs the Marker `google-api-key` Modal secret from `GOOGLE_API_KEY`, and writes the relevant `MODAL_*_URL` values to `.env.local`. If Modal is not installed or authenticated yet, install the Modal CLI, run `modal setup`, and rerun `bun run infra`.
 
 ## Production Deployment
 

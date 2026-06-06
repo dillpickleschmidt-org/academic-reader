@@ -6,7 +6,7 @@ const toolBase = {
   state: v.literal("output-available"),
 }
 
-const nullableString = v.optional(v.nullable(v.string()))
+const nullableString = v.union(v.string(), v.null())
 
 const exaSearchResultValidator = v.object({
   title: v.string(),
@@ -17,19 +17,19 @@ const exaSearchResultValidator = v.object({
   image: nullableString,
   favicon: nullableString,
   text: nullableString,
-  highlights: v.optional(v.nullable(v.array(v.string()))),
-  highlightScores: v.optional(v.nullable(v.array(v.number()))),
+  highlights: v.union(v.array(v.string()), v.null()),
+  highlightScores: v.union(v.array(v.number()), v.null()),
   summary: nullableString,
 })
 
 const exaResponseValidator = v.object({
   results: v.array(exaSearchResultValidator),
-  requestId: v.optional(v.string()),
-  resolvedSearchType: v.optional(v.string()),
-  searchTime: v.optional(v.number()),
-  costDollars: v.optional(v.any()),
-  effectiveFilters: v.optional(v.any()),
-  requestTags: v.optional(v.any()),
+  requestId: v.union(v.string(), v.null()),
+  resolvedSearchType: v.union(v.string(), v.null()),
+  searchTime: v.union(v.number(), v.null()),
+  costDollars: v.union(v.any(), v.null()),
+  effectiveFilters: v.union(v.any(), v.null()),
+  requestTags: v.union(v.any(), v.null()),
 })
 
 export const messagePartValidator = v.union(
@@ -82,14 +82,12 @@ export default defineSchema({
     filename: v.string(),
     /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
     storageId: v.string(),
-    pageCount: v.optional(v.number()),
-    toc: v.optional(tocValidator),
-    summary: v.optional(v.string()),
+    pageCount: v.union(v.number(), v.null()),
+    toc: v.union(tocValidator, v.null()),
+    summary: v.union(v.string(), v.null()),
     color: v.number(), // 0-11 index into color palette
     createdAt: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_storage", ["userId", "storageId"]),
+  }).index("by_user", ["userId"]),
 
   // Chunks table - document segments with vector embeddings for RAG search
   chunks: defineTable({
@@ -97,10 +95,11 @@ export default defineSchema({
     blockId: v.string(),
     blockType: v.string(), // "Text", "Heading", "ListItem", etc.
     html: v.string(), // HTML content from Marker/CHANDRA
-    section: v.optional(v.string()), // Section hierarchy flattened
+    section: v.union(v.string(), v.null()), // Section hierarchy flattened
     bbox: v.array(v.number()), // [x1, y1, x2, y2] bounding box coordinates
-    includeTts: v.optional(v.boolean()), // Whether block should be read aloud by TTS
-    ttsText: v.optional(v.string()), // LLM-rewritten text for natural TTS speech
+    order: v.number(), // Stable reading order within the document
+    includeTts: v.union(v.boolean(), v.null()), // null until TTS preparation finishes
+    ttsText: v.union(v.string(), v.null()), // LLM-rewritten text for natural TTS speech
     embedding: v.optional(v.array(v.float64())), // 3072-dim Gemini embedding (added when AI chat opens)
   })
     .index("by_document", ["documentId"])
@@ -114,9 +113,9 @@ export default defineSchema({
   // Chat threads - persistent AI chat conversations per document
   chatThreads: defineTable({
     userId: v.string(),
-    documentId: v.optional(v.id("documents")), // optional for unlinked threads
-    title: v.optional(v.string()),
-    isStreaming: v.optional(v.boolean()),
+    documentId: v.union(v.id("documents"), v.null()), // null for unlinked threads
+    title: v.union(v.string(), v.null()),
+    isStreaming: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

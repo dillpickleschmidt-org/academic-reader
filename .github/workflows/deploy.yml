@@ -64,6 +64,7 @@ jobs:
           bunx convex env set GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
           bunx convex env set GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
           bunx convex env set BETTER_AUTH_SECRET "$BETTER_AUTH_SECRET"
+          bunx convex env set CONVEX_SERVER_SECRET "$CONVEX_SERVER_SECRET"
         working-directory: packages/convex
         env:
           CONVEX_SELF_HOSTED_URL: https://convex-api.academic-reader.com
@@ -71,3 +72,4 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          CONVEX_SERVER_SECRET: ${{ secrets.CONVEX_SERVER_SECRET }}

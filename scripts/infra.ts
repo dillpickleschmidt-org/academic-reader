@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync } from "fs"
+import { randomBytes } from "crypto"
 import { resolve } from "path"
 
 const root = resolve(import.meta.dirname, "..")
@@ -14,6 +15,8 @@ try {
 }
 
 const action = process.argv[2] ?? "up"
+if (action !== "down") ensureConvexServerSecret()
+
 const args =
   action === "down"
     ? ["compose", "--profile", backendMode, "down"]
@@ -34,6 +37,22 @@ if (action === "down") process.exit(0)
 const adminKey = await generateConvexAdminKey()
 if (adminKey) await syncConvexEnvVars(adminKey)
 process.exit(0)
+
+function ensureConvexServerSecret() {
+  if (!existsSync(envPath)) return
+
+  const env = parseEnvFile(envPath)
+  if (env.CONVEX_SERVER_SECRET) return
+
+  const secret = randomBytes(32).toString("hex")
+  const envContent = readFileSync(envPath, "utf-8")
+  const separator = envContent.endsWith("\n") ? "" : "\n"
+  writeFileSync(
+    envPath,
+    `${envContent}${separator}CONVEX_SERVER_SECRET=${secret}\n`,
+  )
+  console.log("[infra] Added CONVEX_SERVER_SECRET to .env.local")
+}
 
 function parseEnvFile(path: string): Record<string, string> {
   try {
@@ -118,6 +137,7 @@ async function syncConvexEnvVars(adminKey: string) {
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "BETTER_AUTH_SECRET",
+    "CONVEX_SERVER_SECRET",
   ]
 
   console.log("[infra] Syncing Convex environment variables...")

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from tts_manifest import voices_for_engine
+
 
 @dataclass
 class VoiceConfig:
@@ -15,16 +17,12 @@ class VoiceConfig:
 
 
 VOICES: dict[str, VoiceConfig] = {
-    "male_1": VoiceConfig(
-        id="male_1",
-        display_name="Male 1",
-        prompt_file="male_1.pt",
-        temperature=0.9,
-        top_p=1.0,
-    ),
+    voice["id"]: VoiceConfig(
+        id=voice["id"],
+        display_name=voice["displayName"],
+        prompt_file=voice["qwen3"]["promptFile"],
+        temperature=voice["qwen3"].get("temperature", 0.9),
+        top_p=voice["qwen3"].get("topP", 1.0),
+    )
+    for voice in voices_for_engine("qwen3")
 }
-
-
-def list_voices() -> list[dict]:
-    """List all available voices."""
-    return [{"id": v.id, "displayName": v.display_name} for v in VOICES.values()]

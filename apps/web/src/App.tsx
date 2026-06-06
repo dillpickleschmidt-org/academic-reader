@@ -15,6 +15,7 @@ import { DeleteDocumentDialog } from "./components/DeleteDocumentDialog"
 import { LandingPage } from "./pages/LandingPage"
 import { PricingPage } from "./pages/PricingPage"
 import { resultPageImport } from "./utils/preload"
+import { useNarratorVoice } from "@/hooks/use-narrator-voice"
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
@@ -35,6 +36,7 @@ const backendMode = import.meta.env.VITE_BACKEND_MODE
 function App() {
   const conversion = useConversion()
   const { user } = useAppConfig()
+  const [narratorVoice, setNarratorVoice] = useNarratorVoice()
   const prevPageRef = useRef<Page>(conversion.page)
   const [deleteDialog, setDeleteDialog] = useState<{
     documentId: string
@@ -191,6 +193,7 @@ function App() {
               useLlm={conversion.useLlm}
               forceOcr={conversion.forceOcr}
               pageRange={conversion.pageRange}
+              narratorVoice={narratorVoice}
               error={conversion.error}
               isProcessing={conversion.page === "processing"}
               isCancelling={conversion.isCancelling}
@@ -199,6 +202,7 @@ function App() {
               onUseLlmChange={conversion.setUseLlm}
               onForceOcrChange={conversion.setForceOcr}
               onPageRangeChange={conversion.setPageRange}
+              onNarratorVoiceChange={setNarratorVoice}
               onStartConversion={conversion.startConversion}
               onCancel={conversion.cancelConversion}
               onBack={conversion.reset}
@@ -214,6 +218,7 @@ function App() {
           chunks={conversion.chunks}
           documentName={conversion.fileName}
           toc={conversion.toc}
+          initialAudioVoiceId={conversion.initialAudioVoiceId}
         >
           <AudioProvider documentId={conversion.documentId}>
             <Suspense fallback={<PageLoader />}>

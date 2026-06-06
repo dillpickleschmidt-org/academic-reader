@@ -4,11 +4,15 @@ import {
   convertToModelMessages,
   stepCountIs,
   tool,
+  type ToolSet,
   type UIMessage,
 } from "ai"
 import { z } from "zod"
-import type { ConvexHttpClient } from "convex/browser"
-import { webSearch, type ExaSearchResult } from "@exalabs/ai-sdk"
+import { webSearch } from "@exalabs/ai-sdk"
+import type {
+  ChatMessageParts,
+  ConvexSession,
+} from "../convex-client"
 import { ModelProvider, type ModelProviderService } from "../model-provider"
 import { generateEmbedding } from "./embeddings"
 import { generateChatTitle } from "./title-generation"
@@ -21,7 +25,7 @@ interface ChatInput {
   threadId: string
   documentId: string
   summary?: string
-  convex: ConvexHttpClient
+  convex: ConvexSession
   event: WideEvent
 }
 
@@ -47,21 +51,15 @@ export function runChatStream(
     // Save user message and set streaming flag
     const userText = extractUserMessage(messages)
     if (userText) {
+      const parts: ChatMessageParts = [{ type: "text", text: userText }]
       yield* Effect.tryPromise({
-        try: () =>
-          convex.mutation("api/chat:addMessageAndStartStreaming" as any, {
-            threadId,
-            parts: [{ type: "text", text: userText }],
-          }),
+        try: () => convex.addMessageAndStartStreaming(threadId, parts),
         catch: () => undefined,
       }).pipe(Effect.catchAll(() => Effect.void))
     } else {
       yield* Effect.tryPromise({
         try: () =>
-          convex.mutation("api/chat:setStreaming" as any, {
-            threadId,
-            isStreaming: true,
-          }),
+          convex.setChatStreaming(threadId, true),
         catch: () => undefined,
       }).pipe(Effect.catchAll(() => Effect.void))
     }
@@ -72,12 +70,12 @@ export function runChatStream(
       const deadline = Date.now() + 60_000
       while (resolvedSummary === undefined && Date.now() < deadline) {
         const poll = yield* Effect.tryPromise({
-          try: () => convex.query("api/documents:get" as any, { documentId }),
+          try: () => convex.getDocument(documentId),
           catch: () => null,
         }).pipe(Effect.catchAll(() => Effect.succeed(null)))
 
-        if (poll && typeof poll === "object" && "summary" in poll) {
-          resolvedSummary = (poll as { summary?: string }).summary
+        if (poll && poll.summary !== null) {
+          resolvedSummary = poll.summary
         }
         if (resolvedSummary === undefined) {
           yield* Effect.sleep("1 second")
@@ -108,44 +106,47 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
     const model = models.chatModel()
     const exaApiKey = config.ai.exaApiKey
 
-    const tools: Record<string, any> = {
-      searchDocument: createSearchTool(documentId, convex, models),
-      webSearch: webSearch({
-        apiKey: exaApiKey,
-        numResults: 10,
-        contents: {
-          highlights: {
-            numSentences: 5,
-            highlightsPerUrl: 3,
+    const tools: ToolSet = {}
+    tools.searchDocument = createSearchTool(
+      documentId,
+      convex,
+      models,
+    ) as unknown as ToolSet[string]
+    tools.webSearch = webSearch({
+      apiKey: exaApiKey,
+      numResults: 10,
+      contents: {
+        highlights: {
+          numSentences: 5,
+          highlightsPerUrl: 3,
+        },
+      },
+    }) as unknown as ToolSet[string]
+    tools.extractPage = tool({
+      description:
+        "Extract the full content of a specific web page URL for detailed reading",
+      inputSchema: z.object({
+        url: z.url().describe("The URL to extract content from"),
+      }),
+      execute: async ({ url }) => {
+        const res = await fetch("https://api.exa.ai/contents", {
+          method: "POST",
+          headers: {
+            "x-api-key": exaApiKey,
+            "Content-Type": "application/json",
           },
-        },
-      }),
-      extractPage: tool({
-        description:
-          "Extract the full content of a specific web page URL for detailed reading",
-        inputSchema: z.object({
-          url: z.url().describe("The URL to extract content from"),
-        }),
-        execute: async ({ url }) => {
-          const res = await fetch("https://api.exa.ai/contents", {
-            method: "POST",
-            headers: {
-              "x-api-key": exaApiKey,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ urls: [url], text: true }),
-            signal: AbortSignal.timeout(30_000),
-          })
-          if (!res.ok) return "Could not extract content from this URL."
-          const data = (await res.json()) as {
-            results?: { title?: string; url: string; text?: string }[]
-          }
-          const result = data.results?.[0]
-          if (!result?.text) return "Could not extract content from this URL."
-          return `# ${result.title ?? "Untitled"}\n${result.url}\n\n${result.text}`
-        },
-      }),
-    }
+          body: JSON.stringify({ urls: [url], text: true }),
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (!res.ok) return "Could not extract content from this URL."
+        const data = (await res.json()) as {
+          results?: { title?: string; url: string; text?: string }[]
+        }
+        const result = data.results?.[0]
+        if (!result?.text) return "Could not extract content from this URL."
+        return `# ${result.title ?? "Untitled"}\n${result.url}\n\n${result.text}`
+      },
+    }) as unknown as ToolSet[string]
 
     const abortController = new AbortController()
     activeStreams.set(threadId, abortController)
@@ -163,10 +164,7 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       abortSignal: abortController.signal,
       stopWhen: stepCountIs(20),
       onError: ({ error }) => {
-        void convex.mutation("api/chat:setStreaming" as any, {
-          threadId,
-          isStreaming: false,
-        }).catch((e: unknown) =>
+        void convex.setChatStreaming(threadId, false).catch((e: unknown) =>
           console.warn("[chat] Failed to clear streaming flag:", e),
         )
         activeStreams.delete(threadId)
@@ -191,37 +189,22 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       }) => {
         activeStreams.delete(threadId)
 
-        const isFirstMessage = messages.length === 1 && !!userText
+        const isFirstMessage = messages.length === 1 && userText !== undefined
         const fallbackTitle = isFirstMessage
-          ? userText!.slice(0, 20)
+          ? userText.slice(0, 20)
           : undefined
 
-        const parts: any[] = []
+        const parts: ChatMessageParts = []
         for (const step of steps) {
           for (const result of step.toolResults) {
-            const isWebSearch = result.toolName === "webSearch"
-            const output = isWebSearch
-              ? stripExaResponse(
-                  result.output as Parameters<typeof stripExaResponse>[0],
-                )
-              : result.output
-            parts.push({
-              type: `tool-${result.toolName}`,
-              toolCallId: result.toolCallId,
-              state: "output-available",
-              input: result.input,
-              output,
-            })
+            const part = toConvexToolPart(result)
+            if (part) parts.push(part)
           }
         }
         parts.push({ type: "text", text })
 
         try {
-          await convex.mutation("api/chat:finishStreaming" as any, {
-            threadId,
-            parts,
-            title: fallbackTitle,
-          })
+          await convex.finishChatStreaming(threadId, parts, fallbackTitle)
         } catch (e) {
           console.warn("[chat] Failed to save message:", e)
         }
@@ -229,16 +212,13 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
         // Fire-and-forget: generate LLM title for new threads
         if (isFirstMessage) {
           Effect.runPromise(
-            generateChatTitle(userText!, text).pipe(
+            generateChatTitle(userText, text).pipe(
               Effect.provideService(ModelProvider, models),
             ),
           )
             .then(async (llmTitle) => {
               if (!llmTitle) return
-              await convex.mutation("api/chat:updateThreadTitle" as any, {
-                threadId,
-                title: llmTitle,
-              })
+              await convex.updateChatThreadTitle(threadId, llmTitle)
             })
             .catch((err) =>
               console.warn("[chat] Background title generation failed:", err),
@@ -250,7 +230,7 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
           durationMs: Math.round(performance.now() - streamStart),
           chatSteps: steps.length,
           chatFinishReason: finishReason,
-        } as Record<string, unknown>)
+        } satisfies Partial<WideEvent>)
       },
     })
 
@@ -260,7 +240,7 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
 
 function createSearchTool(
   documentId: string,
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   models: ModelProviderService,
 ) {
   return tool({
@@ -281,17 +261,17 @@ function createSearchTool(
           ),
         )
 
-        const chunks = await convex.action("api/documents:search" as any, {
+        const chunks = await convex.searchDocument(
           documentId,
           queryEmbedding,
-          limit: 5,
-        })
+          5,
+        )
 
-        if (!chunks || (chunks as any[]).length === 0) {
+        if (!chunks.length) {
           return "No relevant information found in the document."
         }
 
-        return (chunks as { html: string; page: number; section?: string }[])
+        return chunks
           .map(
             (c, i) =>
               `[${i + 1}] (Page ${c.page}${c.section ? `, ${c.section}` : ""}): ${c.html}`,
@@ -305,6 +285,72 @@ function createSearchTool(
   })
 }
 
+type ConvexToolPart = Exclude<ChatMessageParts[number], { type: "text" }>
+
+interface ToolResultForPersistence {
+  toolName: string
+  toolCallId: string
+  input: unknown
+  output: unknown
+}
+
+function toConvexToolPart(
+  result: ToolResultForPersistence,
+): ConvexToolPart | null {
+  switch (result.toolName) {
+    case "searchDocument":
+      return {
+        type: "tool-searchDocument",
+        toolCallId: result.toolCallId,
+        state: "output-available",
+        input: queryToolInput(result.input),
+        output: typeof result.output === "string" ? result.output : "",
+      }
+    case "webSearch":
+      return {
+        type: "tool-webSearch",
+        toolCallId: result.toolCallId,
+        state: "output-available",
+        input: queryToolInput(result.input),
+        output: stripExaResponse(result.output),
+      }
+    case "extractPage":
+      return {
+        type: "tool-extractPage",
+        toolCallId: result.toolCallId,
+        state: "output-available",
+        input: urlToolInput(result.input),
+        output: typeof result.output === "string" ? result.output : "",
+      }
+    default:
+      return null
+  }
+}
+
+function queryToolInput(input: unknown) {
+  return {
+    query:
+      typeof input === "object" &&
+      input !== null &&
+      "query" in input &&
+      typeof input.query === "string"
+        ? input.query
+        : "",
+  }
+}
+
+function urlToolInput(input: unknown) {
+  return {
+    url:
+      typeof input === "object" &&
+      input !== null &&
+      "url" in input &&
+      typeof input.url === "string"
+        ? input.url
+        : "",
+  }
+}
+
 function extractUserMessage(messages: UIMessage[]): string | undefined {
   const last = messages[messages.length - 1]
   if (!last || last.role !== "user") return undefined
@@ -312,57 +358,61 @@ function extractUserMessage(messages: UIMessage[]): string | undefined {
   return textPart?.type === "text" ? textPart.text : undefined
 }
 
-function stripExaResponse({
-  results,
-  requestId,
-  resolvedSearchType,
-  searchTime,
-  costDollars,
-  effectiveFilters,
-  requestTags,
-}: {
-  results: ExaSearchResult[]
-  requestId?: string
-  resolvedSearchType?: string
-  searchTime?: number
-  costDollars?: unknown
-  effectiveFilters?: unknown
-  requestTags?: unknown
-  [k: string]: unknown
-}) {
+function stripExaResponse(output: unknown) {
+  const response = isRecord(output) ? output : {}
+  const rawResults = Array.isArray(response.results) ? response.results : []
+
   return {
-    results: results.map(
-      ({
-        title,
-        url,
-        id,
-        publishedDate,
-        author,
-        image,
-        favicon,
-        text,
-        highlights,
-        highlightScores,
-        summary,
-      }) => ({
-        title,
-        url,
-        id,
-        publishedDate,
-        author,
-        image,
-        favicon,
-        text,
-        highlights,
-        highlightScores,
-        summary,
-      }),
-    ),
-    requestId,
-    resolvedSearchType,
-    searchTime,
-    costDollars,
-    effectiveFilters,
-    requestTags,
+    results: rawResults.filter(isRecord).map((result) => ({
+      title: stringField(result, "title") ?? "",
+      url: stringField(result, "url") ?? "",
+      id: stringField(result, "id"),
+      publishedDate: stringField(result, "publishedDate"),
+      author: stringField(result, "author"),
+      image: stringField(result, "image"),
+      favicon: stringField(result, "favicon"),
+      text: stringField(result, "text"),
+      highlights: stringArrayField(result, "highlights"),
+      highlightScores: numberArrayField(result, "highlightScores"),
+      summary: stringField(result, "summary"),
+    })),
+    requestId: stringField(response, "requestId"),
+    resolvedSearchType: stringField(response, "resolvedSearchType"),
+    searchTime: numberField(response, "searchTime"),
+    costDollars: fieldOrNull(response, "costDollars"),
+    effectiveFilters: fieldOrNull(response, "effectiveFilters"),
+    requestTags: fieldOrNull(response, "requestTags"),
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function stringField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === "string" ? value : null
+}
+
+function numberField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === "number" ? value : null
+}
+
+function stringArrayField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? value
+    : null
+}
+
+function numberArrayField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return Array.isArray(value) && value.every((item) => typeof item === "number")
+    ? value
+    : null
+}
+
+function fieldOrNull(record: Record<string, unknown>, key: string) {
+  return key in record ? record[key] : null
 }

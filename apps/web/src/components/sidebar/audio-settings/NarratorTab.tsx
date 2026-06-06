@@ -1,29 +1,14 @@
 import { Volume2, VolumeX } from "lucide-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@academic-reader/ui/primitives/select"
 import { Slider } from "@academic-reader/ui/primitives/slider"
 import { Label } from "@academic-reader/ui/primitives/label"
 import { useAudioSelector, useAudioActions } from "@/context/AudioContext"
-import { useVoiceSelection } from "@/hooks/use-voices"
-import type { VoiceId } from "@/audio/types"
+import { VoiceMenu } from "@/components/VoiceMenu"
 
 export function NarratorTab() {
-  const currentVoice = useAudioSelector((s) => s.narrator.voice)
   const speed = useAudioSelector((s) => s.narrator.speed)
   const volume = useAudioSelector((s) => s.narrator.volume)
 
-  const { setVoice, setNarratorSpeed, setNarratorVolume } = useAudioActions()
-  const { voices } = useVoiceSelection(currentVoice, setVoice)
-
-  const handleVoiceChange = (voiceId: string | null) => {
-    if (!voiceId) return
-    setVoice(voiceId as VoiceId)
-  }
+  const { setNarratorSpeed, setNarratorVolume } = useAudioActions()
 
   const handleSpeedChange = (value: number | readonly number[]) => {
     const v = Array.isArray(value) ? value[0] : value
@@ -37,26 +22,11 @@ export function NarratorTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Voice selection */}
       <div className="flex flex-col gap-2">
         <Label className="text-xs text-muted-foreground">Voice</Label>
-        <Select value={currentVoice} onValueChange={handleVoiceChange}>
-          <SelectTrigger className="w-full">
-            <SelectValue>
-              {voices.find((v) => v.id === currentVoice)?.displayName}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {voices.map((voice) => (
-              <SelectItem key={voice.id} value={voice.id}>
-                {voice.displayName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <VoiceMenu triggerClassName="w-full" />
       </div>
 
-      {/* Speed slider */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1">
           <Label className="text-xs text-muted-foreground">Speed</Label>
@@ -79,7 +49,6 @@ export function NarratorTab() {
         </div>
       </div>
 
-      {/* Volume slider */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1">
           <Label className="text-xs text-muted-foreground">Volume</Label>

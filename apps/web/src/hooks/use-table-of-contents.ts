@@ -9,18 +9,17 @@ export interface TocDisplayItem {
 }
 
 export function useTableOfContents(
-  serverToc: TocResult | undefined,
+  serverToc: TocResult | null | undefined,
   hasDocumentId: boolean,
 ): TocDisplayItem[] | undefined {
   const [domItems, setDomItems] = useState<TocDisplayItem[]>([])
   const hasServerToc = Boolean(serverToc?.sections.length)
+  const isProcessing = hasDocumentId && serverToc === null
+  const isLoading = hasDocumentId && serverToc === undefined
 
-  // If we have a documentId but no TOC yet, it's still processing
-  const isProcessing = hasDocumentId && serverToc === undefined
-
-  // DOM-based fallback extraction (only runs if no server TOC and not processing)
+  // DOM-based fallback extraction only runs once server TOC extraction is done
   useEffect(() => {
-    if (hasServerToc || isProcessing) return
+    if (hasServerToc || isProcessing || isLoading) return
 
     const extractHeaders = () => {
       const container = document.querySelector(".reader-content")
@@ -44,10 +43,10 @@ export function useTableOfContents(
 
     const timer = setTimeout(extractHeaders, 100)
     return () => clearTimeout(timer)
-  }, [hasServerToc, isProcessing])
+  }, [hasServerToc, isProcessing, isLoading])
 
   return useMemo(() => {
-    if (isProcessing) return undefined
+    if (isProcessing || isLoading) return undefined
 
     if (!serverToc?.sections.length) {
       return domItems
@@ -70,5 +69,5 @@ export function useTableOfContents(
 
       return item
     })
-  }, [serverToc, domItems, isProcessing])
+  }, [serverToc, domItems, isProcessing, isLoading])
 }

@@ -8,34 +8,38 @@ import * as mupdf from "mupdf"
 import { requireAuth } from "../middleware/auth"
 import { enrichEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
-import { AppConfig } from "../config"
+import { ConvexClient } from "../services/convex-client"
 import { processHtml, HTML_TRANSFORMS } from "../utils/html-processing"
-import { ConvexHttpClient } from "convex/browser"
-import { getToken } from "@convex-dev/better-auth/utils"
 
 export const savedDocumentsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
     "/:documentId",
     Effect.gen(function* () {
       const { userId } = yield* requireAuth
-      const config = yield* AppConfig
       const storage = yield* Storage
-      const request = yield* HttpServerRequest.HttpServerRequest
+      const convexService = yield* ConvexClient
       const params = yield* HttpRouter.params
       const documentId = params.documentId
+      if (!documentId) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Missing documentId" },
+          { status: 400 },
+        )
+      }
 
-      yield* enrichEvent({ documentId } as Record<string, unknown>)
+      yield* enrichEvent({ documentId })
 
-      const convex = yield* createConvexClient(config, request)
-      if (!convex) {
+      const convexResult = yield* Effect.either(convexService.fromRequest())
+      if (convexResult._tag === "Left") {
         return HttpServerResponse.unsafeJson(
           { error: "Authentication failed" },
           { status: 401 },
         )
       }
+      const convex = convexResult.right
 
       const doc = yield* Effect.tryPromise({
-        try: () => convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.getDocument(documentId),
         catch: () => null,
       }).pipe(Effect.catchAll(() => Effect.succeed(null)))
 
@@ -46,19 +50,15 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const storageId = (doc as any).storageId
-      const toc = (doc as any).toc
-
-      const htmlPath = `documents/${userId}/${storageId}/content.html`
-      const mdPath = `documents/${userId}/${storageId}/content.md`
+      const htmlPath = `documents/${userId}/${doc.storageId}/content.html`
+      const mdPath = `documents/${userId}/${doc.storageId}/content.md`
 
       const [htmlResult, mdResult, chunksResult] = yield* Effect.all(
         [
           storage.readFileAsString(htmlPath).pipe(Effect.either),
           storage.readFileAsString(mdPath).pipe(Effect.either),
           Effect.tryPromise({
-            try: () =>
-              convex.query("api/documents:getChunks" as any, { documentId }),
+            try: () => convex.getDocumentChunks(documentId),
             catch: () => [],
           }).pipe(Effect.catchAll(() => Effect.succeed([]))),
         ],
@@ -81,9 +81,9 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
       return HttpServerResponse.unsafeJson({
         html: enhancedHtml,
         markdown,
-        storageId,
+        storageId: doc.storageId,
         chunks,
-        toc,
+        toc: doc.toc,
         documentId,
       })
     }),
@@ -93,13 +93,19 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
     "/:documentId",
     Effect.gen(function* () {
       const { userId } = yield* requireAuth
-      const config = yield* AppConfig
       const storage = yield* Storage
+      const convexService = yield* ConvexClient
       const request = yield* HttpServerRequest.HttpServerRequest
       const params = yield* HttpRouter.params
       const documentId = params.documentId
+      if (!documentId) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Missing documentId" },
+          { status: 400 },
+        )
+      }
 
-      yield* enrichEvent({ documentId } as Record<string, unknown>)
+      yield* enrichEvent({ documentId })
 
       const url = new URL(request.url, "http://localhost")
       const threadAction = url.searchParams.get("threadAction")
@@ -111,16 +117,17 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const convex = yield* createConvexClient(config, request)
-      if (!convex) {
+      const convexResult = yield* Effect.either(convexService.fromRequest())
+      if (convexResult._tag === "Left") {
         return HttpServerResponse.unsafeJson(
           { error: "Authentication failed" },
           { status: 401 },
         )
       }
+      const convex = convexResult.right
 
       const doc = yield* Effect.tryPromise({
-        try: () => convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.getDocument(documentId),
         catch: () => null,
       }).pipe(Effect.catchAll(() => Effect.succeed(null)))
 
@@ -131,14 +138,8 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const storageId = (doc as any).storageId
-
       const removeResult = yield* Effect.tryPromise({
-        try: () =>
-          convex.mutation("api/documents:remove" as any, {
-            documentId,
-            threadAction,
-          }),
+        try: () => convex.removeDocument(documentId, threadAction),
         catch: (e) => e,
       }).pipe(Effect.either)
 
@@ -149,7 +150,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const folderPrefix = `documents/${userId}/${storageId}/`
+      const folderPrefix = `documents/${userId}/${doc.storageId}/`
       yield* storage.deletePrefix(folderPrefix).pipe(Effect.ignore)
 
       return HttpServerResponse.unsafeJson({ success: true })
@@ -160,12 +161,25 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
     "/:documentId/page/:pageNum",
     Effect.gen(function* () {
       const { userId } = yield* requireAuth
-      const config = yield* AppConfig
       const storage = yield* Storage
-      const request = yield* HttpServerRequest.HttpServerRequest
+      const convexService = yield* ConvexClient
       const params = yield* HttpRouter.params
       const documentId = params.documentId
-      const pageNum = parseInt(params.pageNum!, 10)
+      const pageNumParam = params.pageNum
+      if (!documentId) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Missing documentId" },
+          { status: 400 },
+        )
+      }
+      if (!pageNumParam) {
+        return HttpServerResponse.unsafeJson(
+          { error: "Missing page number" },
+          { status: 400 },
+        )
+      }
+
+      const pageNum = parseInt(pageNumParam, 10)
 
       if (isNaN(pageNum) || pageNum < 0) {
         return HttpServerResponse.unsafeJson(
@@ -174,16 +188,17 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const convex = yield* createConvexClient(config, request)
-      if (!convex) {
+      const convexResult = yield* Effect.either(convexService.fromRequest())
+      if (convexResult._tag === "Left") {
         return HttpServerResponse.unsafeJson(
           { error: "Authentication failed" },
           { status: 401 },
         )
       }
+      const convex = convexResult.right
 
       const doc = yield* Effect.tryPromise({
-        try: () => convex.query("api/documents:get" as any, { documentId }),
+        try: () => convex.getDocument(documentId),
         catch: () => null,
       }).pipe(Effect.catchAll(() => Effect.succeed(null)))
 
@@ -194,8 +209,7 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
         )
       }
 
-      const storageId = (doc as any).storageId
-      const pdfPath = `documents/${userId}/${storageId}/original.pdf`
+      const pdfPath = `documents/${userId}/${doc.storageId}/original.pdf`
 
       const pdfResult = yield* storage.readFile(pdfPath).pipe(Effect.either)
       if (pdfResult._tag === "Left") {
@@ -241,26 +255,3 @@ export const savedDocumentsRouter = HttpRouter.empty.pipe(
     }),
   ),
 )
-
-function createConvexClient(
-  config: { convex: { httpUrl: string; siteUrl: string } },
-  request: { cookies: Record<string, string> },
-) {
-  return Effect.tryPromise({
-    try: async () => {
-      const headers = new Headers()
-      const cookieStr = Object.entries(request.cookies)
-        .map(([k, v]) => `${k}=${v}`)
-        .join("; ")
-      if (cookieStr) headers.set("Cookie", cookieStr)
-
-      const { token } = await getToken(config.convex.httpUrl, headers)
-      if (!token) return null
-
-      const client = new ConvexHttpClient(config.convex.siteUrl)
-      client.setAuth(token)
-      return client
-    },
-    catch: () => null as never,
-  }).pipe(Effect.catchAll(() => Effect.succeed(null)))
-}

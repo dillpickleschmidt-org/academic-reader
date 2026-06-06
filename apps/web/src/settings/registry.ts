@@ -9,14 +9,13 @@ export interface SettingDef<T extends string = string> {
 }
 
 type OnOff = "on" | "off"
-const isOnOff = (v: string): v is OnOff => v === "on" || v === "off"
 
 export const SETTINGS = {
   tabIndent: {
     key: "tab-indent",
     attribute: "data-tab-indent",
     defaultValue: "on" as OnOff,
-    validate: isOnOff,
+    validate: (v: string): v is OnOff => v === "on" || v === "off",
     label: "Tab indentation",
     description: "Indent first line of paragraphs",
   },

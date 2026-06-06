@@ -13,10 +13,6 @@ export function sanitizeTitle(title: string, maxLength = 200): string {
   return title.replace(/[\x00-\x1F\x7F]/g, "").slice(0, maxLength) || "Document"
 }
 
-export function toAsciiFilename(title: string): string {
-  return title.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "\\$&")
-}
-
 export function sanitizeFilename(
   rawFilename: string,
   fallback = "document.pdf",
@@ -28,11 +24,24 @@ export function contentDisposition(
   filename: string,
   type: "attachment" | "inline" = "attachment",
 ): string {
-  const ascii = toAsciiFilename(filename)
-  const encoded = encodeURIComponent(filename)
-  return `${type}; filename="${ascii}"; filename*=UTF-8''${encoded}`
+  return `${type}; filename="${quotedAsciiFilename(filename)}"; filename*=UTF-8''${encodeRfc5987Value(filename)}`
 }
 
 export function stripHtml(html: string): string {
   return load(html).text().replace(/\s+/g, " ").trim()
+}
+
+function quotedAsciiFilename(filename: string): string {
+  const fallback = filename
+    .replace(/[\x00-\x1F\x7F]/g, "")
+    .replace(/[^\x20-\x7E]/g, "_")
+    .replace(/[\\/]/g, "_")
+    .replace(/"/g, "\\\"")
+  return fallback || "download"
+}
+
+function encodeRfc5987Value(value: string): string {
+  return encodeURIComponent(value).replace(/['()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
 }

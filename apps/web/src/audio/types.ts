@@ -1,6 +1,5 @@
 import type { AMBIENT_SOUNDS, MUSIC_TRACKS } from "./constants"
 
-// Voice types - dynamic, fetched from backend
 export type VoiceId = string
 
 // Music types
@@ -45,7 +44,7 @@ export type WordTimestamp = {
   endMs: number
 }
 
-export type PlaybackMode = "idle" | "loading" | "streaming" | "ready"
+export type PlaybackMode = "idle" | "loading" | "waiting" | "ready"
 
 // Unified Audio State
 export type AudioState = {
@@ -65,8 +64,6 @@ export type AudioState = {
     durationMs: number
     currentTime: number
     isPlaying: boolean
-    canPause: boolean
-    canSeek: boolean
     wordTimestamps: WordTimestamp[]
   }
 
@@ -77,9 +74,6 @@ export type AudioState = {
   ambience: {
     sounds: AmbientSoundState[]
   }
-
-  // Whether batch processing has been started for this document
-  batchStarted: boolean
 
   // Master settings
   master: {

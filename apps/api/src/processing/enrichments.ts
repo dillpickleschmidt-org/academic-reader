@@ -1,7 +1,15 @@
 import { Effect } from "effect"
-import type { ConvexHttpClient } from "convex/browser"
 import { stripHtml } from "../utils/sanitize"
 import { Storage } from "../services/storage"
+import { AppConfig } from "../config"
+import { TtsService } from "../services/backends/tts"
+import {
+  createConvexServerSession,
+  type ConvexSession,
+  type DocumentToc,
+  type TtsChunkPreparation,
+} from "../services/convex-client"
+import { startDocumentAudioGeneration } from "../services/tts-generation"
 import { extractTableOfContents } from "../services/ai/toc-extraction"
 import { filterBlocksForTTS } from "../services/ai/tts-block-filter"
 import { rewriteBlocksForTTS } from "../services/ai/tts-rewrite"
@@ -19,6 +27,7 @@ export interface EnrichmentContext {
   documentId: string
   environment: string
   deployment: "dev" | "prod"
+  audioVoiceId?: string
 }
 
 function enrichmentEvent(
@@ -41,7 +50,7 @@ function enrichmentEvent(
 export function runBackgroundEnrichments(
   chunks: ChunkBlock[],
   documentId: string,
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   documentPath: string,
   textContent: string,
   ctx: EnrichmentContext,
@@ -62,7 +71,7 @@ export function runBackgroundEnrichments(
           return Effect.void
         }),
       ),
-      ttsEnrichment(chunks, documentId, convex, ctx).pipe(
+      ttsEnrichment(chunks, documentId, documentPath, ctx).pipe(
         Effect.catchAllCause((cause) => {
           emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/tts"), {
             error: {
@@ -93,7 +102,7 @@ export function runBackgroundEnrichments(
 
 function tocEnrichment(
   documentId: string,
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   documentPath: string,
   textContent: string,
   ctx: EnrichmentContext,
@@ -132,7 +141,7 @@ function tocEnrichment(
 function ttsEnrichment(
   chunks: ChunkBlock[],
   documentId: string,
-  convex: ConvexHttpClient,
+  documentPath: string,
   ctx: EnrichmentContext,
 ) {
   return Effect.gen(function* () {
@@ -152,51 +161,56 @@ function ttsEnrichment(
       includedChunks = chunks
     }
 
-    const allTtsFlags = chunks.map((c) => ({
-      blockId: c.id,
-      includeTts: filterMap[c.id] === true,
-    }))
-    for (let i = 0; i < allTtsFlags.length; i += TTS_BATCH_SIZE) {
-      yield* Effect.tryPromise({
-        try: () =>
-          convex.mutation("api/documents:updateChunksTtsFlags" as any, {
-            documentId,
-            flags: allTtsFlags.slice(i, i + TTS_BATCH_SIZE),
-          }),
-        catch: (e) => e as Error,
-      })
-    }
-
     const rewriteResult = yield* rewriteBlocksForTTS(includedChunks).pipe(
       Effect.either,
     )
 
-    let texts: { blockId: string; ttsText: string }[]
+    const textByBlockId = new Map<string, string>()
     let failedGroups = 0
     let fallbackBlockCount = 0
 
     if (rewriteResult._tag === "Right") {
       failedGroups = rewriteResult.right.failedGroups
       fallbackBlockCount = rewriteResult.right.fallbackBlockCount
-      texts = includedChunks
-        .map((c) => ({
-          blockId: c.id,
-          ttsText: rewriteResult.right.texts[c.id] || stripHtml(c.html),
-        }))
-        .filter((t) => t.ttsText.length > 0)
+      for (const chunk of includedChunks) {
+        textByBlockId.set(
+          chunk.id,
+          rewriteResult.right.texts[chunk.id] || stripHtml(chunk.html),
+        )
+      }
     } else {
-      texts = includedChunks
-        .map((c) => ({ blockId: c.id, ttsText: stripHtml(c.html) }))
-        .filter((t) => t.ttsText.length > 0)
+      for (const chunk of includedChunks) {
+        textByBlockId.set(chunk.id, stripHtml(chunk.html))
+      }
     }
 
-    for (let i = 0; i < texts.length; i += TTS_BATCH_SIZE) {
+    const preparations: TtsChunkPreparation[] = chunks.map((chunk) => {
+      if (filterMap[chunk.id] !== true) {
+        return { blockId: chunk.id, includeTts: false, ttsText: null }
+      }
+
+      const ttsText = textByBlockId.get(chunk.id)?.trim()
+      if (!ttsText) {
+        return { blockId: chunk.id, includeTts: false, ttsText: null }
+      }
+
+      return {
+        blockId: chunk.id,
+        includeTts: true,
+        ttsText,
+      }
+    })
+
+    const config = yield* AppConfig
+    const serverConvex = createConvexServerSession(config.convex)
+
+    for (let i = 0; i < preparations.length; i += TTS_BATCH_SIZE) {
       yield* Effect.tryPromise({
         try: () =>
-          convex.mutation("api/documents:updateChunksTtsText" as any, {
+          serverConvex.setTtsChunkPreparation(
             documentId,
-            texts: texts.slice(i, i + TTS_BATCH_SIZE),
-          }),
+            preparations.slice(i, i + TTS_BATCH_SIZE),
+          ),
         catch: (e) => e as Error,
       })
     }
@@ -209,13 +223,28 @@ function ttsEnrichment(
       failedGroups,
       fallbackBlockCount,
     })
+
+    if (ctx.audioVoiceId) {
+      const storage = yield* Storage
+      const ttsService = yield* TtsService
+      const result = startDocumentAudioGeneration({
+        convex: serverConvex,
+        storage,
+        ttsService,
+        documentId,
+        voiceId: ctx.audioVoiceId,
+        backendMode: config.backendMode,
+        documentPath,
+      })
+      emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/audio"), result)
+    }
   })
 }
 
 function summaryEnrichment(
   chunkHtml: string,
   documentId: string,
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   ctx: EnrichmentContext,
 ) {
   return Effect.gen(function* () {
@@ -223,11 +252,7 @@ function summaryEnrichment(
     const summary = yield* generateDocumentSummary(chunkHtml)
 
     yield* Effect.tryPromise({
-      try: () =>
-        convex.mutation("api/documents:updateSummary" as any, {
-          documentId,
-          summary,
-        }),
+      try: () => convex.updateDocumentSummary(documentId, summary),
       catch: (e) => e as Error,
     })
 
@@ -239,16 +264,12 @@ function summaryEnrichment(
 }
 
 function persistToc(
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   documentId: string,
-  toc: { sections: any[]; offset: number },
+  toc: DocumentToc,
 ) {
   return Effect.tryPromise({
-    try: () =>
-      convex.mutation("api/documents:updateToc" as any, {
-        documentId,
-        toc,
-      }),
+    try: () => convex.updateDocumentToc(documentId, toc),
     catch: (e) => e as Error,
   })
 }

@@ -15,6 +15,7 @@ export const ConversionOptions = Schema.Struct({
   useLlm: Schema.Boolean,
   forceOcr: Schema.Boolean,
   pageRange: Schema.String,
+  audioVoiceId: Schema.String,
 })
 export type ConversionOptions = typeof ConversionOptions.Type
 

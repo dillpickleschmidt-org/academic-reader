@@ -15,6 +15,7 @@ const S3Config = Schema.Struct({
 const ConvexConfig = Schema.Struct({
   httpUrl: Schema.String,
   siteUrl: Schema.String,
+  serverSecret: Schema.String,
 })
 
 const AiConfig = Schema.Struct({
@@ -96,6 +97,7 @@ function readEnv(): AppConfigShape {
     convex: {
       httpUrl: e.CONVEX_HTTP_URL ?? "http://localhost:3211",
       siteUrl: e.CONVEX_SITE_URL ?? "http://localhost:3210",
+      serverSecret: e.CONVEX_SERVER_SECRET!,
     },
     ai: {
       googleApiKey: e.GOOGLE_API_KEY!,

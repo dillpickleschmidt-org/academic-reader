@@ -18,8 +18,8 @@ export const create = mutation({
   args: {
     filename: v.string(),
     storageId: v.string(),
-    pageCount: v.optional(v.number()),
-    toc: v.optional(tocValidator),
+    pageCount: v.union(v.number(), v.null()),
+    toc: v.union(tocValidator, v.null()),
   },
   handler: (ctx, args) => Documents.createDocument(ctx, args),
 })
@@ -36,9 +36,10 @@ export const addChunks = mutation({
         blockId: v.string(),
         blockType: v.string(),
         html: v.string(),
-        section: v.optional(v.string()),
+        section: v.union(v.string(), v.null()),
         bbox: v.array(v.number()),
-        includeTts: v.optional(v.boolean()),
+        order: v.number(),
+        includeTts: v.union(v.boolean(), v.null()),
       }),
     ),
   },
@@ -71,40 +72,6 @@ export const updateSummary = mutation({
 })
 
 /**
- * Bulk-update includeTts flags on chunks after background filtering.
- */
-export const updateChunksTtsFlags = mutation({
-  args: {
-    documentId: v.id("documents"),
-    flags: v.array(
-      v.object({
-        blockId: v.string(),
-        includeTts: v.boolean(),
-      }),
-    ),
-  },
-  handler: (ctx, { documentId, flags }) =>
-    Documents.updateChunksTtsFlags(ctx, documentId, flags),
-})
-
-/**
- * Bulk-update ttsText on chunks after background rewriting.
- */
-export const updateChunksTtsText = mutation({
-  args: {
-    documentId: v.id("documents"),
-    texts: v.array(
-      v.object({
-        blockId: v.string(),
-        ttsText: v.string(),
-      }),
-    ),
-  },
-  handler: (ctx, { documentId, texts }) =>
-    Documents.updateChunksTtsText(ctx, documentId, texts),
-})
-
-/**
  * Add embeddings to existing chunks.
  * Called when AI chat opens.
  */
@@ -130,14 +97,6 @@ export const remove = mutation({
 })
 
 // ===== Queries =====
-
-/**
- * Get all documents for the current user.
- */
-export const list = query({
-  args: {},
-  handler: (ctx) => Documents.getUserDocuments(ctx),
-})
 
 /**
  * Get persisted documents (with storage paths) for the current user.
@@ -169,24 +128,6 @@ export const getChunks = query({
   },
   handler: (ctx, { documentId }) =>
     Documents.getChunksForDocument(ctx, documentId),
-})
-
-/**
- * Get TTS enrichment data for all chunks in a document.
- * Lightweight projection — only returns blockId, includeTts, and ttsText.
- */
-export const getTtsEnrichments = query({
-  args: {
-    documentId: v.id("documents"),
-  },
-  handler: async (ctx, { documentId }) => {
-    const chunks = await Documents.getChunksForDocument(ctx, documentId)
-    return chunks.map((c) => ({
-      blockId: c.blockId,
-      includeTts: c.includeTts,
-      ttsText: c.ttsText,
-    }))
-  },
 })
 
 /**

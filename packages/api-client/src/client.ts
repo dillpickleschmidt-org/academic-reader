@@ -6,7 +6,10 @@ import type { ConversionProgress } from "./schemas/job"
 import type { ChunkOutput, TocResult } from "./schemas/document"
 import { SavedDocumentResponse } from "./schemas/document"
 import { UploadResponse, type ConversionOptions } from "./schemas/upload"
-
+import {
+  GenerateDocumentAudioResult,
+  GetBlockAudioResponse,
+} from "./schemas/tts"
 
 export type { ConversionOptions }
 
@@ -68,6 +71,7 @@ export const startConversion = (
       force_ocr: String(options.forceOcr),
       filename,
       mime_type: mimeType,
+      audio_voice_id: options.audioVoiceId,
     })
     if (options.pageRange.trim())
       params.set("page_range", options.pageRange.trim())
@@ -204,75 +208,41 @@ export const deleteSavedDocument = (
       )
   })
 
-export const prefetchTTS = (params: {
+export const generateDocumentAudio = (params: {
   documentId: string
-  blockId: string
-  ttsText: string
   voiceId: string
 }) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client
-      .post("/api/tts/prefetch", {
+      .post("/api/tts/generate-document-audio", {
         body: HttpBody.unsafeJson(params),
       })
       .pipe(
-        Effect.asVoid,
+        Effect.flatMap(
+          HttpClientResponse.schemaBodyJson(GenerateDocumentAudioResult),
+        ),
         Effect.scoped,
         Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
   })
 
-export const synthesizeTTS = (params: {
+export const getBlockAudio = (params: {
   documentId: string
   blockId: string
-  ttsText?: string
   voiceId: string
-}) =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
-    const body: Record<string, string> = {
-      documentId: params.documentId,
-      blockId: params.blockId,
-      voiceId: params.voiceId,
-    }
-    if (params.ttsText) body.ttsText = params.ttsText
-    const response = yield* client
-      .post("/api/tts/synthesize", {
-        body: HttpBody.unsafeJson(body),
-      })
-      .pipe(
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-      )
-    return response
-  })
-
-export const batchTTS = (params: {
-  documentId: string
-  voiceId: string
-  blocks: Array<{ blockId: string; ttsText: string }>
 }) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client
-      .post("/api/tts/batch", {
+      .post("/api/tts/get-block-audio", {
         body: HttpBody.unsafeJson(params),
       })
       .pipe(
-        Effect.asVoid,
+        Effect.flatMap(HttpClientResponse.schemaBodyJson(GetBlockAudioResponse)),
         Effect.scoped,
         Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
-
-export const unloadTTS = () =>
-  Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
-    return yield* client.post("/api/tts/unload").pipe(
-      Effect.asVoid,
-      Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
-    )
   })
 
 export const triggerEmbeddings = (documentId: string) =>

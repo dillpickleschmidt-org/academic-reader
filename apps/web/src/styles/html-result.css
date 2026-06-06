@@ -493,6 +493,16 @@
   background-color: oklch(from var(--foreground) L C H / 15%);
 }
 
+.reader-content [data-tts-ready="false"] {
+  opacity: 0.45;
+  transition: opacity 200ms ease;
+}
+
+.reader-content [data-tts-ready="true"] {
+  opacity: 1;
+  transition: opacity 200ms ease;
+}
+
 /* ========================================
    Page Markers
    Top-right page numbers for TOC navigation

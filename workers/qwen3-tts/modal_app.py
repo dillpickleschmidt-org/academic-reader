@@ -4,6 +4,8 @@ import modal
 from pathlib import Path
 
 VOICES_DIR = Path(__file__).parent / "voices"
+MANIFEST_PATH = Path(__file__).resolve().parents[2] / "packages/api-client/src/tts-manifest.json"
+TTS_MANIFEST_HELPER_PATH = Path(__file__).resolve().parents[1] / "tts_manifest.py"
 
 flash_attn_wheel = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiFALSE-cp312-cp312-linux_x86_64.whl"
 
@@ -33,6 +35,8 @@ image = (
     )
     .add_local_dir(VOICES_DIR, remote_path="/voices")
     .add_local_dir(Path(__file__).parent / "core", remote_path="/root/core")
+    .add_local_file(MANIFEST_PATH, remote_path="/root/tts-manifest.json")
+    .add_local_file(TTS_MANIFEST_HELPER_PATH, remote_path="/root/tts_manifest.py")
 )
 
 app = modal.App("qwen3-tts", image=image)
@@ -45,8 +49,9 @@ with image.imports():
 
     import torch
 
-    from core.voices import VOICES, list_voices
-    from core.synthesis import synthesize as core_synthesize, synthesize_streaming_ndjson
+    from core.voices import VOICES
+    from core.synthesis import synthesize_streaming_ndjson
+    from tts_manifest import SAMPLE_RATE, default_voice_id_for_engine
 
 
 @app.cls(
@@ -175,26 +180,12 @@ class Qwen3TTS:
             return
         yield from synthesize_streaming_ndjson(text, voice_id, self)
 
-    @modal.method()
-    def synthesize(self, text: str, voice_id: str) -> dict:
-        """Synthesize speech from text (non-streaming)."""
-        if voice_id not in VOICES:
-            return {
-                "error": f"Unknown voice: {voice_id}. Available: {list(VOICES.keys())}"
-            }
-        audio_base64, sr, duration_ms, word_timestamps = core_synthesize(text, voice_id, self)
-        return {
-            "audio": audio_base64,
-            "sampleRate": sr,
-            "durationMs": duration_ms,
-            "wordTimestamps": word_timestamps,
-        }
 
 
 @app.function()
 @modal.asgi_app()
 def api():
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
 
@@ -203,22 +194,20 @@ def api():
 
     class SynthesizeRequest(BaseModel):
         text: str
-        voiceId: str = "male_1"
-
-    class StreamRequest(BaseModel):
-        text: str
-        voice_id: str = "male_1"
+        voice_id: str = default_voice_id_for_engine("qwen3")
 
     @web.post("/synthesize")
-    async def synthesize_sync(req: SynthesizeRequest):
-        """Synthesize speech synchronously (non-streaming)."""
-        result = await worker.synthesize.remote.aio(req.text, req.voiceId)
-        return result
-
-    @web.post("/synthesize/stream")
-    async def synthesize_stream(req: StreamRequest):
-        """Stream audio as NDJSON with interleaved timestamps."""
+    async def synthesize_stream(req: SynthesizeRequest):
         import asyncio
+
+        if not req.text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+        if req.voice_id not in VOICES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown voice: {req.voice_id}. Available: {list(VOICES.keys())}",
+            )
 
         async def ndjson_generator():
             gen = worker.synthesize_streaming.remote_gen.aio(req.text, req.voice_id)
@@ -238,15 +227,11 @@ def api():
             media_type="application/x-ndjson",
             headers={
                 "Transfer-Encoding": "chunked",
-                "X-Audio-Sample-Rate": "24000",
+                "X-Audio-Sample-Rate": str(SAMPLE_RATE),
                 "X-Audio-Channels": "1",
                 "X-Audio-Format": "s16le",
             },
         )
-
-    @web.get("/voices")
-    async def voices():
-        return {"voices": list_voices()}
 
     @web.get("/health")
     async def health():

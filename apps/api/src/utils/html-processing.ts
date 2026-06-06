@@ -42,10 +42,6 @@ export function demoteExtraH1s($: CheerioAPI): void {
   })
 }
 
-export function enhanceHtmlForReader(html: string): string {
-  return processHtml(html, HTML_TRANSFORMS)
-}
-
 export function wrapTablesInScrollContainers($: CheerioAPI): void {
   $("table").each(function () {
     $(this).wrap(

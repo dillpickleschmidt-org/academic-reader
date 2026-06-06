@@ -6,8 +6,9 @@ export const ChunkBlock = Schema.Struct({
   html: Schema.String,
   polygon: Schema.Array(Schema.Array(Schema.Number)),
   bbox: Schema.Array(Schema.Number),
-  includeTts: Schema.optional(Schema.Boolean),
-  ttsText: Schema.optional(Schema.String),
+  order: Schema.Number,
+  includeTts: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  ttsText: Schema.optional(Schema.NullOr(Schema.String)),
   section_hierarchy: Schema.optional(
     Schema.Record({ key: Schema.String, value: Schema.String }),
   ),
@@ -82,15 +83,16 @@ export const SavedDocumentChunk = Schema.Struct({
   blockId: Schema.String,
   blockType: Schema.String,
   html: Schema.String,
-  includeTts: Schema.optional(Schema.Boolean),
-  ttsText: Schema.optional(Schema.String),
+  order: Schema.Number,
+  includeTts: Schema.NullOr(Schema.Boolean),
+  ttsText: Schema.NullOr(Schema.String),
 })
 export type SavedDocumentChunk = typeof SavedDocumentChunk.Type
 
 export const SavedDocumentResponse = Schema.Struct({
   html: Schema.String,
   storageId: Schema.String,
-  toc: Schema.optional(TocResult),
-  chunks: Schema.optional(Schema.Array(SavedDocumentChunk)),
+  toc: Schema.NullOr(TocResult),
+  chunks: Schema.Array(SavedDocumentChunk),
 })
 export type SavedDocumentResponse = typeof SavedDocumentResponse.Type

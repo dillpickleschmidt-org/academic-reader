@@ -8,17 +8,10 @@ import {
   type ReactNode,
 } from "react"
 import { toast } from "sonner"
-import { useQuery } from "convex/react"
-import { api } from "@academic-reader/convex/convex/_generated/api"
-import type { Id } from "@academic-reader/convex/convex/_generated/dataModel"
-import { Effect, Fiber, Option, Stream } from "effect"
-import { Headers } from "@effect/platform"
-import { Sse } from "@effect/experimental"
+import { Effect, Fiber } from "effect"
 import {
-  synthesizeTTS,
-  prefetchTTS,
-  batchTTS,
-  unloadTTS,
+  getBlockAudio,
+  generateDocumentAudio,
 } from "@academic-reader/api-client/client"
 import { AppRuntime } from "@/lib/runtime"
 import type {
@@ -32,8 +25,7 @@ import { AMBIENT_SOUNDS } from "@/audio/constants"
 import { UnifiedAudioPlayer } from "@/audio/UnifiedAudioPlayer"
 import { CrossfadeLooper } from "@/audio/CrossfadeLooper"
 import { useDocumentContext } from "@/context/DocumentContext"
-
-const backendMode = import.meta.env.VITE_BACKEND_MODE
+import { readNarratorVoice, writeNarratorVoice } from "@/hooks/use-narrator-voice"
 
 type AudioStore = {
   getState: () => AudioState
@@ -81,8 +73,8 @@ type AudioActions = {
   skip: (seconds: number) => void
   seekToWord: (wordIndex: number) => void
 
-  // Batch TTS actions
-  processDocument: (targetBlockId: string, wordIndex?: number) => void
+  // Document audio generation
+  generateDocumentAudio: (voiceId?: string) => Promise<boolean>
 
   // Music actions
   addTrack: (track: MusicTrack) => void
@@ -115,7 +107,7 @@ const AudioContext = createContext<{
 function createInitialState(): AudioState {
   return {
     narrator: {
-      voice: "female_1",
+      voice: readNarratorVoice(),
       speed: 1.0,
       volume: 1.0,
     },
@@ -127,8 +119,6 @@ function createInitialState(): AudioState {
       durationMs: 0,
       currentTime: 0,
       isPlaying: false,
-      canPause: false,
-      canSeek: false,
       wordTimestamps: [],
     },
     music: {
@@ -148,7 +138,6 @@ function createInitialState(): AudioState {
         volume: 0.5,
       })),
     },
-    batchStarted: false,
     master: {
       volume: 1.0,
       activePreset: null,
@@ -169,22 +158,9 @@ export function AudioProvider({
   const ambienceAudioRefs = useRef<Map<string, CrossfadeLooper>>(new Map())
   const currentMusicTrackIdRef = useRef<string | null>(null)
   const pendingAmbienceInits = useRef(new Set<string>())
-  // Effect fiber refs replace AbortController refs
-  const sseFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
+  const playbackRequestFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
   const playerRef = useRef<UnifiedAudioPlayer | null>(null)
-  const prefetchFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(
-    null,
-  )
-  const synthInFlightRef = useRef(new Map<string, Promise<void>>())
-  const batchFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
-  const batchProcessingRef = useRef(false)
-  const [batchTarget, setBatchTarget] = useState<{
-    documentId: string
-    blockId: string
-    voiceId: string
-    wordIndex?: number
-  } | null>(null)
-  const [activeVoice, setActiveVoice] = useState("female_1")
+  const generationProcessingRef = useRef(false)
   const chunksRef = useRef<ChunkBlock[] | undefined>(undefined)
   const loadBlockTTSRef = useRef<
     (
@@ -193,6 +169,7 @@ export function AudioProvider({
         wordIndex?: number
         seekToSeconds?: number
         seekFromEndSeconds?: number
+        spokenWordIndex?: number
       },
     ) => Promise<void>
   >(null!)
@@ -229,20 +206,38 @@ export function AudioProvider({
   const docContext = useDocumentContext()
   chunksRef.current = docContext?.chunks
 
-  const ttsMapRef = useRef<Map<string, boolean> | undefined>(undefined)
-  ttsMapRef.current = docContext?.ttsMap
+  const eligibleBlockIdsRef = useRef<Set<string> | undefined>(undefined)
+  eligibleBlockIdsRef.current = docContext?.audioReadiness?.ttsReady
+    ? new Set(docContext.audioReadiness.eligibleBlockIds)
+    : undefined
 
-  const ttsTextMapRef = useRef<Map<string, string> | undefined>(undefined)
-  ttsTextMapRef.current = docContext?.ttsTextMap
+  useEffect(() => {
+    const state = store.getState()
+    const blockId = state.playback.blockId
+    if (state.playback.mode !== "waiting" || !blockId) return
+
+    const voiceId = state.narrator.voice
+    const readiness = docContext?.audioReadiness
+    const ready = readiness?.voices[voiceId].audioBlockIds.includes(blockId)
+    if (ready) {
+      loadBlockTTSRef.current(blockId)
+    }
+  }, [docContext?.audioReadiness, store])
 
   const findNextTtsBlock = useCallback(
     (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
       const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
       if (currentIndex === -1) return null
 
-      const map = ttsMapRef.current
+      const eligibleBlockIds = eligibleBlockIdsRef.current
       for (let i = currentIndex + 1; i < chunks.length; i++) {
-        if (map ? map.get(chunks[i].id) : chunks[i].includeTts) return chunks[i]
+        if (
+          eligibleBlockIds
+            ? eligibleBlockIds.has(chunks[i].id)
+            : chunks[i].includeTts
+        ) {
+          return chunks[i]
+        }
       }
       return null
     },
@@ -254,99 +249,20 @@ export function AudioProvider({
       const currentIndex = chunks.findIndex((c) => c.id === currentBlockId)
       if (currentIndex === -1) return null
 
-      const map = ttsMapRef.current
+      const eligibleBlockIds = eligibleBlockIdsRef.current
       for (let i = currentIndex - 1; i >= 0; i--) {
-        if (map ? map.get(chunks[i].id) : chunks[i].includeTts) return chunks[i]
+        if (
+          eligibleBlockIds
+            ? eligibleBlockIds.has(chunks[i].id)
+            : chunks[i].includeTts
+        ) {
+          return chunks[i]
+        }
       }
       return null
     },
     [],
   )
-
-  const prefetchNextBlock = useCallback(
-    (currentBlockId: string, voiceId: string) => {
-      const chunks = docContext?.chunks
-      if (!chunks || !documentId) return
-
-      const nextBlock = findNextTtsBlock(chunks, currentBlockId)
-      if (!nextBlock) return
-
-      const ttsText = ttsTextMapRef.current?.get(nextBlock.id)
-      if (!ttsText) return
-
-      const key = `${nextBlock.id}:${voiceId}`
-      if (synthInFlightRef.current.has(key)) return
-
-      if (prefetchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(prefetchFiberRef.current))
-      }
-
-      let resolveInFlight!: () => void
-      const promise = new Promise<void>((r) => {
-        resolveInFlight = r
-      })
-      synthInFlightRef.current.set(key, promise)
-
-      prefetchFiberRef.current = AppRuntime.runFork(
-        prefetchTTS({
-          documentId,
-          blockId: nextBlock.id,
-          ttsText,
-          voiceId,
-        }).pipe(
-          Effect.catchAll(() => Effect.void),
-          Effect.ensuring(
-            Effect.sync(() => {
-              synthInFlightRef.current.delete(key)
-              resolveInFlight()
-            }),
-          ),
-        ),
-      )
-    },
-    [documentId, docContext?.chunks, findNextTtsBlock],
-  )
-
-  // === Batch TTS: Convex subscription for target block readiness ===
-  const targetBlockAudio = useQuery(
-    api.api.ttsAudio.getBlockAudio,
-    batchTarget
-      ? {
-          documentId: batchTarget.documentId as Id<"documents">,
-          blockId: batchTarget.blockId,
-          voiceId: batchTarget.voiceId,
-        }
-      : "skip",
-  )
-
-  useEffect(() => {
-    if (!batchTarget || !targetBlockAudio) return
-
-    const chunks = chunksRef.current
-    const block = chunks?.find((c) => c.id === batchTarget.blockId)
-    if (!block) return
-
-    const { wordIndex } = batchTarget
-    setBatchTarget(null)
-    loadBlockTTSRef.current(
-      block.id,
-      wordIndex !== undefined ? { wordIndex } : undefined,
-    )
-  }, [targetBlockAudio, batchTarget])
-
-  // === Batch TTS: Detect existing audio across sessions ===
-  const hasExistingAudio = useQuery(
-    api.api.ttsAudio.hasDocumentAudio,
-    documentId
-      ? { documentId: documentId as Id<"documents">, voiceId: activeVoice }
-      : "skip",
-  )
-
-  useEffect(() => {
-    if (hasExistingAudio) {
-      store.setState({ batchStarted: true })
-    }
-  }, [hasExistingAudio, store])
 
   // === Narrator Actions ===
   const setVoice = useCallback(
@@ -354,39 +270,40 @@ export function AudioProvider({
       const state = store.getState()
       if (state.narrator.voice === voiceId) return
 
-      if (sseFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(sseFiberRef.current))
-        sseFiberRef.current = null
+      if (playbackRequestFiberRef.current) {
+        Effect.runFork(Fiber.interrupt(playbackRequestFiberRef.current))
+        playbackRequestFiberRef.current = null
       }
-      if (prefetchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(prefetchFiberRef.current))
-        prefetchFiberRef.current = null
-      }
-      synthInFlightRef.current.clear()
-      if (batchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(batchFiberRef.current))
-        batchFiberRef.current = null
-      }
-      setBatchTarget(null)
-      setActiveVoice(voiceId)
 
-      cleanupPlayer()
-
+      writeNarratorVoice(voiceId)
       store.setState({
         narrator: { ...state.narrator, voice: voiceId },
+      })
+
+      const blockId = state.playback.blockId
+      if (blockId && state.playback.mode !== "idle") {
+        const spokenWordIndex = findCurrentSpokenWordIndex(
+          state.playback.wordTimestamps,
+          playerRef.current?.getCurrentTime() ?? state.playback.currentTime,
+        )
+        loadBlockTTSRef.current(
+          blockId,
+          spokenWordIndex === null ? undefined : { spokenWordIndex },
+        )
+        return
+      }
+
+      cleanupPlayer()
+      store.setState({
         playback: {
           ...state.playback,
           mode: "idle",
           durationMs: 0,
           wordTimestamps: [],
           isPlaying: false,
-          canPause: false,
-          canSeek: false,
           currentTime: 0,
         },
-        batchStarted: false,
       })
-      batchProcessingRef.current = false
     },
     [store, cleanupPlayer],
   )
@@ -417,15 +334,12 @@ export function AudioProvider({
 
   const createPlayerCallbacks = useCallback(
     () => ({
-      onModeChange: (mode: "idle" | "streaming" | "ready") => {
+      onModeChange: (mode: "idle" | "ready") => {
         const playback = store.getState().playback
-        const hasControls = mode === "streaming" || mode === "ready"
         store.setState({
           playback: {
             ...playback,
-            mode: mode === "idle" ? "idle" : mode,
-            canPause: hasControls,
-            canSeek: hasControls,
+            mode,
           },
         })
       },
@@ -475,9 +389,10 @@ export function AudioProvider({
         wordIndex?: number
         seekToSeconds?: number
         seekFromEndSeconds?: number
+        spokenWordIndex?: number
       },
     ) => {
-      const { wordIndex, seekToSeconds, seekFromEndSeconds } = options || {}
+      const { wordIndex, seekToSeconds, seekFromEndSeconds, spokenWordIndex } = options || {}
 
       if (!documentId) {
         const state = store.getState()
@@ -491,15 +406,11 @@ export function AudioProvider({
         return
       }
 
-      const ttsText = ttsTextMapRef.current?.get(blockId)
-
       const voiceId = store.getState().narrator.voice
-      const inFlightKey = `${blockId}:${voiceId}`
 
-      // Cancel previous synthesis fiber
-      if (sseFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(sseFiberRef.current))
-        sseFiberRef.current = null
+      if (playbackRequestFiberRef.current) {
+        Effect.runFork(Fiber.interrupt(playbackRequestFiberRef.current))
+        playbackRequestFiberRef.current = null
       }
       cleanupPlayer()
 
@@ -513,214 +424,91 @@ export function AudioProvider({
           durationMs: 0,
           wordTimestamps: [],
           isPlaying: false,
-          canPause: false,
-          canSeek: false,
           currentTime: 0,
         },
       })
 
-      // Wait for in-flight prefetch if one exists for this block
-      const inFlight = synthInFlightRef.current.get(inFlightKey)
-      if (inFlight) {
-        await inFlight
-      }
+      playbackRequestFiberRef.current = AppRuntime.runFork(
+        Effect.gen(function* () {
+          const data = yield* getBlockAudio({ documentId, blockId, voiceId })
 
-      const toastId = toast.loading("Preparing speech...")
-
-      let resolveInFlight!: () => void
-      const inFlightPromise = new Promise<void>((r) => {
-        resolveInFlight = r
-      })
-      synthInFlightRef.current.set(inFlightKey, inFlightPromise)
-
-      // Fork the Effect synthesis program
-      sseFiberRef.current = AppRuntime.runFork(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const response = yield* synthesizeTTS({
-              documentId,
-              blockId,
-              ...(ttsText && { ttsText }),
-              voiceId,
+          if (!data.ready) {
+            store.setState({
+              playback: {
+                ...store.getState().playback,
+                mode: "waiting",
+                blockId,
+                error: null,
+                isPlaying: false,
+              },
             })
+            toast.info("Audio is not ready yet")
+            return
+          }
 
-            const contentType = Option.getOrElse(
-              Headers.get(response.headers, "content-type"),
-              () => "",
-            )
+          const ctx = yield* Effect.promise(getAudioContext)
+          const state = store.getState()
+          cleanupPlayer()
+          playerRef.current = new UnifiedAudioPlayer(
+            ctx,
+            state.narrator.volume * state.master.volume,
+            createPlayerCallbacks(),
+          )
+          playerRef.current.setPlaybackRate(state.narrator.speed)
 
-            if (contentType.includes("application/json")) {
-              // Cached response - direct JSON with audio URL
-              const data = (yield* response.json) as {
-                audioUrl: string
-                text: string
-                durationMs: number
-                wordTimestamps?: Array<{
-                  word: string
-                  startMs: number
-                  endMs: number
-                }>
-              }
+          yield* Effect.promise(() => playerRef.current!.loadFromUrl(data.audioUrl))
 
-              const ctx = yield* Effect.promise(getAudioContext)
-              const state = store.getState()
-              cleanupPlayer()
-              playerRef.current = new UnifiedAudioPlayer(
-                ctx,
-                state.narrator.volume * state.master.volume,
-                createPlayerCallbacks(),
-              )
-              playerRef.current.setPlaybackRate(state.narrator.speed)
+          store.setState({
+            playback: {
+              ...store.getState().playback,
+              mode: "ready",
+              text: data.text,
+              durationMs: data.durationMs,
+              wordTimestamps: [...data.wordTimestamps],
+              error: null,
+            },
+          })
 
-              yield* Effect.promise(() =>
-                playerRef.current!.loadFromUrl(data.audioUrl),
-              )
+          if (spokenWordIndex !== undefined) {
+            const timestamp = data.wordTimestamps?.[spokenWordIndex]
+            if (timestamp) playerRef.current.seek(timestamp.startMs / 1000)
+          } else if (seekToSeconds !== undefined) {
+            playerRef.current.seek(seekToSeconds)
+          } else if (seekFromEndSeconds !== undefined) {
+            const dur = playerRef.current.getDuration()
+            playerRef.current.seek(Math.max(0, dur - seekFromEndSeconds))
+          } else if (
+            wordIndex !== undefined &&
+            wordIndex >= 0 &&
+            data.wordTimestamps?.length
+          ) {
+            const timestamp = data.wordTimestamps[
+              Math.min(wordIndex, data.wordTimestamps.length - 1)
+            ]
+            if (timestamp) playerRef.current.seek(timestamp.startMs / 1000)
+          }
 
-              store.setState({
-                playback: {
-                  ...store.getState().playback,
-                  mode: "ready",
-                  text: data.text,
-                  durationMs: data.durationMs,
-                  wordTimestamps: data.wordTimestamps || [],
-                  canPause: true,
-                  canSeek: true,
-                },
-              })
-
-              if (seekToSeconds !== undefined) {
-                playerRef.current.seek(seekToSeconds)
-              } else if (seekFromEndSeconds !== undefined) {
-                const dur = playerRef.current.getDuration()
-                playerRef.current.seek(Math.max(0, dur - seekFromEndSeconds))
-              } else if (
-                wordIndex !== undefined &&
-                wordIndex >= 0 &&
-                data.wordTimestamps?.length
-              ) {
-                const timestamp =
-                  data.wordTimestamps[
-                    Math.min(wordIndex, data.wordTimestamps.length - 1)
-                  ]
-                if (timestamp) {
-                  playerRef.current.seek(timestamp.startMs / 1000)
-                }
-              }
-
-              playerRef.current.play()
-              toast.success("Speech ready", { id: toastId })
-
-              prefetchNextBlock(blockId, store.getState().narrator.voice)
-              return
-            }
-
-            // SSE stream for non-cached synthesis with streaming audio
-            const ctx = yield* Effect.promise(getAudioContext)
-            const state = store.getState()
-            cleanupPlayer()
-            playerRef.current = new UnifiedAudioPlayer(
-              ctx,
-              state.narrator.volume * state.master.volume,
-              createPlayerCallbacks(),
-            )
-            playerRef.current.setPlaybackRate(state.narrator.speed)
-            playerRef.current.startStreaming()
-
-            const decoder = new TextDecoder()
-            let firstChunk = true
-
-            yield* response.stream.pipe(
-              Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
-              Stream.pipeThroughChannel(Sse.makeChannel()),
-              Stream.runForEach((sseEvent) =>
-                Effect.sync(() => {
-                  const event = JSON.parse(sseEvent.data)
-
-                  if (event.type === "progress") {
-                    toast.loading(
-                      event.stage === "rewriting"
-                        ? "Preparing text..."
-                        : "Generating speech...",
-                      { id: toastId },
-                    )
-                  } else if (event.type === "text") {
-                    store.setState({
-                      playback: {
-                        ...store.getState().playback,
-                        text: event.text,
-                      },
-                    })
-                  } else if (event.type === "audio-chunk") {
-                    if (firstChunk) {
-                      toast.success("Speech ready", { id: toastId })
-                      firstChunk = false
-
-                      if (backendMode !== "local") {
-                        prefetchNextBlock(
-                          blockId,
-                          store.getState().narrator.voice,
-                        )
-                      }
-                    }
-                    playerRef.current?.addPcmChunk(event.data)
-                  } else if (event.type === "timestamps") {
-                    store.setState({
-                      playback: {
-                        ...store.getState().playback,
-                        wordTimestamps: event.wordTimestamps,
-                      },
-                    })
-                  } else if (event.type === "complete") {
-                    playerRef.current?.finishStreaming()
-
-                    if (backendMode === "local") {
-                      AppRuntime.runFork(
-                        unloadTTS().pipe(
-                          Effect.catchAll(() => Effect.void),
-                          Effect.ensuring(
-                            Effect.sync(() =>
-                              prefetchNextBlock(
-                                blockId,
-                                store.getState().narrator.voice,
-                              ),
-                            ),
-                          ),
-                        ),
-                      )
-                    }
-                  } else if (event.type === "error") {
-                    throw new Error(event.error)
-                  }
-                }),
-              ),
-            )
-
-            sseFiberRef.current = null
-          }),
-        ).pipe(
+          playerRef.current.play()
+        }).pipe(
           Effect.catchAll((err) =>
             Effect.sync(() => {
-              console.error("[TTS] Streaming error:", err)
+              console.error("[TTS] Playback error:", err)
               cleanupPlayer()
-              const errorMsg =
-                err instanceof Error ? err.message : "TTS processing failed"
+              const errorMsg = err instanceof Error ? err.message : "TTS playback failed"
               store.setState({
                 playback: {
                   ...store.getState().playback,
                   error: errorMsg,
                   mode: "idle",
                   isPlaying: false,
-                  canPause: false,
-                  canSeek: false,
                 },
               })
-              toast.error(errorMsg, { id: toastId })
+              toast.error(errorMsg)
             }),
           ),
           Effect.ensuring(
             Effect.sync(() => {
-              synthInFlightRef.current.delete(inFlightKey)
-              resolveInFlight()
+              playbackRequestFiberRef.current = null
             }),
           ),
         ),
@@ -732,81 +520,35 @@ export function AudioProvider({
       getAudioContext,
       cleanupPlayer,
       createPlayerCallbacks,
-      prefetchNextBlock,
     ],
   )
   loadBlockTTSRef.current = loadBlockTTS
 
-  const processDocument = useCallback(
-    (targetBlockId: string, wordIndex?: number) => {
+  const generateAudioForDocument = useCallback(
+    async (targetVoiceId?: string) => {
       if (!documentId) {
         toast.error("Document not saved - TTS requires a saved document")
-        return
+        return false
       }
 
-      const chunks = chunksRef.current
-      const ttsMap = ttsMapRef.current
-      const ttsTextMap = ttsTextMapRef.current
-      if (!chunks) return
-
-      const voiceId = store.getState().narrator.voice
-
-      setBatchTarget({ documentId, blockId: targetBlockId, voiceId, wordIndex })
-      store.setState({
-        playback: {
-          ...store.getState().playback,
-          mode: "loading",
-          blockId: targetBlockId,
-          error: null,
-          text: null,
-          durationMs: 0,
-          wordTimestamps: [],
-          isPlaying: false,
-          canPause: false,
-          canSeek: false,
-          currentTime: 0,
-        },
-      })
-
-      if (batchProcessingRef.current) return
-
-      const ttsEligible = chunks.filter((c) =>
-        ttsMap ? ttsMap.get(c.id) : c.includeTts,
-      )
-
-      const blocks: Array<{ blockId: string; ttsText: string }> = []
-      for (const c of ttsEligible) {
-        const text = ttsTextMap?.get(c.id)
-        if (text) blocks.push({ blockId: c.id, ttsText: text })
+      const voiceId = targetVoiceId ?? store.getState().narrator.voice
+      if (generationProcessingRef.current) return true
+      generationProcessingRef.current = true
+      try {
+        const result = await AppRuntime.runPromise(
+          generateDocumentAudio({ documentId, voiceId }),
+        )
+        if ("busy" in result && result.busy) {
+          toast.info("Audio generation is already running. Try again shortly.")
+          return false
+        }
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Audio generation failed")
+        return false
+      } finally {
+        generationProcessingRef.current = false
       }
-
-      if (!blocks.length) return
-
-      batchProcessingRef.current = true
-      store.setState({ batchStarted: true })
-
-      if (batchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(batchFiberRef.current))
-      }
-
-      batchFiberRef.current = AppRuntime.runFork(
-        batchTTS({ documentId, voiceId, blocks }).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              batchProcessingRef.current = false
-            }),
-          ),
-          Effect.catchAll((err) =>
-            Effect.sync(() => {
-              batchProcessingRef.current = false
-              store.setState({ batchStarted: false })
-              toast.error(
-                err instanceof Error ? err.message : "Batch processing failed",
-              )
-            }),
-          ),
-        ),
-      )
     },
     [documentId, store],
   )
@@ -1217,23 +959,8 @@ export function AudioProvider({
 
   useEffect(() => {
     return () => {
-      if (prefetchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(prefetchFiberRef.current))
-        prefetchFiberRef.current = null
-      }
-    }
-  }, [documentId])
-
-  useEffect(() => {
-    return () => {
-      if (sseFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(sseFiberRef.current))
-      }
-      if (prefetchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(prefetchFiberRef.current))
-      }
-      if (batchFiberRef.current) {
-        Effect.runFork(Fiber.interrupt(batchFiberRef.current))
+      if (playbackRequestFiberRef.current) {
+        Effect.runFork(Fiber.interrupt(playbackRequestFiberRef.current))
       }
       if (playerRef.current) {
         playerRef.current.dispose()
@@ -1268,7 +995,7 @@ export function AudioProvider({
     setNarratorSpeed,
     setNarratorVolume,
     loadBlockTTS,
-    processDocument,
+    generateDocumentAudio: generateAudioForDocument,
     play,
     pause,
     togglePlayPause,
@@ -1298,6 +1025,23 @@ export function AudioProvider({
       {children}
     </AudioContext.Provider>
   )
+}
+
+function findCurrentSpokenWordIndex(
+  timestamps: { startMs: number; endMs: number }[],
+  currentSeconds: number,
+): number | null {
+  if (!timestamps.length) return null
+  const currentMs = currentSeconds * 1000
+  const exact = timestamps.findIndex(
+    (timestamp) => currentMs >= timestamp.startMs && currentMs < timestamp.endMs,
+  )
+  if (exact >= 0) return exact
+
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    if (timestamps[i].startMs <= currentMs) return i
+  }
+  return null
 }
 
 function useAudioContext() {

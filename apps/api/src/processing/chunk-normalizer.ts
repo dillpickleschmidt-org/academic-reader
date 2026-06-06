@@ -5,8 +5,9 @@ export interface ChunkBlock {
   bbox: number[]
   polygon: number[]
   section_hierarchy?: Record<string, string>
-  includeTts?: boolean
-  ttsText?: string
+  includeTts?: boolean | null
+  ttsText?: string | null
+  order: number
 }
 
 interface MarkerChunkBlock {
@@ -37,6 +38,7 @@ export function normalizeChunk(
       bbox: block.bbox,
       polygon: [],
       section_hierarchy: block.section_hierarchy,
+      order: index,
     }
   }
   return {
@@ -45,20 +47,18 @@ export function normalizeChunk(
     html: block.content,
     bbox: block.bbox,
     polygon: [],
+    order: index,
   }
-}
-
-export function normalizeChunks(blocks: WorkerChunkBlock[]): ChunkBlock[] {
-  return blocks.map((block, index) => normalizeChunk(block, index))
 }
 
 export interface ChunkInput {
   blockId: string
   blockType: string
   html: string
-  section?: string
+  section: string | null
   bbox: number[]
-  includeTts?: boolean
+  includeTts: boolean | null
+  order: number
 }
 
 export function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
@@ -70,8 +70,9 @@ export function transformChunks(chunks: ChunkBlock[]): ChunkInput[] {
       html: chunk.html,
       section: chunk.section_hierarchy
         ? Object.values(chunk.section_hierarchy).filter(Boolean).join(" > ")
-        : undefined,
+        : null,
       bbox: chunk.bbox,
-      includeTts: chunk.includeTts,
+      includeTts: chunk.includeTts ?? null,
+      order: chunk.order,
     }))
 }

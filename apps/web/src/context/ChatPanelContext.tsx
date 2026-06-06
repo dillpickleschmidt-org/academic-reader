@@ -43,13 +43,14 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("document")
   const documentContext = useDocumentContext()
-  const documentId = documentContext?.documentId
+  const documentId = documentContext?.documentId ?? null
 
   const allThreads = useQuery(api.api.chat.listAllThreads)
 
   const threads = useMemo(() => {
     if (!allThreads) return undefined
     if (viewMode === "all") return allThreads
+    if (documentId === null) return []
     return allThreads.filter((t) => t.documentId === documentId)
   }, [allThreads, viewMode, documentId])
 

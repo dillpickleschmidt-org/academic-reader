@@ -22,6 +22,8 @@ export async function createThread(
   return ctx.db.insert("chatThreads", {
     userId: user._id,
     documentId,
+    title: null,
+    isStreaming: false,
     createdAt: now,
     updatedAt: now,
   })
@@ -109,18 +111,6 @@ export async function addMessage(
 }
 
 // ===== Query Helpers =====
-
-export async function listThreads(ctx: QueryCtx, documentId: Id<"documents">) {
-  const user = await requireAuth(ctx)
-
-  return ctx.db
-    .query("chatThreads")
-    .withIndex("by_document", (q) =>
-      q.eq("userId", user._id).eq("documentId", documentId),
-    )
-    .order("desc")
-    .collect()
-}
 
 export async function getThread(ctx: QueryCtx, threadId: Id<"chatThreads">) {
   const user = await requireAuth(ctx)

@@ -10,6 +10,7 @@ export interface JobFileEntry {
   filename?: string
   mimeType?: string
   processingMode?: string
+  audioVoiceId?: string
 }
 
 export interface JobFileMapService {

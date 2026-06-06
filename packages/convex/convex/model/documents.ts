@@ -8,18 +8,24 @@ import type { Doc, Id } from "../_generated/dataModel"
 import { internal } from "../_generated/api"
 import { requireAuth } from "./auth"
 
-export type ChunkInput = Omit<
-  Doc<"chunks">,
-  "_id" | "_creationTime" | "documentId" | "embedding"
->
+export interface ChunkInput {
+  blockId: string
+  blockType: string
+  html: string
+  section: string | null
+  bbox: number[]
+  order: number
+  includeTts: boolean | null
+}
+
 export type TocInput = NonNullable<Doc<"documents">["toc"]>
 
 export interface CreateDocumentInput {
   filename: string
   /** UUID used as S3 storage path: documents/{userId}/{storageId}/ */
   storageId: string
-  pageCount?: number
-  toc?: TocInput
+  pageCount: number | null
+  toc: TocInput | null
   chunks: ChunkInput[]
 }
 
@@ -41,6 +47,7 @@ export async function createDocument(
     storageId: input.storageId,
     pageCount: input.pageCount,
     toc: input.toc,
+    summary: null,
     color: Math.floor(Math.random() * 12), // 0-11 random color
     createdAt: Date.now(),
   })
@@ -76,7 +83,9 @@ export async function addChunksToDocument(
         html: chunk.html,
         section: chunk.section,
         bbox: chunk.bbox,
+        order: chunk.order,
         includeTts: chunk.includeTts,
+        ttsText: null,
       }),
     ),
   )
@@ -119,66 +128,6 @@ export async function updateDocumentSummary(
 }
 
 /**
- * Bulk-update includeTts flags on chunks.
- */
-export async function updateChunksTtsFlags(
-  ctx: MutationCtx,
-  documentId: Id<"documents">,
-  flags: { blockId: string; includeTts: boolean }[],
-) {
-  const user = await requireAuth(ctx)
-  const doc = await ctx.db.get(documentId)
-  if (!doc) throw new Error("Document not found")
-  if (doc.userId !== user._id) throw new Error("Unauthorized")
-
-  let updated = 0
-  for (const flag of flags) {
-    const chunk = await ctx.db
-      .query("chunks")
-      .withIndex("by_document_block", (q) =>
-        q.eq("documentId", documentId).eq("blockId", flag.blockId),
-      )
-      .first()
-    if (chunk) {
-      await ctx.db.patch(chunk._id, { includeTts: flag.includeTts })
-      updated++
-    }
-  }
-
-  return { updated }
-}
-
-/**
- * Bulk-update ttsText on chunks.
- */
-export async function updateChunksTtsText(
-  ctx: MutationCtx,
-  documentId: Id<"documents">,
-  texts: { blockId: string; ttsText: string }[],
-) {
-  const user = await requireAuth(ctx)
-  const doc = await ctx.db.get(documentId)
-  if (!doc) throw new Error("Document not found")
-  if (doc.userId !== user._id) throw new Error("Unauthorized")
-
-  let updated = 0
-  for (const text of texts) {
-    const chunk = await ctx.db
-      .query("chunks")
-      .withIndex("by_document_block", (q) =>
-        q.eq("documentId", documentId).eq("blockId", text.blockId),
-      )
-      .first()
-    if (chunk) {
-      await ctx.db.patch(chunk._id, { ttsText: text.ttsText })
-      updated++
-    }
-  }
-
-  return { updated }
-}
-
-/**
  * Add embeddings to existing chunks.
  * Called when AI chat opens to enable vector search.
  */
@@ -193,26 +142,25 @@ export async function addEmbeddings(
   if (!doc) throw new Error("Document not found")
   if (doc.userId !== user._id) throw new Error("Unauthorized")
 
-  // Get chunks in insertion order
   const chunks = await ctx.db
     .query("chunks")
     .withIndex("by_document", (q) => q.eq("documentId", documentId))
     .collect()
+  const sortedChunks = chunks.sort((a, b) => a.order - b.order)
 
-  if (chunks.length !== embeddings.length) {
+  if (sortedChunks.length !== embeddings.length) {
     throw new Error(
-      `Embedding count (${embeddings.length}) must match chunk count (${chunks.length})`,
+      `Embedding count (${embeddings.length}) must match chunk count (${sortedChunks.length})`,
     )
   }
 
-  // Update each chunk with its embedding
   await Promise.all(
-    chunks.map((chunk, i) =>
+    sortedChunks.map((chunk, i) =>
       ctx.db.patch(chunk._id, { embedding: embeddings[i] }),
     ),
   )
 
-  return { updated: chunks.length }
+  return { updated: sortedChunks.length }
 }
 
 /**
@@ -270,10 +218,10 @@ export async function deleteDocument(
       messageCount += messages.length
     }
   } else {
-    // Unlink threads by setting documentId to undefined
+    // Unlink threads by clearing documentId
     await Promise.all(
       threads.map((thread) =>
-        ctx.db.patch(thread._id, { documentId: undefined }),
+        ctx.db.patch(thread._id, { documentId: null }),
       ),
     )
     threadCount = threads.length
@@ -298,19 +246,6 @@ export async function deleteDocument(
 }
 
 // ===== Query Helpers =====
-
-/**
- * Get all documents for the current user.
- */
-export async function getUserDocuments(ctx: QueryCtx) {
-  const user = await requireAuth(ctx)
-
-  return ctx.db
-    .query("documents")
-    .withIndex("by_user", (q) => q.eq("userId", user._id))
-    .order("desc")
-    .collect()
-}
 
 /**
  * Get persisted documents for the current user.
@@ -364,10 +299,12 @@ export async function getChunksForDocument(
   if (!doc) throw new Error("Document not found")
   if (doc.userId !== user._id) throw new Error("Unauthorized")
 
-  return ctx.db
+  const chunks = await ctx.db
     .query("chunks")
     .withIndex("by_document", (q) => q.eq("documentId", documentId))
     .collect()
+
+  return chunks.sort((a, b) => a.order - b.order)
 }
 
 /**
@@ -397,7 +334,7 @@ interface ChunkSearchResult {
   html: string
   blockType: string
   page: number
-  section: string | undefined
+  section: string | null
   score: number
 }
 

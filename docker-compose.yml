@@ -37,15 +37,19 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # GPU worker for local Kokoro TTS (female_1, female_2)
+  # GPU worker for local Kokoro TTS
   # Profile: local
   kokoro-tts:
-    build: ./workers/kokoro-tts
+    build:
+      context: .
+      dockerfile: workers/kokoro-tts/Dockerfile
     image: academic-reader-kokoro-tts
     profiles: ["local"]
     volumes:
       - ./workers/kokoro-tts/app:/app/app
       - ./workers/kokoro-tts/core:/app/core
+      - ./workers/tts_manifest.py:/app/tts_manifest.py:ro
+      - ./packages/api-client/src/tts-manifest.json:/app/tts-manifest.json:ro
     deploy:
       resources:
         reservations:
@@ -54,15 +58,19 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # GPU worker for local Qwen3 TTS (male_1)
+  # GPU worker for local Qwen3 TTS
   # Profile: local
   qwen3-tts:
-    build: ./workers/qwen3-tts
+    build:
+      context: .
+      dockerfile: workers/qwen3-tts/Dockerfile
     image: academic-reader-qwen3-tts
     profiles: ["local"]
     volumes:
       - ./workers/qwen3-tts/app:/app/app
       - ./workers/qwen3-tts/voices:/app/voices
+      - ./workers/tts_manifest.py:/app/tts_manifest.py:ro
+      - ./packages/api-client/src/tts-manifest.json:/app/tts-manifest.json:ro
     deploy:
       resources:
         reservations:

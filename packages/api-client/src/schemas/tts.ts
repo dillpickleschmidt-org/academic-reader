@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import manifest from "../tts-manifest.json"
 
 export const WordTimestamp = Schema.Struct({
   word: Schema.String,
@@ -7,19 +8,42 @@ export const WordTimestamp = Schema.Struct({
 })
 export type WordTimestamp = typeof WordTimestamp.Type
 
-export const CachedAudio = Schema.Struct({
-  storagePath: Schema.String,
-  durationMs: Schema.Number,
-  sampleRate: Schema.Number,
-  wordTimestamps: Schema.Array(WordTimestamp),
+export const GetBlockAudioRequest = Schema.Struct({
+  documentId: Schema.String,
+  blockId: Schema.String,
+  voiceId: Schema.String,
 })
-export type CachedAudio = typeof CachedAudio.Type
+export type GetBlockAudioRequest = typeof GetBlockAudioRequest.Type
 
-export const VoiceCapabilities = Schema.Struct({
-  perBlock: Schema.Boolean,
-  fullDocument: Schema.Boolean,
+export const GetBlockAudioResponse = Schema.Union(
+  Schema.Struct({ ready: Schema.Literal(false) }),
+  Schema.Struct({
+    ready: Schema.Literal(true),
+    audioUrl: Schema.String,
+    text: Schema.String,
+    durationMs: Schema.Number,
+    sampleRate: Schema.Number,
+    wordTimestamps: Schema.Array(WordTimestamp),
+  }),
+)
+export type GetBlockAudioResponse = typeof GetBlockAudioResponse.Type
+
+export const GenerateDocumentAudioRequest = Schema.Struct({
+  documentId: Schema.String,
+  voiceId: Schema.String,
 })
-export type VoiceCapabilities = typeof VoiceCapabilities.Type
+export type GenerateDocumentAudioRequest = typeof GenerateDocumentAudioRequest.Type
+
+export const GenerateDocumentAudioResult = Schema.Union(
+  Schema.Struct({ started: Schema.Literal(true) }),
+  Schema.Struct({
+    started: Schema.Literal(false),
+    complete: Schema.optional(Schema.Boolean),
+    busy: Schema.optional(Schema.Boolean),
+    alreadyGenerating: Schema.optional(Schema.Boolean),
+  }),
+)
+export type GenerateDocumentAudioResult = typeof GenerateDocumentAudioResult.Type
 
 export const TTSEngine = Schema.Literal("qwen3", "kokoro")
 export type TTSEngine = typeof TTSEngine.Type
@@ -28,32 +52,22 @@ export const Voice = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
   engine: TTSEngine,
-  capabilities: VoiceCapabilities,
 })
 export type Voice = typeof Voice.Type
 
-export const VoicesResponse = Schema.Struct({
-  voices: Schema.Array(Voice),
-})
-export type VoicesResponse = typeof VoicesResponse.Type
+export const TTS_SAMPLE_RATE = manifest.sampleRate
+export const DEFAULT_VOICE_ID = manifest.defaultVoiceId
+export const VOICES: Voice[] = manifest.voices.map((voice) => ({
+  id: voice.id,
+  displayName: voice.displayName,
+  engine: voice.engine as TTSEngine,
+}))
+export const VOICE_IDS = VOICES.map((voice) => voice.id)
 
-export const VOICES: Voice[] = [
-  {
-    id: "male_1",
-    displayName: "Male 1",
-    engine: "qwen3",
-    capabilities: { perBlock: true, fullDocument: true },
-  },
-  {
-    id: "female_1",
-    displayName: "Female 1",
-    engine: "kokoro",
-    capabilities: { perBlock: false, fullDocument: true },
-  },
-  {
-    id: "female_2",
-    displayName: "Female 2",
-    engine: "kokoro",
-    capabilities: { perBlock: false, fullDocument: true },
-  },
-]
+export function getVoice(voiceId: string): Voice | undefined {
+  return VOICES.find((voice) => voice.id === voiceId)
+}
+
+export function isVoiceId(voiceId: string): boolean {
+  return getVoice(voiceId) !== undefined
+}

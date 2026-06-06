@@ -17,8 +17,11 @@ RUN pip install --no-cache-dir flash-attn --no-build-isolation
 RUN pip install --no-cache-dir git+https://github.com/Dillpickleschmidt/nano-qwen3tts-vllm.git
 
 # Install remaining dependencies
-COPY requirements.txt .
+COPY workers/qwen3-tts/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+COPY packages/api-client/src/tts-manifest.json ./tts-manifest.json
+COPY workers/tts_manifest.py ./tts_manifest.py
 
 # Pre-download and cache Qwen3-TTS model during build
 RUN python -c "\
@@ -43,9 +46,9 @@ MMS_FA.get_model(); \
 print('MMS model cached successfully')"
 
 # Copy application code
-COPY core/ ./core/
-COPY app/ ./app/
-COPY voices/ ./voices/
+COPY workers/qwen3-tts/core/ ./core/
+COPY workers/qwen3-tts/app/ ./app/
+COPY workers/qwen3-tts/voices/ ./voices/
 
 EXPOSE 8002
 

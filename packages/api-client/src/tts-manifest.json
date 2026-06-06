@@ -1,0 +1,32 @@
+{
+  "sampleRate": 24000,
+  "defaultVoiceId": "female_1",
+  "voices": [
+    {
+      "id": "male_1",
+      "displayName": "Male 1",
+      "engine": "qwen3",
+      "qwen3": {
+        "promptFile": "male_1.pt",
+        "temperature": 0.9,
+        "topP": 1.0
+      }
+    },
+    {
+      "id": "female_1",
+      "displayName": "Female 1",
+      "engine": "kokoro",
+      "kokoro": {
+        "voice": "af_heart"
+      }
+    },
+    {
+      "id": "female_2",
+      "displayName": "Female 2",
+      "engine": "kokoro",
+      "kokoro": {
+        "voice": "af_bella"
+      }
+    }
+  ]
+}

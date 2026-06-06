@@ -1,54 +1,32 @@
 import { Context, Effect, Layer } from "effect"
 import { BackendError } from "@academic-reader/api-client/errors"
-import { VOICES, type TTSEngine } from "@academic-reader/api-client/schemas/tts"
+import {
+  getVoice,
+  type TTSEngine,
+  type WordTimestamp,
+} from "@academic-reader/api-client/schemas/tts"
 import { AppConfig } from "../../config"
 
 export type { TTSEngine }
 
-export interface SynthesizeResult {
-  audio: string
-  sampleRate: number
-  durationMs: number
-  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
-}
-
-export interface StreamChunk {
-  type: "audio" | "timestamps"
-  audio?: string
-  data?: string
-  sampleRate?: number
-  durationMs?: number
-  wordTimestamps?: Array<{ word: string; startMs: number; endMs: number }>
-}
-
-export interface BatchBlock {
-  blockId: string
-  text: string
-}
-
-export interface BatchResult {
-  blockId: string
-  audio: string
-  sampleRate: number
-  durationMs: number
-  wordTimestamps: Array<{ word: string; startMs: number; endMs: number }>
+export interface SynthesizedSpeech {
+  audio: Uint8Array
+  wordTimestamps: WordTimestamp[]
 }
 
 export interface TTSBackend {
-  synthesize(text: string, voiceId: string): Promise<SynthesizeResult>
-  synthesizeStream(text: string, voiceId: string): AsyncGenerator<StreamChunk>
-  synthesizeBatch(
-    blocks: BatchBlock[],
-    voiceId: string,
-  ): AsyncGenerator<BatchResult>
-  healthCheck(): Promise<boolean>
+  synthesize(text: string): Promise<SynthesizedSpeech>
 }
-
 
 export interface TtsServiceShape {
   createBackend(voiceId: string): Effect.Effect<TTSBackend, BackendError>
-  activateWorker(workerName: string): Effect.Effect<void, BackendError>
+  activateWorker(engine: TTSEngine): Effect.Effect<void, BackendError>
+  unloadWorker(engine: TTSEngine): Effect.Effect<void, BackendError>
 }
+
+type WorkerStreamChunk =
+  | { type: "audio"; data: string }
+  | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
 
 export class TtsService extends Context.Tag("TtsService")<
   TtsService,
@@ -70,45 +48,39 @@ export class TtsService extends Context.Tag("TtsService")<
           : config.modal.kokoroTtsUrl
       }
 
-      function tryParseJSON<T>(line: string, label: string): T | null {
-        try {
-          return JSON.parse(line) as T
-        } catch {
-          console.warn(
-            `[tts] Malformed ${label} JSON, skipping:`,
-            line.slice(0, 200),
-          )
-          return null
-        }
-      }
-
-      function createHttpBackend(baseUrl: string): TTSBackend {
+      function createHttpBackend(baseUrl: string, voiceId: string): TTSBackend {
         return {
-          async synthesize(text, voiceId) {
+          async synthesize(text) {
             const response = await fetch(`${baseUrl}/synthesize`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ text, voice_id: voiceId }),
             })
-            if (!response.ok)
-              throw new Error(`TTS synthesize failed: ${await response.text()}`)
-            return (await response.json()) as SynthesizeResult
-          },
-
-          async *synthesizeStream(text, voiceId) {
-            const response = await fetch(`${baseUrl}/synthesize/stream`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text, voice_id: voiceId }),
-            })
-            if (!response.ok)
+            if (!response.ok) {
               throw new Error(`TTS stream failed: ${await response.text()}`)
-            if (!response.body)
+            }
+            if (!response.body) {
               throw new Error("No response body for TTS stream")
+            }
 
             const reader = response.body.getReader()
             const decoder = new TextDecoder()
+            const pcmChunks: Uint8Array[] = []
+            let wordTimestamps: WordTimestamp[] = []
             let buffer = ""
+
+            const parseLine = (line: string) => {
+              const chunk = parseWorkerStreamChunk(line)
+              if (!chunk) return
+
+              if (chunk.type === "audio") {
+                const data = Buffer.from(chunk.data, "base64")
+                if (data.length > 0) pcmChunks.push(data)
+                return
+              }
+
+              wordTimestamps = chunk.wordTimestamps
+            }
 
             while (true) {
               const { done, value } = await reader.read()
@@ -117,61 +89,12 @@ export class TtsService extends Context.Tag("TtsService")<
               const lines = buffer.split("\n")
               buffer = lines.pop() ?? ""
               for (const line of lines) {
-                if (line.trim()) {
-                  const parsed = tryParseJSON<StreamChunk>(line, "stream")
-                  if (parsed) yield parsed
-                }
+                if (line.trim()) parseLine(line)
               }
             }
-            if (buffer.trim()) {
-              const parsed = tryParseJSON<StreamChunk>(buffer, "stream")
-              if (parsed) yield parsed
-            }
-          },
+            if (buffer.trim()) parseLine(buffer)
 
-          async *synthesizeBatch(blocks, voiceId) {
-            const response = await fetch(`${baseUrl}/synthesize/batch`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ blocks, voice_id: voiceId }),
-            })
-            if (!response.ok)
-              throw new Error(`TTS batch failed: ${await response.text()}`)
-            if (!response.body)
-              throw new Error("No response body for TTS batch")
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            let buffer = ""
-
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              buffer += decoder.decode(value, { stream: true })
-              const lines = buffer.split("\n")
-              buffer = lines.pop() ?? ""
-              for (const line of lines) {
-                if (line.trim()) {
-                  const parsed = tryParseJSON<BatchResult>(line, "batch")
-                  if (parsed) yield parsed
-                }
-              }
-            }
-            if (buffer.trim()) {
-              const parsed = tryParseJSON<BatchResult>(buffer, "batch")
-              if (parsed) yield parsed
-            }
-          },
-
-          async healthCheck() {
-            try {
-              const response = await fetch(`${baseUrl}/health`, {
-                signal: AbortSignal.timeout(5000),
-              })
-              return response.ok
-            } catch {
-              return false
-            }
+            return { audio: concatenate(pcmChunks), wordTimestamps }
           },
         }
       }
@@ -179,10 +102,10 @@ export class TtsService extends Context.Tag("TtsService")<
       return {
         createBackend: (voiceId) =>
           Effect.gen(function* () {
-            const voice = VOICES.find((v) => v.id === voiceId)
+            const voice = getVoice(voiceId)
             if (!voice) {
               return yield* new BackendError({
-                message: `Unknown voice: ${voiceId}. Available: ${VOICES.map((v) => v.id).join(", ")}`,
+                message: `Unknown voice: ${voiceId}`,
                 backend: "tts",
               })
             }
@@ -195,25 +118,112 @@ export class TtsService extends Context.Tag("TtsService")<
               })
             }
 
-            return createHttpBackend(url)
+            return createHttpBackend(url, voiceId)
           }),
 
         activateWorker: (engine) =>
           Effect.tryPromise({
             try: async () => {
-              const url = getEngineUrl(engine as TTSEngine)
-              if (!url) throw new Error(`No URL configured for engine: ${engine}`)
-              await fetch(`${url}/health`, {
+              const url = getEngineUrl(engine)
+              if (!url) {
+                throw new Error(`No URL configured for engine: ${engine}`)
+              }
+              const response = await fetch(`${url}/health`, {
                 signal: AbortSignal.timeout(60000),
               })
+              if (!response.ok) {
+                throw new Error(`Health check failed: ${response.status}`)
+              }
             },
             catch: (e) =>
               new BackendError({
-                message: `Failed to activate ${engine}: ${e instanceof Error ? e.message : String(e)}`,
+                message: `Failed to activate ${engine}: ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
+                backend: "tts",
+              }),
+          }),
+
+        unloadWorker: (engine) =>
+          Effect.tryPromise({
+            try: async () => {
+              const url = getEngineUrl(engine)
+              if (!url) {
+                throw new Error(`No URL configured for engine: ${engine}`)
+              }
+              const response = await fetch(`${url}/unload`, { method: "POST" })
+              if (!response.ok) {
+                throw new Error(`Unload failed: ${response.status}`)
+              }
+            },
+            catch: (e) =>
+              new BackendError({
+                message: `Failed to unload ${engine}: ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
                 backend: "tts",
               }),
           }),
       }
     }),
   )
+}
+
+function parseWorkerStreamChunk(line: string): WorkerStreamChunk | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    console.warn("[tts] Malformed stream JSON, skipping:", line.slice(0, 200))
+    return null
+  }
+
+  if (!parsed || typeof parsed !== "object" || !("type" in parsed)) {
+    console.warn("[tts] Invalid stream chunk, skipping:", line.slice(0, 200))
+    return null
+  }
+
+  if (
+    parsed.type === "audio" &&
+    "data" in parsed &&
+    typeof parsed.data === "string"
+  ) {
+    return { type: "audio", data: parsed.data }
+  }
+
+  if (
+    parsed.type === "timestamps" &&
+    "wordTimestamps" in parsed &&
+    Array.isArray(parsed.wordTimestamps)
+  ) {
+    const wordTimestamps = parsed.wordTimestamps.filter(isWordTimestamp)
+    return { type: "timestamps", wordTimestamps }
+  }
+
+  console.warn("[tts] Unknown stream chunk, skipping:", line.slice(0, 200))
+  return null
+}
+
+function isWordTimestamp(value: unknown): value is WordTimestamp {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    "word" in value &&
+    typeof value.word === "string" &&
+    "startMs" in value &&
+    typeof value.startMs === "number" &&
+    "endMs" in value &&
+    typeof value.endMs === "number"
+  )
+}
+
+function concatenate(chunks: Uint8Array[]): Uint8Array {
+  const totalLen = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const audio = new Uint8Array(totalLen)
+  let offset = 0
+  for (const chunk of chunks) {
+    audio.set(chunk, offset)
+    offset += chunk.length
+  }
+  return audio
 }

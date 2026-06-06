@@ -3,6 +3,9 @@
 import modal
 from pathlib import Path
 
+MANIFEST_PATH = Path(__file__).resolve().parents[2] / "packages/api-client/src/tts-manifest.json"
+TTS_MANIFEST_HELPER_PATH = Path(__file__).resolve().parents[1] / "tts_manifest.py"
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("espeak-ng")
@@ -17,12 +20,15 @@ image = (
         "fastapi>=0.115.0",
         "pydantic>=2.0.0",
     )
+    .add_local_file(MANIFEST_PATH, remote_path="/root/tts-manifest.json")
+    .add_local_file(TTS_MANIFEST_HELPER_PATH, remote_path="/root/tts_manifest.py")
     .run_commands(
         'python -c "'
+        "import sys; sys.path.insert(0, '/root'); "
         "from kokoro import KPipeline; "
+        "from tts_manifest import voices_for_engine; "
         "p = KPipeline(lang_code='a', repo_id='hexgrad/Kokoro-82M'); "
-        "p.load_voice('af_heart'); "
-        "p.load_voice('af_bella'); "
+        "[p.load_voice(v['kokoro']['voice']) for v in voices_for_engine('kokoro')]; "
         "print('Kokoro cached')"
         '"'
     )
@@ -37,8 +43,9 @@ with image.imports():
     import sys
     sys.path.insert(0, "/root")
 
-    from core.voices import VOICES, list_voices
-    from core.synthesis import synthesize as core_synthesize, synthesize_streaming_ndjson, synthesize_batch_ndjson
+    from core.voices import VOICES
+    from core.synthesis import synthesize_streaming_ndjson
+    from tts_manifest import SAMPLE_RATE, default_voice_id_for_engine
 
 
 @app.cls(
@@ -91,31 +98,12 @@ class KokoroTTS:
             return
         yield from synthesize_streaming_ndjson(text, voice_id, self)
 
-    @modal.method()
-    def synthesize(self, text: str, voice_id: str) -> dict:
-        """Synthesize speech from text (non-streaming)."""
-        if voice_id not in VOICES:
-            return {
-                "error": f"Unknown voice: {voice_id}. Available: {list(VOICES.keys())}"
-            }
-        audio_base64, sr, duration_ms, word_timestamps = core_synthesize(text, voice_id, self)
-        return {
-            "audio": audio_base64,
-            "sampleRate": sr,
-            "durationMs": duration_ms,
-            "wordTimestamps": word_timestamps,
-        }
-
-    @modal.method()
-    def synthesize_batch(self, blocks: list[dict]):
-        """Generator that yields NDJSON lines for batch synthesis."""
-        yield from synthesize_batch_ndjson(blocks, self)
 
 
 @app.function()
 @modal.asgi_app()
 def api():
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException
     from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
 
@@ -124,20 +112,20 @@ def api():
 
     class SynthesizeRequest(BaseModel):
         text: str
-        voiceId: str = "female_1"
-
-    class StreamRequest(BaseModel):
-        text: str
-        voice_id: str = "female_1"
+        voice_id: str = default_voice_id_for_engine("kokoro")
 
     @web.post("/synthesize")
-    async def synthesize_sync(req: SynthesizeRequest):
-        result = await worker.synthesize.remote.aio(req.text, req.voiceId)
-        return result
-
-    @web.post("/synthesize/stream")
-    async def synthesize_stream(req: StreamRequest):
+    async def synthesize_stream(req: SynthesizeRequest):
         import asyncio
+
+        if not req.text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+        if req.voice_id not in VOICES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown voice: {req.voice_id}. Available: {list(VOICES.keys())}",
+            )
 
         async def ndjson_generator():
             gen = worker.synthesize_streaming.remote_gen.aio(req.text, req.voice_id)
@@ -157,48 +145,11 @@ def api():
             media_type="application/x-ndjson",
             headers={
                 "Transfer-Encoding": "chunked",
-                "X-Audio-Sample-Rate": "24000",
+                "X-Audio-Sample-Rate": str(SAMPLE_RATE),
                 "X-Audio-Channels": "1",
                 "X-Audio-Format": "s16le",
             },
         )
-
-    class BatchBlock(BaseModel):
-        blockId: str
-        text: str
-        voiceId: str = "female_1"
-
-    class BatchRequest(BaseModel):
-        blocks: list[BatchBlock]
-
-    @web.post("/synthesize/batch")
-    async def synthesize_batch(req: BatchRequest):
-        import asyncio
-
-        blocks_data = [b.model_dump() for b in req.blocks]
-
-        async def ndjson_generator():
-            gen = worker.synthesize_batch.remote_gen.aio(blocks_data)
-            try:
-                async for line in gen:
-                    yield line
-            except asyncio.CancelledError:
-                return
-            finally:
-                try:
-                    await gen.aclose()
-                except Exception:
-                    pass
-
-        return StreamingResponse(
-            ndjson_generator(),
-            media_type="application/x-ndjson",
-            headers={"Transfer-Encoding": "chunked"},
-        )
-
-    @web.get("/voices")
-    async def voices():
-        return {"voices": list_voices()}
 
     @web.get("/health")
     async def health():

@@ -151,7 +151,7 @@ export function ReaderSidebar({
                 threadId={thread._id}
                 title={thread.title ?? "New chat"}
                 isActive={chatPanel.activeThreadId === thread._id}
-                isUnlinked={thread.documentId === undefined}
+                isUnlinked={thread.documentId === null}
                 colorIndex={thread.documentColor}
                 documentName={thread.documentName}
               />

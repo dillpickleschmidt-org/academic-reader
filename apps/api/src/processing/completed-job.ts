@@ -1,9 +1,12 @@
 import { Effect } from "effect"
-import { ConvexHttpClient } from "convex/browser"
-import { getToken } from "@convex-dev/better-auth/utils"
 import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
 import { ModelProvider } from "../services/model-provider"
+import { TtsService } from "../services/backends/tts"
+import {
+  createConvexSessionFromCookies,
+  type ConvexSession,
+} from "../services/convex-client"
 import type { WideEvent } from "../middleware/wide-event"
 import {
   processHtml,
@@ -12,7 +15,7 @@ import {
   injectPageMarkers,
 } from "../utils/html-processing"
 import {
-  normalizeChunks,
+  normalizeChunk,
   transformChunks,
   type ChunkBlock,
   type ChunkInput,
@@ -101,7 +104,9 @@ export function processCompletedJob(
     }
 
     const rawChunks = (result.formats?.chunks?.blocks ?? []) as any[]
-    const normalizedChunks = normalizeChunks(rawChunks)
+    const normalizedChunks = rawChunks.map((block, index) =>
+      normalizeChunk(block, index),
+    )
     event.chunkCount = normalizedChunks.length
 
     // Extract and inject links from PDF (datalab only — Marker/CHANDRA preserve links correctly)
@@ -175,7 +180,10 @@ export function processCompletedJob(
     // Persist to Convex
     let documentId: string | undefined
     if (fileInfo) {
-      const convex = yield* createConvexClient(config, requestCookies)
+      const convex = yield* createConvexSessionFromCookies(
+        config.convex,
+        requestCookies,
+      )
       if (convex) {
         const chunksForPersistence = transformChunks(normalizedChunks)
         const persistResult = yield* Effect.tryPromise({
@@ -203,9 +211,11 @@ export function processCompletedJob(
                   documentId,
                   environment: event.environment,
                   deployment: event.deployment,
+                  audioVoiceId: fileInfo.audioVoiceId,
                 },
               ).pipe(
                 Effect.provide(ModelProvider.Live),
+                Effect.provide(TtsService.Live),
                 Effect.provideService(AppConfig, config),
                 Effect.provideService(Storage, storage),
               ),
@@ -224,47 +234,22 @@ export function processCompletedJob(
   })
 }
 
-function createConvexClient(
-  config: { convex: { httpUrl: string; siteUrl: string } },
-  cookies: Record<string, string>,
-) {
-  return Effect.tryPromise({
-    try: async () => {
-      const headers = new Headers()
-      const cookieStr = Object.entries(cookies)
-        .map(([k, v]) => `${k}=${v}`)
-        .join("; ")
-      if (cookieStr) headers.set("Cookie", cookieStr)
-
-      const { token } = await getToken(config.convex.httpUrl, headers)
-      if (!token) return null
-
-      const client = new ConvexHttpClient(config.convex.siteUrl)
-      client.setAuth(token)
-      return client
-    },
-    catch: () => null as never,
-  }).pipe(Effect.catchAll(() => Effect.succeed(null)))
-}
-
 async function persistDocument(
-  convex: ConvexHttpClient,
+  convex: ConvexSession,
   fileInfo: JobFileEntry,
   result: JobResultInput,
   chunks: ChunkInput[],
 ): Promise<string> {
-  const { documentId } = await convex.mutation("api/documents:create" as any, {
+  const { documentId } = await convex.createDocument({
     filename: fileInfo.filename ?? "document.pdf",
     storageId: fileInfo.fileId,
-    pageCount: result.metadata?.pages,
+    pageCount: result.metadata?.pages ?? null,
+    toc: null,
   })
 
   for (let i = 0; i < chunks.length; i += CHUNK_BATCH_SIZE) {
     const batch = chunks.slice(i, i + CHUNK_BATCH_SIZE)
-    await convex.mutation("api/documents:addChunks" as any, {
-      documentId,
-      chunks: batch,
-    })
+    await convex.addDocumentChunks(documentId, batch)
   }
 
   return documentId

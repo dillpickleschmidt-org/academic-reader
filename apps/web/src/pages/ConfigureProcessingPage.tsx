@@ -27,6 +27,14 @@ import {
   FieldDescription,
 } from "@academic-reader/ui/primitives/field"
 import { InfoTooltip } from "@/components/InfoTooltip"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@academic-reader/ui/primitives/select"
+import { VOICES } from "@academic-reader/api-client/schemas/tts"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import type { BackendType } from "@academic-reader/api-client/schemas/common"
 import type { StageInfo } from "../hooks/use-conversion"
@@ -77,6 +85,7 @@ interface Props {
   useLlm: boolean
   forceOcr: boolean
   pageRange: string
+  narratorVoice: string
   error: string
   isProcessing: boolean
   isCancelling: boolean
@@ -85,6 +94,7 @@ interface Props {
   onUseLlmChange: (value: boolean) => void
   onForceOcrChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
+  onNarratorVoiceChange: (value: string) => void
   onStartConversion: () => void
   onCancel: () => void
   onBack: () => void
@@ -371,6 +381,7 @@ export function ConfigureProcessingPage({
   useLlm,
   forceOcr,
   pageRange,
+  narratorVoice,
   error,
   isProcessing,
   isCancelling,
@@ -379,6 +390,7 @@ export function ConfigureProcessingPage({
   onUseLlmChange,
   onForceOcrChange,
   onPageRangeChange,
+  onNarratorVoiceChange,
   onStartConversion,
   onCancel,
   onBack,
@@ -513,6 +525,30 @@ export function ConfigureProcessingPage({
                   fileMimeType={fileMimeType}
                   backendMode={backendMode}
                 />
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Narrator
+                  </label>
+                  <Select
+                    value={narratorVoice}
+                    onValueChange={(value) => value && onNarratorVoiceChange(value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {VOICES.find((voice) => voice.id === narratorVoice)
+                          ?.displayName ?? "Narrator"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VOICES.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.displayName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {processingMode === "fast" && (
                   <div className="flex items-center justify-between py-2">

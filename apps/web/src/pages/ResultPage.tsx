@@ -7,7 +7,7 @@ import { ReaderLayout } from "../components/ReaderLayout"
 import { useDocumentContext } from "@/context/DocumentContext"
 import { useTTSChunkDetection } from "@/hooks/use-tts-chunk-detection"
 import { useWordHighlighting } from "@/hooks/use-word-highlighting"
-import { TTSContextMenu } from "@/components/TTSContextMenu"
+import { useAudioActions, useAudioSelector } from "@/context/AudioContext"
 import { PdfPageDialog } from "@/components/PdfPageDialog"
 
 interface Props {
@@ -24,13 +24,20 @@ export function ResultPage({
   onReset,
 }: Props) {
   const documentContext = useDocumentContext()
-  const chunks = documentContext?.chunks ?? []
   const documentId = documentContext?.documentId ?? null
-  const ttsMap = documentContext?.ttsMap
+  const audioReadiness = documentContext?.audioReadiness
+  const currentVoice = useAudioSelector((s) => s.narrator.voice)
+  const { loadBlockTTS } = useAudioActions()
   const pageOffset = documentContext?.toc?.offset ?? 0
-  const { menuState, setMenuOpen, handleContentClick } = useTTSChunkDetection(
-    chunks,
-    ttsMap,
+  const eligibleBlockIds = useMemo(() => {
+    if (!audioReadiness?.ttsReady) return undefined
+    return new Set(audioReadiness.eligibleBlockIds)
+  }, [audioReadiness])
+  const { handleContentClick } = useTTSChunkDetection(
+    eligibleBlockIds,
+    (blockId, wordIndex) => {
+      loadBlockTTS(blockId, wordIndex !== null ? { wordIndex } : undefined)
+    },
   )
 
   useWordHighlighting()
@@ -53,6 +60,33 @@ export function ResultPage({
       }
     })
   }, [pageOffset])
+
+  useEffect(() => {
+    if (!contentRef.current) return
+
+    if (!audioReadiness?.ttsReady) {
+      contentRef.current.querySelectorAll("[data-tts-ready]").forEach((el) => {
+        el.removeAttribute("data-tts-ready")
+      })
+      return
+    }
+
+    const readyBlocks = new Set(
+      audioReadiness.voices[currentVoice].audioBlockIds,
+    )
+    const eligibleBlocks = new Set(audioReadiness.eligibleBlockIds)
+    contentRef.current.querySelectorAll("[data-block-id]").forEach((el) => {
+      const blockId = el.getAttribute("data-block-id")
+      if (!blockId || !eligibleBlocks.has(blockId)) {
+        el.removeAttribute("data-tts-ready")
+        return
+      }
+      el.setAttribute(
+        "data-tts-ready",
+        readyBlocks.has(blockId) ? "true" : "false",
+      )
+    })
+  }, [audioReadiness, currentVoice, content])
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -129,13 +163,6 @@ export function ResultPage({
         ref={contentRef}
         onClick={handleClick}
         dangerouslySetInnerHTML={htmlContent}
-      />
-      <TTSContextMenu
-        anchorElement={menuState.anchorElement}
-        blockId={menuState.blockId}
-        wordIndex={menuState.wordIndex}
-        isOpen={menuState.isOpen}
-        onOpenChange={setMenuOpen}
       />
       <PdfPageDialog
         pageNum={pdfPageNum}

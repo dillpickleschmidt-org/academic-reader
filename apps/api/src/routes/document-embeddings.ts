@@ -19,8 +19,7 @@ export const documentEmbeddingsRouter = HttpRouter.empty.pipe(
 
       // Check if already has embeddings
       const hasEmbeddings = yield* Effect.tryPromise({
-        try: () =>
-          convex.query("api/documents:hasEmbeddings" as any, { documentId }),
+        try: () => convex.hasDocumentEmbeddings(documentId),
         catch: () => new Error("Failed to check embeddings status"),
       })
 
@@ -32,12 +31,10 @@ export const documentEmbeddingsRouter = HttpRouter.empty.pipe(
       }
 
       // Fetch chunks
-      const rawChunks = yield* Effect.tryPromise({
-        try: () =>
-          convex.query("api/documents:getChunks" as any, { documentId }),
+      const chunks = yield* Effect.tryPromise({
+        try: () => convex.getDocumentChunks(documentId),
         catch: () => new Error("Failed to fetch document chunks"),
       })
-      const chunks = rawChunks as unknown as { html: string }[]
 
       if (!chunks || chunks.length === 0) {
         return HttpServerResponse.unsafeJson(
@@ -51,11 +48,7 @@ export const documentEmbeddingsRouter = HttpRouter.empty.pipe(
 
       // Persist
       yield* Effect.tryPromise({
-        try: () =>
-          convex.mutation("api/documents:addEmbeddings" as any, {
-            documentId,
-            embeddings,
-          }),
+        try: () => convex.addDocumentEmbeddings(documentId, embeddings),
         catch: () => new Error("Failed to update embeddings"),
       })
 

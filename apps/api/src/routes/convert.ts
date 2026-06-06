@@ -6,6 +6,7 @@ import {
 import { Effect } from "effect"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { ValidationError } from "@academic-reader/api-client/errors"
+import { DEFAULT_VOICE_ID, getVoice } from "@academic-reader/api-client/schemas/tts"
 import { AppConfig } from "../config"
 import { Storage } from "../services/storage"
 import { ConversionBackend } from "../services/backends/conversion"
@@ -69,6 +70,12 @@ export const convertRouter = HttpRouter.empty.pipe(
       const useLlm = query.use_llm === "true"
       const forceOcr = query.force_ocr === "true"
       const pageRange = query.page_range || ""
+      const audioVoiceId = query.audio_voice_id || DEFAULT_VOICE_ID
+      if (!getVoice(audioVoiceId)) {
+        return yield* new ValidationError({
+          message: `Unknown voice: ${audioVoiceId}`,
+        })
+      }
 
       yield* enrichEvent({
         fileId,
@@ -77,6 +84,7 @@ export const convertRouter = HttpRouter.empty.pipe(
         processingMode,
         useLlm,
         forceOcr,
+        audioVoiceId,
       })
 
       const docPath = yield* migrateToUserStorage(storage, fileId, userId)
@@ -113,6 +121,7 @@ export const convertRouter = HttpRouter.empty.pipe(
         filename,
         mimeType,
         processingMode,
+        audioVoiceId,
       })
 
       return HttpServerResponse.unsafeJson({ job_id: jobId })

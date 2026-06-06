@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.local.example
+!.env.production.example
+node_modules
+**/node_modules
+.turbo
+**/.turbo
+minio-data
+.infra
+packages/convex/.env.local
+workers/**/__pycache__
+**/*.pyc

@@ -521,9 +521,9 @@ export const PromptInput = ({
         })
         return
       }
-      const withinSize = (f: File) =>
-        maxFileSize ? f.size <= maxFileSize : true
-      const sized = accepted.filter(withinSize)
+      const sized = accepted.filter((file) =>
+        maxFileSize ? file.size <= maxFileSize : true,
+      )
       if (accepted.length > 0 && sized.length === 0) {
         onError?.({
           code: "max_file_size",

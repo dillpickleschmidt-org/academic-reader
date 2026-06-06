@@ -105,11 +105,9 @@ Frontend and API served from VPS via Dokploy. Cloudflare proxy provides DDoS pro
 | `GET /api/saved-documents/:id/page/:pageNum`| Get original PDF page            |
 | `POST /api/chat`                            | AI chat with document context    |
 | `POST /api/documents/:id/embeddings`        | Generate document embeddings     |
-| `POST /api/tts/synthesize`                  | Synthesize speech for a block    |
-| `POST /api/tts/batch`                       | Batch synthesize multiple blocks |
-| `GET /api/tts/voices`                       | List available TTS voices        |
-| `POST /api/tts/unload`                      | Unload TTS worker                |
-| `POST /api/tts/prefetch`                    | Prefetch TTS for upcoming blocks |
+| `POST /api/tts/generate-document-audio`     | Start cached document audio generation |
+| `POST /api/tts/get-block-audio`             | Get cached audio for a block     |
+| `POST /api/tts/unload`                      | Unload local TTS workers (dev only) |
 | `GET /api/auth/*`                           | Auth (proxied to Convex)         |
 
 ### Storage
@@ -195,6 +193,7 @@ Push to main
    - `GOOGLE_CLIENT_ID`
    - `GOOGLE_CLIENT_SECRET`
    - `BETTER_AUTH_SECRET`
+   - `CONVEX_SERVER_SECRET`
 
 8. **Configure R2 lifecycle rule** (modal mode):
 
@@ -246,6 +245,7 @@ For structured logging via Grafana/Loki:
 | -------------------------- | ------------ | -------------------------------------------- |
 | `BACKEND_MODE`             | Yes          | `local`, `datalab`, or `modal`               |
 | `SITE_URL`                 | Yes          | Frontend URL (default: localhost:5173)        |
+| `CONVEX_SERVER_SECRET`     | Yes          | Shared API-to-Convex server auth secret       |
 | `DATALAB_API_KEY`          | datalab      | From [datalab.to](https://datalab.to)        |
 | `GOOGLE_API_KEY`           | Yes          | For Gemini (chat, summary)                   |
 | `GROQ_API_KEY`             | No           | For Groq (processing tasks)                  |
@@ -268,6 +268,7 @@ For structured logging via Grafana/Loki:
 | ----------------------------- | -------- | --------------------------------------- |
 | `BACKEND_MODE`                | Yes      | `datalab` or `modal`                    |
 | `SITE_URL`                    | Yes      | <https://yourdomain.com>                |
+| `CONVEX_SERVER_SECRET`        | Yes      | Shared API-to-Convex server auth secret |
 | `DATALAB_API_KEY`             | datalab  | Production API key                      |
 | `GOOGLE_API_KEY`              | Yes      | For Gemini (chat, summary)              |
 | `GROQ_API_KEY`                | No       | For Groq (processing tasks)             |
@@ -298,6 +299,7 @@ For structured logging via Grafana/Loki:
 | `GOOGLE_CLIENT_ID`     | Google OAuth client ID     |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `BETTER_AUTH_SECRET`   | Auth encryption secret     |
+| `CONVEX_SERVER_SECRET` | API-to-Convex server auth  |
 | `MODAL_TOKEN_ID`       | Modal authentication       |
 | `MODAL_TOKEN_SECRET`   | Modal authentication       |
 

@@ -19,7 +19,8 @@ import { authClient } from "@academic-reader/convex/auth-client"
 import { AppRuntime } from "@/lib/runtime"
 import { toast } from "sonner"
 import { useAppConfig } from "./use-app-config"
-import { preloadResultPage } from "../utils/preload"
+import { resultPageImport } from "../utils/preload"
+import { readNarratorVoice } from "@/hooks/use-narrator-voice"
 
 const PENDING_CONVERSION_KEY = "pendingConversion"
 
@@ -32,6 +33,7 @@ interface PendingConversionState {
   useLlm: boolean
   forceOcr: boolean
   pageRange: string
+  audioVoiceId: string
 }
 
 function savePendingState(state: PendingConversionState): void {
@@ -92,7 +94,8 @@ export function useConversion() {
   const [chunks, setChunks] = useState<ChunkBlock[] | undefined>()
 
   // Table of contents from server
-  const [toc, setToc] = useState<TocResult | undefined>()
+  const [toc, setToc] = useState<TocResult | null | undefined>()
+  const [initialAudioVoiceId, setInitialAudioVoiceId] = useState<string | null>(null)
 
   // SSE fiber ref
   const sseFiberRef = useRef<Fiber.RuntimeFiber<void> | null>(null)
@@ -152,6 +155,7 @@ export function useConversion() {
     setDocumentId(null)
     setChunks(undefined)
     setToc(undefined)
+    setInitialAudioVoiceId(null)
     setPendingConversion(false)
     clearPendingState()
   }
@@ -196,6 +200,7 @@ export function useConversion() {
       useLlm,
       forceOcr,
       pageRange,
+      audioVoiceId: readNarratorVoice(),
     }
 
     // Require authentication to convert (skip if just authenticated or resuming OAuth)
@@ -211,7 +216,7 @@ export function useConversion() {
     }
 
     // Preload ResultPage chunk while processing
-    preloadResultPage()
+    resultPageImport()
 
     setPage("processing")
     setError("")
@@ -231,6 +236,7 @@ export function useConversion() {
             useLlm: params.useLlm,
             forceOcr: params.forceOcr,
             pageRange: params.pageRange,
+            audioVoiceId: params.audioVoiceId,
           },
         ),
       )
@@ -254,9 +260,15 @@ export function useConversion() {
                   if (!htmlReadyFiredRef.current) setPage("result")
                   setImagesReady(true)
                   setChunks([...(event.result.formats?.chunks?.blocks ?? [])])
-                  setToc(event.result.toc)
-                  if (event.result.documentId)
+                  setToc(
+                    event.result.documentId
+                      ? (event.result.toc ?? null)
+                      : undefined,
+                  )
+                  if (event.result.documentId) {
                     setDocumentId(event.result.documentId)
+                    setInitialAudioVoiceId(params.audioVoiceId)
+                  }
                   break
                 case "Failed":
                   setError(event.error)
@@ -295,6 +307,7 @@ export function useConversion() {
     setProcessingMode(saved.processingMode)
     setUseLlm(saved.useLlm)
     setPageRange(saved.pageRange)
+    setInitialAudioVoiceId(saved.audioVoiceId)
     setUploadComplete(true)
 
     // Start conversion with saved params
@@ -351,12 +364,13 @@ export function useConversion() {
       const data = await AppRuntime.runPromise(apiLoadSavedDocument(docId))
       setContent(data.html)
       setDocumentId(docId)
+      setInitialAudioVoiceId(null)
       setFileId(data.storageId)
       setImagesReady(true)
       setToc(data.toc)
       // Transform Convex chunks to ChunkBlock format for TTS
       setChunks(
-        data.chunks?.map((c) => ({
+        data.chunks.map((c) => ({
           id: c.blockId,
           block_type: c.blockType,
           html: c.html,
@@ -364,7 +378,8 @@ export function useConversion() {
           bbox: [] as number[],
           includeTts: c.includeTts,
           ttsText: c.ttsText,
-        })) ?? [],
+          order: c.order,
+        })),
       )
       setPage("result")
     } catch (err) {
@@ -395,6 +410,7 @@ export function useConversion() {
     chunks,
     // Table of contents
     toc,
+    initialAudioVoiceId,
     // Pending conversion (auth required)
     pendingConversion,
     hasPendingOAuthResume: pendingStateRef.current != null,

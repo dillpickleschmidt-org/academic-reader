@@ -78,20 +78,6 @@ export const updateThreadTitle = mutation({
 
 // ===== Queries =====
 
-export const listThreads = query({
-  args: {
-    documentId: v.id("documents"),
-  },
-  handler: (ctx, { documentId }) => Chat.listThreads(ctx, documentId),
-})
-
-export const getThread = query({
-  args: {
-    threadId: v.id("chatThreads"),
-  },
-  handler: (ctx, { threadId }) => Chat.getThread(ctx, threadId),
-})
-
 export const getThreadMessages = query({
   args: {
     threadId: v.id("chatThreads"),

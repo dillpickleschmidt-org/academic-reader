@@ -358,7 +358,7 @@ export function AIChatPanel({ onClose }: Props) {
   // Cross-device streaming subscription
   const streamingText = useStreamSubscription(
     activeThreadId,
-    activeThread?.isStreaming ?? false,
+    activeThread !== undefined && activeThread.isStreaming,
     status !== "ready",
   )
 

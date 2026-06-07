@@ -3,9 +3,16 @@
 import modal
 from pathlib import Path
 
+ROOT = Path.cwd()
 VOICES_DIR = Path(__file__).parent / "voices"
-MANIFEST_PATH = Path(__file__).resolve().parents[2] / "packages/api-client/src/tts-manifest.json"
-TTS_MANIFEST_HELPER_PATH = Path(__file__).resolve().parents[1] / "tts_manifest.py"
+MANIFEST_PATH = ROOT / "packages/api-client/src/tts-manifest.json"
+TTS_MANIFEST_HELPER_PATH = ROOT / "workers/tts_manifest.py"
+
+if not MANIFEST_PATH.exists():
+    MANIFEST_PATH = Path("/root/tts-manifest.json")
+
+if not TTS_MANIFEST_HELPER_PATH.exists():
+    TTS_MANIFEST_HELPER_PATH = Path("/root/tts_manifest.py")
 
 flash_attn_wheel = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiFALSE-cp312-cp312-linux_x86_64.whl"
 
@@ -42,6 +49,7 @@ image = (
 app = modal.App("qwen3-tts", image=image)
 
 snapshot_key = "v116"
+TIMEOUT_SECONDS = 300
 
 with image.imports():
     import sys
@@ -58,7 +66,7 @@ with image.imports():
     gpu="A10G",
     cpu=2.0,
     memory=12288,
-    timeout=300,
+    timeout=TIMEOUT_SECONDS,
     enable_memory_snapshot=True,
     experimental_options={"enable_gpu_snapshot": True},
 )

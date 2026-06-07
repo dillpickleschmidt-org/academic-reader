@@ -106,7 +106,7 @@ export default defineSchema({
     .index("by_document_block", ["documentId", "blockId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: 3072, // Gemini gemini-embedding-001
+      dimensions: 3072, // Gemini gemini-embedding-2
       filterFields: ["documentId"], // Scope vector search to specific document
     }),
 

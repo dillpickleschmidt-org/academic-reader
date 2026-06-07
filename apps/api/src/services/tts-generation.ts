@@ -1,9 +1,13 @@
-import { Effect } from "effect"
+import { Cause, Effect } from "effect"
 import { getVoice, TTS_SAMPLE_RATE } from "@academic-reader/api-client/schemas/tts"
 import type { StorageService } from "./storage"
 import type { TTSBackend, TtsServiceShape } from "./backends/tts"
 import type { ConvexServerSession } from "./convex-client"
 import { pcmToWav } from "../utils/pcm-to-wav"
+import {
+  emitStreamingEvent,
+  type WideEvent,
+} from "../middleware/wide-event"
 
 let activeGenerationKey: string | null = null
 
@@ -15,6 +19,13 @@ export interface GenerateDocumentAudioOptions {
   voiceId: string
   ttsBackend: "local" | "modal"
   documentPath?: string
+  event?: WideEvent
+}
+
+export interface DocumentAudioGenerationStats {
+  requestedBlocks: number
+  generatedBlocks: number
+  cleanupError?: string
 }
 
 export type StartGenerationResult =
@@ -46,11 +57,31 @@ export function startDocumentAudioGeneration(
   }
 
   activeGenerationKey = key
+  const start = performance.now()
   void Effect.runPromise(
     generateDocumentAudio(options).pipe(
-      Effect.catchAll((err) =>
+      Effect.tap((stats) =>
         Effect.sync(() => {
-          console.warn("[tts-generation] Document generation failed:", err)
+          if (!options.event) return
+          emitStreamingEvent(options.event, {
+            durationMs: Math.round(performance.now() - start),
+            status: 200,
+            ...stats,
+          })
+        }),
+      ),
+      Effect.catchAllCause((cause) =>
+        Effect.sync(() => {
+          if (!options.event) return
+          emitStreamingEvent(options.event, {
+            durationMs: Math.round(performance.now() - start),
+            status: 500,
+            error: {
+              category: "internal",
+              message: Cause.pretty(cause),
+              code: "AUDIO_GENERATION_FAILED",
+            },
+          })
         }),
       ),
       Effect.ensuring(
@@ -64,7 +95,9 @@ export function startDocumentAudioGeneration(
   return { started: true }
 }
 
-export function generateDocumentAudio(options: GenerateDocumentAudioOptions) {
+export function generateDocumentAudio(
+  options: GenerateDocumentAudioOptions,
+): Effect.Effect<DocumentAudioGenerationStats, Error> {
   return Effect.gen(function* () {
     const voice = getVoice(options.voiceId)
     if (!voice) {
@@ -90,36 +123,37 @@ export function generateDocumentAudio(options: GenerateDocumentAudioOptions) {
     const missing = generationState.missingChunks.sort(
       (a, b) => a.order - b.order,
     )
-    if (!missing.length) return
+    const stats: DocumentAudioGenerationStats = {
+      requestedBlocks: missing.length,
+      generatedBlocks: 0,
+    }
+
+    if (!missing.length) return stats
 
     yield* Effect.gen(function* () {
       yield* options.ttsService.activateWorker(voice.engine)
       const backend = yield* options.ttsService.createBackend(options.voiceId)
 
       for (const chunk of missing) {
-        yield* generateChunkAudio(
-          options,
-          backend,
-          documentPath,
-          chunk,
-        ).pipe(
-          Effect.catchAll((err) =>
-            Effect.sync(() => {
-              console.warn(
-                `[tts-generation] Block ${chunk.blockId} failed:`,
-                err,
-              )
-            }),
-          ),
-        )
+        yield* generateChunkAudio(options, backend, documentPath, chunk)
+        stats.generatedBlocks++
       }
     }).pipe(
       Effect.ensuring(
         options.ttsBackend === "local"
-          ? options.ttsService.unloadWorker(voice.engine).pipe(Effect.ignore)
+          ? options.ttsService.unloadWorker(voice.engine).pipe(
+              Effect.catchAll((err) =>
+                Effect.sync(() => {
+                  stats.cleanupError =
+                    err instanceof Error ? err.message : String(err)
+                }),
+              ),
+            )
           : Effect.succeed(undefined),
       ),
     )
+
+    return stats
   })
 }
 

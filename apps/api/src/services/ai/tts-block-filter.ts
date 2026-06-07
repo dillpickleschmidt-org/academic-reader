@@ -1,10 +1,41 @@
-import { generateText, Output } from "ai"
+import { generateText, Output, type FinishReason } from "ai"
 import { z } from "zod"
 import { Effect } from "effect"
 import { ModelProvider } from "../model-provider"
 
-const BATCH_SIZE = 300
+const BATCH_SIZE = 250
 const MAX_CONCURRENT = 3
+const MAX_OUTPUT_TOKENS = 8_192
+
+export interface TtsBlockFilterErrorDetails {
+  ttsFilterBatchIndex: number
+  ttsFilterGroupSize: number
+  ttsFilterFinishReason: FinishReason
+  ttsFilterRawFinishReason?: string
+  ttsFilterInputTokens?: number
+  ttsFilterOutputTokens?: number
+  ttsFilterReasoningTokens?: number
+  ttsFilterTotalTokens?: number
+  ttsFilterMaxOutputTokens: number
+  ttsFilterPromptChars: number
+}
+
+class TtsBlockFilterOutputError extends Error {
+  constructor(
+    message: string,
+    readonly details: TtsBlockFilterErrorDetails,
+    cause?: unknown,
+  ) {
+    super(message, { cause })
+    this.name = "TtsBlockFilterOutputError"
+  }
+}
+
+export function getTtsBlockFilterErrorDetails(error: unknown) {
+  return error instanceof TtsBlockFilterOutputError
+    ? error.details
+    : undefined
+}
 
 const BlockFilterElement = z.object({
   id: z.string(),
@@ -89,36 +120,57 @@ export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {
     }
 
     const results = yield* Effect.forEach(
-      groups,
-      (group) =>
+      groups.map((group, batchIndex) => ({ group, batchIndex })),
+      ({ group, batchIndex }) =>
         Effect.tryPromise({
-          try: () =>
-            generateText({
+          try: async () => {
+            const prompt = group
+              .map((b) => `[${b.id}]\n${b.html}`)
+              .join("\n\n---\n\n")
+            const result = await generateText({
               model,
               output: Output.array({ element: BlockFilterElement }),
               system: SYSTEM_PROMPT,
-              prompt: group
-                .map((b) => `[${b.id}]\n${b.html}`)
-                .join("\n\n---\n\n"),
-            }),
-          catch: (e) => e as Error,
-        }).pipe(
-          Effect.map((result) => {
-            if (result.output?.length) {
-              return result.output as { id: string; include: boolean }[]
+              prompt,
+              maxOutputTokens: MAX_OUTPUT_TOKENS,
+              providerOptions: models.processingProviderOptions(),
+            })
+
+            const details = {
+              ttsFilterBatchIndex: batchIndex,
+              ttsFilterGroupSize: group.length,
+              ttsFilterFinishReason: result.finishReason,
+              ttsFilterRawFinishReason: result.rawFinishReason,
+              ttsFilterInputTokens: result.usage.inputTokens,
+              ttsFilterOutputTokens: result.usage.outputTokens,
+              ttsFilterReasoningTokens:
+                result.usage.outputTokenDetails.reasoningTokens,
+              ttsFilterTotalTokens: result.usage.totalTokens,
+              ttsFilterMaxOutputTokens: MAX_OUTPUT_TOKENS,
+              ttsFilterPromptChars: prompt.length,
+            } satisfies TtsBlockFilterErrorDetails
+
+            let output: { id: string; include: boolean }[]
+            try {
+              output = result.output
+            } catch (e) {
+              throw new TtsBlockFilterOutputError(
+                "TTS block filter generated no structured output",
+                details,
+                e,
+              )
             }
-            console.warn(
-              "[tts-block-filter] No output for batch, including all",
-            )
-            return group.map((b) => ({ id: b.id, include: true }))
-          }),
-          Effect.catchAll((err) => {
-            console.warn("[tts-block-filter] Batch failed, including all:", err)
-            return Effect.succeed(
-              group.map((b) => ({ id: b.id, include: true })),
-            )
-          }),
-        ),
+
+            if (!output.length) {
+              throw new TtsBlockFilterOutputError(
+                "TTS block filter returned an empty result",
+                details,
+              )
+            }
+            return output
+          },
+          catch: (e) => e as Error,
+        }),
       { concurrency: MAX_CONCURRENT },
     )
 

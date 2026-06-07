@@ -3,8 +3,15 @@
 import modal
 from pathlib import Path
 
-MANIFEST_PATH = Path(__file__).resolve().parents[2] / "packages/api-client/src/tts-manifest.json"
-TTS_MANIFEST_HELPER_PATH = Path(__file__).resolve().parents[1] / "tts_manifest.py"
+ROOT = Path.cwd()
+MANIFEST_PATH = ROOT / "packages/api-client/src/tts-manifest.json"
+TTS_MANIFEST_HELPER_PATH = ROOT / "workers/tts_manifest.py"
+
+if not MANIFEST_PATH.exists():
+    MANIFEST_PATH = Path("/root/tts-manifest.json")
+
+if not TTS_MANIFEST_HELPER_PATH.exists():
+    TTS_MANIFEST_HELPER_PATH = Path("/root/tts_manifest.py")
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -20,8 +27,16 @@ image = (
         "fastapi>=0.115.0",
         "pydantic>=2.0.0",
     )
-    .add_local_file(MANIFEST_PATH, remote_path="/root/tts-manifest.json")
-    .add_local_file(TTS_MANIFEST_HELPER_PATH, remote_path="/root/tts_manifest.py")
+    .add_local_file(
+        MANIFEST_PATH,
+        remote_path="/root/tts-manifest.json",
+        copy=True,
+    )
+    .add_local_file(
+        TTS_MANIFEST_HELPER_PATH,
+        remote_path="/root/tts_manifest.py",
+        copy=True,
+    )
     .run_commands(
         'python -c "'
         "import sys; sys.path.insert(0, '/root'); "
@@ -38,6 +53,7 @@ image = (
 app = modal.App("kokoro-tts", image=image)
 
 snapshot_key = "v1"
+TIMEOUT_SECONDS = 300
 
 with image.imports():
     import sys
@@ -52,7 +68,7 @@ with image.imports():
     gpu="T4",
     cpu=2.0,
     memory=8192,
-    timeout=300,
+    timeout=TIMEOUT_SECONDS,
     scaledown_window=5,
     enable_memory_snapshot=True,
     experimental_options={"enable_gpu_snapshot": True},

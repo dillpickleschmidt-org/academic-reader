@@ -1,7 +1,11 @@
+type CompletedTransformResult =
+  | string
+  | { eventType: string; data: string }
+
 export function transformSSEStream(
   inputStream: ReadableStream<Uint8Array>,
   syncTransform: (event: string, data: string) => string,
-  asyncCompletedHandler: (data: string) => Promise<string>,
+  asyncCompletedHandler: (data: string) => Promise<CompletedTransformResult>,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   const decoder = new TextDecoder()
@@ -66,10 +70,12 @@ export function transformSSEStream(
           ),
         )
 
-        const processedData = await asyncCompletedHandler(completedData)
+        const result = await asyncCompletedHandler(completedData)
+        const eventType = typeof result === "string" ? completedEvent : result.eventType
+        const data = typeof result === "string" ? result : result.data
         controller.enqueue(
           encoder.encode(
-            `event: ${completedEvent}\ndata: ${processedData}\n\n`,
+            `event: ${eventType}\ndata: ${data}\n\n`,
           ),
         )
       }

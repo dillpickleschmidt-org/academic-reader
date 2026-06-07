@@ -174,7 +174,7 @@ export function processCompletedJob(
           ),
         ],
         { concurrency: "unbounded" },
-      ).pipe(Effect.ignore)
+      )
     }
 
     // Persist to Convex

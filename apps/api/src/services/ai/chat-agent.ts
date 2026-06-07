@@ -54,14 +54,13 @@ export function runChatStream(
       const parts: ChatMessageParts = [{ type: "text", text: userText }]
       yield* Effect.tryPromise({
         try: () => convex.addMessageAndStartStreaming(threadId, parts),
-        catch: () => undefined,
-      }).pipe(Effect.catchAll(() => Effect.void))
+        catch: (e) => e as Error,
+      })
     } else {
       yield* Effect.tryPromise({
-        try: () =>
-          convex.setChatStreaming(threadId, true),
-        catch: () => undefined,
-      }).pipe(Effect.catchAll(() => Effect.void))
+        try: () => convex.setChatStreaming(threadId, true),
+        catch: (e) => e as Error,
+      })
     }
 
     // Poll for summary if not provided
@@ -170,9 +169,27 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       tools,
       abortSignal: abortController.signal,
       stopWhen: stepCountIs(20),
+      providerOptions: models.chatProviderOptions(),
       onError: ({ error }) => {
+        const cleanupStart = performance.now()
         void convex.setChatStreaming(threadId, false).catch((e: unknown) =>
-          console.warn("[chat] Failed to clear streaming flag:", e),
+          emitStreamingEvent(
+            {
+              ...event,
+              timestamp: new Date().toISOString(),
+              method: "BACKGROUND",
+              path: "/chat/cleanup",
+            },
+            {
+              status: 500,
+              durationMs: Math.round(performance.now() - cleanupStart),
+              error: {
+                category: "convex",
+                message: e instanceof Error ? e.message : String(e),
+                code: "CHAT_STREAMING_CLEANUP_FAILED",
+              },
+            },
+          ),
         )
         activeStreams.delete(threadId)
         event.error = {
@@ -213,11 +230,38 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
         try {
           await convex.finishChatStreaming(threadId, parts, fallbackTitle)
         } catch (e) {
-          console.warn("[chat] Failed to save message:", e)
+          let cleanupError: string | undefined
+          try {
+            await convex.setChatStreaming(threadId, false)
+          } catch (cleanup) {
+            cleanupError =
+              cleanup instanceof Error ? cleanup.message : String(cleanup)
+          }
+
+          emitStreamingEvent(event, {
+            status: 500,
+            durationMs: Math.round(performance.now() - streamStart),
+            chatSteps: steps.length,
+            chatFinishReason: finishReason,
+            chatCleanupError: cleanupError,
+            error: {
+              category: "convex",
+              message: e instanceof Error ? e.message : String(e),
+              code: "CHAT_PERSISTENCE_FAILED",
+            },
+          } satisfies Partial<WideEvent>)
+          return
         }
 
         // Fire-and-forget: generate LLM title for new threads
         if (isFirstMessage) {
+          const titleStart = performance.now()
+          const titleEvent: WideEvent = {
+            ...event,
+            timestamp: new Date().toISOString(),
+            method: "BACKGROUND",
+            path: "/chat/title",
+          }
           Effect.runPromise(
             generateChatTitle(userText, text).pipe(
               Effect.provideService(ModelProvider, models),
@@ -226,9 +270,22 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
             .then(async (llmTitle) => {
               if (!llmTitle) return
               await convex.updateChatThreadTitle(threadId, llmTitle)
+              emitStreamingEvent(titleEvent, {
+                status: 200,
+                durationMs: Math.round(performance.now() - titleStart),
+                titleLength: llmTitle.length,
+              })
             })
             .catch((err) =>
-              console.warn("[chat] Background title generation failed:", err),
+              emitStreamingEvent(titleEvent, {
+                status: 500,
+                durationMs: Math.round(performance.now() - titleStart),
+                error: {
+                  category: "internal",
+                  message: err instanceof Error ? err.message : String(err),
+                  code: "CHAT_TITLE_GENERATION_FAILED",
+                },
+              }),
             )
         }
 

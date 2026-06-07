@@ -2,7 +2,10 @@ import * as mupdf from "mupdf"
 import { generateText, Output } from "ai"
 import { z } from "zod"
 import { Effect } from "effect"
-import { ModelProvider } from "../model-provider"
+import {
+  ModelProvider,
+  type ModelProviderService,
+} from "../model-provider"
 
 export interface TocSection {
   id: string
@@ -20,7 +23,6 @@ export interface TocResult {
 export type TocStatus =
   | "success"
   | "no_toc_text"
-  | "ai_failed"
   | "empty_sections"
   | "skipped"
   | "pdf_read_failed"
@@ -100,14 +102,7 @@ export function extractTableOfContents(
       } satisfies TocExtractionResult
     }
 
-    const { sections: rawSections, failed: aiFailed } =
-      yield* generateTocWithAI(tocText, models)
-    if (aiFailed) {
-      return {
-        toc: null,
-        meta: { status: "ai_failed" as const, offsetDetected: false },
-      } satisfies TocExtractionResult
-    }
+    const rawSections = yield* generateTocWithAI(tocText, models)
     if (!rawSections.length) {
       return {
         toc: null,
@@ -197,29 +192,24 @@ function findTocText(text: string): string | null {
 
 function generateTocWithAI(
   tocText: string,
-  models: { processingModel(): any },
-): Effect.Effect<{ sections: RawTocEntry[]; failed: boolean }, never, never> {
+  models: Pick<
+    ModelProviderService,
+    "processingModel" | "processingProviderOptions"
+  >,
+) {
   return Effect.tryPromise({
     try: async () => {
-      const model = models.processingModel()
       const result = await generateText({
-        model,
+        model: models.processingModel(),
         output: Output.object({ schema: TocSchema }),
         system: TOC_SYSTEM_PROMPT,
         prompt: tocText,
+        providerOptions: models.processingProviderOptions(),
       })
-      if (!result.output) return { sections: [] as RawTocEntry[], failed: true }
-      return {
-        sections: result.output.sections as RawTocEntry[],
-        failed: false,
-      }
+      return result.output.sections as RawTocEntry[]
     },
-    catch: (e) => e,
-  }).pipe(
-    Effect.catchAll(() =>
-      Effect.succeed({ sections: [] as RawTocEntry[], failed: true }),
-    ),
-  )
+    catch: (e) => e as Error,
+  })
 }
 
 function isRomanNumeral(page: string): boolean {

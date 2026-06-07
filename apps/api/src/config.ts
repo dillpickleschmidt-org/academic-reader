@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Schema } from "effect"
 const ConversionBackend = Schema.Literal("local", "datalab", "modal")
 const TtsBackend = Schema.Literal("local", "modal", "none")
 const Provider = Schema.Literal("google", "openrouter", "groq")
-const ChatProvider = Schema.Literal("google", "openrouter")
+const ChatProvider = Provider
 
 const S3Config = Schema.Struct({
   apiEndpoint: Schema.String,
@@ -115,24 +115,25 @@ function readEnv(): AppConfigShape {
       groqApiKey: optionalEnv("GROQ_API_KEY"),
       exaApiKey: optionalEnv("EXA_API_KEY"),
       chat: {
-        provider: (optionalEnv("CHAT_PROVIDER") ?? "google") as
-          | "google"
-          | "openrouter",
-        model: optionalEnv("CHAT_MODEL") ?? "gemini-3-flash-preview",
+        provider:
+          (optionalEnv("CHAT_PROVIDER") as
+            | AppConfigShape["ai"]["chat"]["provider"]
+            | undefined) ?? "groq",
+        model: optionalEnv("CHAT_MODEL") ?? "openai/gpt-oss-120b",
       },
       processing: {
         provider:
           (optionalEnv("PROCESSING_PROVIDER") as
             | AppConfigShape["ai"]["processing"]["provider"]
-            | undefined) ?? "google",
-        model: optionalEnv("PROCESSING_MODEL") ?? "gemini-3-flash-preview",
+            | undefined) ?? "groq",
+        model: optionalEnv("PROCESSING_MODEL") ?? "openai/gpt-oss-120b",
       },
       summary: {
         provider:
           (optionalEnv("SUMMARY_PROVIDER") as
             | AppConfigShape["ai"]["summary"]["provider"]
-            | undefined) ?? "google",
-        model: optionalEnv("SUMMARY_MODEL") ?? "gemini-3-flash-preview",
+            | undefined) ?? "groq",
+        model: optionalEnv("SUMMARY_MODEL") ?? "openai/gpt-oss-120b",
       },
     },
     ttsWorkers: {
@@ -185,7 +186,7 @@ function validate(config: AppConfigShape) {
 
     if (!config.ai.googleApiKey) {
       console.error(
-        "GOOGLE_API_KEY is required for default chat, summaries, and document embeddings",
+        "GOOGLE_API_KEY is required for document embeddings",
       )
       return yield* Effect.die("Invalid configuration")
     }

@@ -28,6 +28,8 @@ type WorkerStreamChunk =
   | { type: "audio"; data: string }
   | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
 
+const TTS_ACTIVATION_TIMEOUT_MS = 300 * 1000
+
 export class TtsService extends Context.Tag("TtsService")<
   TtsService,
   TtsServiceShape
@@ -132,7 +134,7 @@ export class TtsService extends Context.Tag("TtsService")<
                 throw new Error(`No URL configured for engine: ${engine}`)
               }
               const response = await fetch(`${url}/health`, {
-                signal: AbortSignal.timeout(60000),
+                signal: AbortSignal.timeout(TTS_ACTIVATION_TIMEOUT_MS),
               })
               if (!response.ok) {
                 throw new Error(`Health check failed: ${response.status}`)

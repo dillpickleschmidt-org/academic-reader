@@ -170,7 +170,14 @@ export function handleStreamingJob(
                 message: err instanceof Error ? err.message : String(err),
                 code: "COMPLETED_EVENT_PROCESSING_ERROR",
               }
-              return data
+              emitStreamingEvent(event, {
+                durationMs: Math.round(performance.now() - streamStart),
+                status: 500,
+              })
+              return {
+                eventType: "failed",
+                data: JSON.stringify({ error: "Failed to process completed job" }),
+              }
             }
           },
         )

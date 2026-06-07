@@ -14,6 +14,9 @@ export function generateEmbedding(
         embed({
           model,
           value: text.replace(/\n/g, " ").trim(),
+          providerOptions: {
+            google: { outputDimensionality: 3072 },
+          },
         }),
       catch: (e) =>
         new Error(
@@ -46,6 +49,9 @@ export function generateEmbeddings(
           embedMany({
             model,
             values: cleanedBatch,
+            providerOptions: {
+              google: { outputDimensionality: 3072 },
+            },
           }),
         catch: (e) =>
           new Error(

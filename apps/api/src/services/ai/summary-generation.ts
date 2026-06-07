@@ -13,7 +13,9 @@ export function generateDocumentSummary(chunkHtml: string) {
   return Effect.gen(function* () {
     const models = yield* ModelProvider
 
-    if (!chunkHtml.trim()) return ""
+    if (!chunkHtml.trim()) {
+      return yield* Effect.fail(new Error("Cannot summarize empty document"))
+    }
 
     const input =
       chunkHtml.length > MAX_INPUT_CHARS
@@ -28,20 +30,16 @@ export function generateDocumentSummary(chunkHtml: string) {
           model,
           system: SYSTEM_PROMPT,
           prompt: input,
-          providerOptions: {
-            google: {
-              thinkingConfig: { thinkingLevel: "minimal" },
-            },
-          },
+          providerOptions: models.summaryProviderOptions(),
         }),
-      catch: (e) => e,
-    }).pipe(Effect.either)
+      catch: (e) => e as Error,
+    })
 
-    if (result._tag === "Left") {
-      console.warn("[summary] AI generation failed:", result.left)
-      return ""
+    const summary = result.text.trim()
+    if (!summary) {
+      return yield* Effect.fail(new Error("Summary generation returned no text"))
     }
 
-    return result.right.text || ""
+    return summary
   })
 }

@@ -1,5 +1,4 @@
-import { Effect } from "effect"
-import { stripHtml } from "../utils/sanitize"
+import { Cause, Effect, Option } from "effect"
 import { Storage } from "../services/storage"
 import { AppConfig } from "../config"
 import { TtsService } from "../services/backends/tts"
@@ -11,8 +10,14 @@ import {
 } from "../services/convex-client"
 import { startDocumentAudioGeneration } from "../services/tts-generation"
 import { extractTableOfContents } from "../services/ai/toc-extraction"
-import { filterBlocksForTTS } from "../services/ai/tts-block-filter"
-import { rewriteBlocksForTTS } from "../services/ai/tts-rewrite"
+import {
+  filterBlocksForTTS,
+  getTtsBlockFilterErrorDetails,
+} from "../services/ai/tts-block-filter"
+import {
+  rewriteBlocksForTTS,
+  getTtsRewriteErrorDetails,
+} from "../services/ai/tts-rewrite"
 import { generateDocumentSummary } from "../services/ai/summary-generation"
 import {
   emitStreamingEvent,
@@ -62,6 +67,7 @@ export function runBackgroundEnrichments(
       tocEnrichment(documentId, convex, documentPath, textContent, ctx).pipe(
         Effect.catchAllCause((cause) => {
           emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/toc"), {
+            status: 500,
             error: {
               category: "internal",
               message: String(cause),
@@ -73,10 +79,14 @@ export function runBackgroundEnrichments(
       ),
       ttsEnrichment(chunks, documentId, documentPath, ctx).pipe(
         Effect.catchAllCause((cause) => {
+          const failure = Option.getOrUndefined(Cause.failureOption(cause))
           emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/tts"), {
+            status: 500,
+            ...getTtsBlockFilterErrorDetails(failure),
+            ...getTtsRewriteErrorDetails(failure),
             error: {
               category: "internal",
-              message: String(cause),
+              message: Cause.pretty(cause),
               code: "TTS_ENRICHMENT_FAILED",
             },
           })
@@ -86,6 +96,7 @@ export function runBackgroundEnrichments(
       summaryEnrichment(chunkHtml, documentId, convex, ctx).pipe(
         Effect.catchAllCause((cause) => {
           emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/summary"), {
+            status: 500,
             error: {
               category: "internal",
               message: String(cause),
@@ -119,6 +130,7 @@ function tocEnrichment(
     if (!pdfReadable) {
       yield* persistToc(convex, documentId, { sections: [], offset: 0 })
       emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/toc"), {
+        status: 200,
         durationMs: Date.now() - start,
         pdfReadable: false,
         tocSections: 0,
@@ -131,6 +143,7 @@ function tocEnrichment(
     yield* persistToc(convex, documentId, toc)
 
     emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/toc"), {
+      status: 200,
       durationMs: Date.now() - start,
       pdfReadable: true,
       tocSections: toc.sections.length,
@@ -146,43 +159,11 @@ function ttsEnrichment(
 ) {
   return Effect.gen(function* () {
     const start = Date.now()
-    const filterResult = yield* filterBlocksForTTS(chunks).pipe(Effect.either)
+    const filterMap = yield* filterBlocksForTTS(chunks)
+    const includedChunks = chunks.filter((c) => filterMap[c.id] === true)
 
-    let filterMap: Record<string, boolean>
-    let includedChunks: ChunkBlock[]
-    let filterFailed = false
-
-    if (filterResult._tag === "Right") {
-      filterMap = filterResult.right
-      includedChunks = chunks.filter((c) => filterMap[c.id] === true)
-    } else {
-      filterFailed = true
-      filterMap = Object.fromEntries(chunks.map((c) => [c.id, true]))
-      includedChunks = chunks
-    }
-
-    const rewriteResult = yield* rewriteBlocksForTTS(includedChunks).pipe(
-      Effect.either,
-    )
-
-    const textByBlockId = new Map<string, string>()
-    let failedGroups = 0
-    let fallbackBlockCount = 0
-
-    if (rewriteResult._tag === "Right") {
-      failedGroups = rewriteResult.right.failedGroups
-      fallbackBlockCount = rewriteResult.right.fallbackBlockCount
-      for (const chunk of includedChunks) {
-        textByBlockId.set(
-          chunk.id,
-          rewriteResult.right.texts[chunk.id] || stripHtml(chunk.html),
-        )
-      }
-    } else {
-      for (const chunk of includedChunks) {
-        textByBlockId.set(chunk.id, stripHtml(chunk.html))
-      }
-    }
+    const rewriteResult = yield* rewriteBlocksForTTS(includedChunks)
+    const textByBlockId = new Map(Object.entries(rewriteResult.texts))
 
     const preparations: TtsChunkPreparation[] = chunks.map((chunk) => {
       if (filterMap[chunk.id] !== true) {
@@ -216,12 +197,13 @@ function ttsEnrichment(
     }
 
     emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/tts"), {
+      status: 200,
       durationMs: Date.now() - start,
       totalChunks: chunks.length,
       includedChunks: includedChunks.length,
-      filterFailed,
-      failedGroups,
-      fallbackBlockCount,
+      rewrittenChunks: textByBlockId.size,
+      repairedRewriteBlocks: rewriteResult.repairedBlocks,
+      firstRewrittenChars: firstRewrittenChars(textByBlockId),
     })
 
     if (ctx.audioVoiceId && config.ttsBackend !== "none") {
@@ -235,8 +217,15 @@ function ttsEnrichment(
         voiceId: ctx.audioVoiceId,
         ttsBackend: config.ttsBackend,
         documentPath,
+        event: {
+          ...enrichmentEvent(ctx, "/enrichment/audio-generation"),
+          voiceId: ctx.audioVoiceId,
+        },
       })
-      emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/audio"), result)
+      emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/audio"), {
+        status: result.started ? 202 : 200,
+        ...result,
+      })
     }
   })
 }
@@ -257,10 +246,17 @@ function summaryEnrichment(
     })
 
     emitStreamingEvent(enrichmentEvent(ctx, "/enrichment/summary"), {
+      status: 200,
       durationMs: Date.now() - start,
       summaryLength: summary.length,
     })
   })
+}
+
+function firstRewrittenChars(textByBlockId: Map<string, string>) {
+  return Array.from(textByBlockId.values()).find((text) => text.trim())
+    ?.trim()
+    .slice(0, 10)
 }
 
 function persistToc(

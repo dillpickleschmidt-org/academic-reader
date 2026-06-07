@@ -133,12 +133,12 @@ async function setup() {
     EXA_API_KEY: existing.EXA_API_KEY || "",
     GROQ_API_KEY: existing.GROQ_API_KEY || "",
     OPENROUTER_API_KEY: existing.OPENROUTER_API_KEY || "",
-    CHAT_PROVIDER: existing.CHAT_PROVIDER || "google",
-    CHAT_MODEL: existing.CHAT_MODEL || "gemini-3-flash-preview",
-    PROCESSING_PROVIDER: existing.PROCESSING_PROVIDER || "google",
-    PROCESSING_MODEL: existing.PROCESSING_MODEL || "gemini-3-flash-preview",
-    SUMMARY_PROVIDER: existing.SUMMARY_PROVIDER || "google",
-    SUMMARY_MODEL: existing.SUMMARY_MODEL || "gemini-3-flash-preview",
+    CHAT_PROVIDER: existing.CHAT_PROVIDER || "groq",
+    CHAT_MODEL: existing.CHAT_MODEL || "openai/gpt-oss-120b",
+    PROCESSING_PROVIDER: existing.PROCESSING_PROVIDER || "groq",
+    PROCESSING_MODEL: existing.PROCESSING_MODEL || "openai/gpt-oss-120b",
+    SUMMARY_PROVIDER: existing.SUMMARY_PROVIDER || "groq",
+    SUMMARY_MODEL: existing.SUMMARY_MODEL || "openai/gpt-oss-120b",
     OTEL_EXPORTER_OTLP_ENDPOINT: existing.OTEL_EXPORTER_OTLP_ENDPOINT || "",
   }
 

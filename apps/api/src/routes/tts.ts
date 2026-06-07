@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import { getVoice } from "@academic-reader/api-client/schemas/tts"
 import { requireAuth } from "../middleware/auth"
+import { getEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
 import { ConvexClient } from "../services/convex-client"
 import { TtsService } from "../services/backends/tts"
@@ -84,6 +85,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const convexService = yield* ConvexClient
       const convex = yield* convexService.userSession()
       const request = yield* HttpServerRequest.HttpServerRequest
+      const event = yield* getEvent
       const body = (yield* request.json) as GenerateDocumentAudioRequest
       const { documentId, voiceId } = body
 
@@ -133,6 +135,14 @@ export const ttsRouter = HttpRouter.empty.pipe(
         documentId,
         voiceId,
         ttsBackend: config.ttsBackend,
+        event: {
+          ...event,
+          timestamp: new Date().toISOString(),
+          method: "BACKGROUND",
+          path: "/tts/generate-document-audio/background",
+          documentId,
+          voiceId,
+        },
       })
 
       return HttpServerResponse.unsafeJson(result)

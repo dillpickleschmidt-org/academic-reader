@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `Generate a concise title (5-8 words) for this chat conver
 export function generateChatTitle(
   userMessage: string,
   assistantMessage: string,
-): Effect.Effect<string, never, ModelProvider> {
+): Effect.Effect<string, Error, ModelProvider> {
   return Effect.gen(function* () {
     const models = yield* ModelProvider
 
@@ -21,15 +21,16 @@ export function generateChatTitle(
           model: models.processingModel(),
           system: SYSTEM_PROMPT,
           prompt: `User: ${userMessage}\n\nAssistant: ${assistantMessage}`,
+          providerOptions: models.processingProviderOptions(),
         }),
       catch: (e) => e as Error,
-    }).pipe(
-      Effect.catchAll((e) => {
-        console.warn("[title-generation] AI generation failed:", e)
-        return Effect.succeed({ text: "" })
-      }),
-    )
+    })
 
-    return result.text?.trim() || ""
+    const title = result.text.trim()
+    if (!title) {
+      return yield* Effect.fail(new Error("Title generation returned no text"))
+    }
+
+    return title
   })
 }

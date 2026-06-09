@@ -29,7 +29,6 @@ interface GenerateDocumentAudioOptions {
 interface DocumentAudioGenerationStats {
   requestedBlocks: number
   generatedBlocks: number
-  ttsStreamWarningCount: number
   cleanupError?: string
 }
 
@@ -134,7 +133,6 @@ function generateDocumentAudio(
     const stats: DocumentAudioGenerationStats = {
       requestedBlocks: missing.length,
       generatedBlocks: 0,
-      ttsStreamWarningCount: 0,
     }
 
     if (!missing.length) return stats
@@ -144,12 +142,7 @@ function generateDocumentAudio(
       const backend = yield* options.ttsService.createBackend(options.voiceId)
 
       for (const chunk of missing) {
-        stats.ttsStreamWarningCount += yield* generateChunkAudio(
-          options,
-          backend,
-          documentPath,
-          chunk,
-        )
+        yield* generateChunkAudio(options, backend, documentPath, chunk)
         stats.generatedBlocks++
         if (options.onProgress) {
           yield* Effect.promise(() =>
@@ -181,7 +174,7 @@ function generateChunkAudio(
   backend: TTSBackend,
   documentPath: string,
   chunk: ChunkForAudio,
-): Effect.Effect<number, Error> {
+): Effect.Effect<void, Error> {
   return Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
       try: () => backend.synthesize(chunk.ttsText),
@@ -215,7 +208,5 @@ function generateChunkAudio(
         }),
       catch: (e) => e as Error,
     })
-
-    return result.streamWarningCount
   })
 }

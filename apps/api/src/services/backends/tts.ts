@@ -10,7 +10,6 @@ import { AppConfig } from "../../config"
 interface SynthesizedSpeech {
   audio: Uint8Array
   wordTimestamps: WordTimestamp[]
-  streamWarningCount: number
 }
 
 export interface TTSBackend {
@@ -23,11 +22,8 @@ export interface TtsServiceShape {
   unloadWorker(engine: TTSEngine): Effect.Effect<void, BackendError>
 }
 
-type WorkerStreamChunk =
-  | { type: "audio"; data: string }
-  | { type: "timestamps"; wordTimestamps: WordTimestamp[] }
-
 const TTS_ACTIVATION_TIMEOUT_MS = 300 * 1000
+const QWEN3_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 
 export class TtsService extends Context.Tag("TtsService")<
   TtsService,
@@ -52,7 +48,7 @@ export class TtsService extends Context.Tag("TtsService")<
           : config.modal.kokoroTtsUrl
       }
 
-      function createHttpBackend(baseUrl: string, voiceId: string): TTSBackend {
+      function createKokoroBackend(baseUrl: string, voiceId: string): TTSBackend {
         return {
           async synthesize(text) {
             const response = await fetch(`${baseUrl}/synthesize`, {
@@ -61,51 +57,55 @@ export class TtsService extends Context.Tag("TtsService")<
               body: JSON.stringify({ text, voice_id: voiceId }),
             })
             if (!response.ok) {
-              throw new Error(`TTS stream failed: ${await response.text()}`)
+              throw new Error(`Kokoro TTS failed: ${await response.text()}`)
+            }
+
+            return parseKokoroResponse(await response.json())
+          },
+        }
+      }
+
+      function createQwen3Backend(baseUrl: string, voiceId: string): TTSBackend {
+        return {
+          async synthesize(text) {
+            const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer EMPTY",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: QWEN3_MODEL,
+                input: text,
+                voice: voiceId,
+                task_type: "Base",
+                language: "English",
+                response_format: "pcm",
+                stream: true,
+                max_new_tokens: 4096,
+              }),
+            })
+            if (!response.ok) {
+              throw new Error(`Qwen3 TTS failed: ${await response.text()}`)
+            }
+            if (response.headers.get("content-type")?.includes("application/json")) {
+              throw new Error(`Qwen3 TTS failed: ${await response.text()}`)
             }
             if (!response.body) {
-              throw new Error("No response body for TTS stream")
+              throw new Error("No response body for Qwen3 TTS stream")
             }
 
             const reader = response.body.getReader()
-            const decoder = new TextDecoder()
             const pcmChunks: Uint8Array[] = []
-            let wordTimestamps: WordTimestamp[] = []
-            let streamWarningCount = 0
-            let buffer = ""
-
-            const parseLine = (line: string) => {
-              const chunk = parseWorkerStreamChunk(line)
-              if (!chunk) {
-                streamWarningCount++
-                return
-              }
-
-              if (chunk.type === "audio") {
-                const data = Buffer.from(chunk.data, "base64")
-                if (data.length > 0) pcmChunks.push(data)
-                return
-              }
-
-              wordTimestamps = chunk.wordTimestamps
-            }
-
             while (true) {
               const { done, value } = await reader.read()
               if (done) break
-              buffer += decoder.decode(value, { stream: true })
-              const lines = buffer.split("\n")
-              buffer = lines.pop() ?? ""
-              for (const line of lines) {
-                if (line.trim()) parseLine(line)
-              }
+              if (value.length > 0) pcmChunks.push(value)
             }
-            if (buffer.trim()) parseLine(buffer)
 
             return {
               audio: concatenate(pcmChunks),
-              wordTimestamps,
-              streamWarningCount,
+              wordTimestamps: [],
             }
           },
         }
@@ -130,7 +130,9 @@ export class TtsService extends Context.Tag("TtsService")<
               })
             }
 
-            return createHttpBackend(url, voiceId)
+            return voice.engine === "qwen3"
+              ? createQwen3Backend(url, voiceId)
+              : createKokoroBackend(url, voiceId)
           }),
 
         activateWorker: (engine) =>
@@ -156,8 +158,10 @@ export class TtsService extends Context.Tag("TtsService")<
               }),
           }),
 
-        unloadWorker: (engine) =>
-          Effect.tryPromise({
+        unloadWorker: (engine) => {
+          if (engine === "qwen3") return Effect.succeed(undefined)
+
+          return Effect.tryPromise({
             try: async () => {
               const url = getEngineUrl(engine)
               if (!url) {
@@ -175,42 +179,30 @@ export class TtsService extends Context.Tag("TtsService")<
                 }`,
                 backend: "tts",
               }),
-          }),
+          })
+        },
       }
     }),
   )
 }
 
-function parseWorkerStreamChunk(line: string): WorkerStreamChunk | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(line)
-  } catch {
-    return null
+function parseKokoroResponse(value: unknown): SynthesizedSpeech {
+  if (!value || typeof value !== "object" || !("audio" in value)) {
+    throw new Error("Invalid Kokoro TTS response")
+  }
+  if (typeof value.audio !== "string") {
+    throw new Error("Invalid Kokoro TTS audio response")
   }
 
-  if (!parsed || typeof parsed !== "object" || !("type" in parsed)) {
-    return null
-  }
+  const wordTimestamps =
+    "wordTimestamps" in value && Array.isArray(value.wordTimestamps)
+      ? value.wordTimestamps.filter(isWordTimestamp)
+      : []
 
-  if (
-    parsed.type === "audio" &&
-    "data" in parsed &&
-    typeof parsed.data === "string"
-  ) {
-    return { type: "audio", data: parsed.data }
+  return {
+    audio: Buffer.from(value.audio, "base64"),
+    wordTimestamps,
   }
-
-  if (
-    parsed.type === "timestamps" &&
-    "wordTimestamps" in parsed &&
-    Array.isArray(parsed.wordTimestamps)
-  ) {
-    const wordTimestamps = parsed.wordTimestamps.filter(isWordTimestamp)
-    return { type: "timestamps", wordTimestamps }
-  }
-
-  return null
 }
 
 function isWordTimestamp(value: unknown): value is WordTimestamp {

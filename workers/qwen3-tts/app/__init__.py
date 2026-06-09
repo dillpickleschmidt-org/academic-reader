@@ -1,1 +1,1 @@
-"""Qwen3-TTS local FastAPI application."""
+"""Qwen3-TTS vLLM-Omni launcher."""

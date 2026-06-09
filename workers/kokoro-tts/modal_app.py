@@ -1,5 +1,6 @@
 """Modal worker for Kokoro TTS."""
 
+import base64
 import builtins
 import json
 from datetime import datetime, timezone
@@ -55,7 +56,7 @@ image = (
 
 app = modal.App("kokoro-tts", image=image)
 
-snapshot_key = "v1"
+snapshot_key = "v2"
 TIMEOUT_SECONDS = 300
 
 
@@ -76,8 +77,8 @@ with image.imports():
     sys.path.insert(0, "/root")
 
     from core.voices import VOICES
-    from core.synthesis import synthesize_streaming_ndjson
-    from tts_manifest import SAMPLE_RATE, default_voice_id_for_engine
+    from core.synthesis import synthesize
+    from tts_manifest import default_voice_id_for_engine
 
 
 @app.cls(
@@ -124,19 +125,22 @@ class KokoroTTS:
         print("[kokoro-tts] Ready!", flush=True)
 
     @modal.method()
-    def synthesize_streaming(self, text: str, voice_id: str):
-        """Generator that yields NDJSON lines."""
+    def synthesize(self, text: str, voice_id: str):
+        """Synthesize one complete PCM response."""
         if voice_id not in VOICES:
-            return
-        yield from synthesize_streaming_ndjson(text, voice_id, self)
+            return {"audio": "", "wordTimestamps": []}
 
+        audio, word_timestamps = synthesize(text, voice_id, self)
+        return {
+            "audio": base64.b64encode(audio).decode("ascii"),
+            "wordTimestamps": word_timestamps,
+        }
 
 
 @app.function()
 @modal.asgi_app()
 def api():
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import StreamingResponse
     from pydantic import BaseModel
 
     web = FastAPI()
@@ -147,9 +151,7 @@ def api():
         voice_id: str = default_voice_id_for_engine("kokoro")
 
     @web.post("/synthesize")
-    async def synthesize_stream(req: SynthesizeRequest):
-        import asyncio
-
+    async def synthesize_route(req: SynthesizeRequest):
         if not req.text.strip():
             raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -159,29 +161,7 @@ def api():
                 detail=f"Unknown voice: {req.voice_id}. Available: {list(VOICES.keys())}",
             )
 
-        async def ndjson_generator():
-            gen = worker.synthesize_streaming.remote_gen.aio(req.text, req.voice_id)
-            try:
-                async for line in gen:
-                    yield line
-            except asyncio.CancelledError:
-                return
-            finally:
-                try:
-                    await gen.aclose()
-                except Exception:
-                    pass
-
-        return StreamingResponse(
-            ndjson_generator(),
-            media_type="application/x-ndjson",
-            headers={
-                "Transfer-Encoding": "chunked",
-                "X-Audio-Sample-Rate": str(SAMPLE_RATE),
-                "X-Audio-Channels": "1",
-                "X-Audio-Format": "s16le",
-            },
-        )
+        return await worker.synthesize.remote.aio(req.text, req.voice_id)
 
     @web.get("/health")
     async def health():

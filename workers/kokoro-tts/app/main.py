@@ -1,12 +1,13 @@
 """FastAPI application for Kokoro TTS synthesis."""
 
+import base64
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.voices import VOICES
-from core.synthesis import synthesize_streaming_ndjson
-from tts_manifest import SAMPLE_RATE, default_voice_id_for_engine
+from core.synthesis import synthesize
+from tts_manifest import default_voice_id_for_engine
 from .models import get_or_create_model
 
 app = FastAPI(title="Kokoro-TTS Worker", version="1.0.0")
@@ -23,7 +24,7 @@ async def health():
 
 
 @app.post("/synthesize")
-async def synthesize_stream(request: SynthesizeRequest):
+async def synthesize_route(request: SynthesizeRequest):
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
@@ -33,18 +34,15 @@ async def synthesize_stream(request: SynthesizeRequest):
             detail=f"Unknown voice: {request.voice_id}. Available: {list(VOICES.keys())}",
         )
 
-    model = get_or_create_model()
-
-    return StreamingResponse(
-        synthesize_streaming_ndjson(request.text, request.voice_id, model),
-        media_type="application/x-ndjson",
-        headers={
-            "Transfer-Encoding": "chunked",
-            "X-Audio-Sample-Rate": str(SAMPLE_RATE),
-            "X-Audio-Channels": "1",
-            "X-Audio-Format": "s16le",
-        },
+    audio, word_timestamps = synthesize(
+        request.text,
+        request.voice_id,
+        get_or_create_model(),
     )
+    return {
+        "audio": base64.b64encode(audio).decode("ascii"),
+        "wordTimestamps": word_timestamps,
+    }
 
 
 @app.post("/load")

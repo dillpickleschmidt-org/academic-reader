@@ -1,6 +1,6 @@
 import { v } from "convex/values"
 import { mutation, query } from "../_generated/server"
-import { messagePartValidator } from "../schema"
+import { messagePartValidator } from "../validators"
 import * as Chat from "../model/chat"
 
 // ===== Mutations =====

@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { requireAuth } from "../middleware/auth"
 import { Storage } from "../services/storage"
 import { ConvexClient } from "../services/convex-client"
+import { imageKey, type DocumentLocation } from "../documents/document-storage"
 
 const MIME_TYPES: Record<string, string> = {
   png: "image/png",
@@ -19,23 +20,22 @@ const MIME_TYPES: Record<string, string> = {
 
 export const assetsRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
-    "/documents/:storageId/images/:filename",
+    "/documents/:documentId/images/:filename",
     Effect.gen(function* () {
       const { userId } = yield* requireAuth
       const storage = yield* Storage
       const params = yield* HttpRouter.params
-      const storageId = params.storageId
+      const documentId = params.documentId
       const filename = params.filename
-
-      if (!storageId || !filename) {
+      if (!documentId || !filename) {
         return HttpServerResponse.unsafeJson(
           { error: "Missing asset path" },
           { status: 400 },
         )
       }
 
-      const key = `documents/${userId}/${storageId}/images/${filename}`
-      const result = yield* storage.readFile(key).pipe(Effect.either)
+      const location: DocumentLocation = { userId, documentId }
+      const result = yield* storage.readFile(imageKey(location, filename)).pipe(Effect.either)
       if (result._tag === "Left") {
         return HttpServerResponse.unsafeJson(
           { error: "Asset not found" },
@@ -61,7 +61,6 @@ export const assetsRouter = HttpRouter.empty.pipe(
       const url = new URL(request.url, "http://localhost")
       const blockId = url.searchParams.get("blockId")
       const voiceId = url.searchParams.get("voiceId")
-
       if (!documentId || !blockId || !voiceId) {
         return HttpServerResponse.unsafeJson(
           { error: "Missing audio parameters" },

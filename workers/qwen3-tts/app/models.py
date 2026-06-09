@@ -1,8 +1,11 @@
 """Thread-safe model loading for Qwen3-TTS using nano_qwen3tts_vllm."""
 
+import builtins
+import json
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -23,6 +26,19 @@ class ModelCache:
 
 _model_cache: Optional[ModelCache] = None
 _model_lock = threading.Lock()
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "qwen3-tts",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 
 def get_model_path() -> str:

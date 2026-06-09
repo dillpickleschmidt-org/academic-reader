@@ -4,19 +4,11 @@
 
 import { v } from "convex/values"
 import { mutation, query } from "../_generated/server"
+import {
+  ttsChunkPreparationValidator,
+  wordTimestampValidator,
+} from "../validators"
 import * as TtsAudio from "../model/ttsAudio"
-
-const wordTimestampValidator = v.object({
-  word: v.string(),
-  startMs: v.number(),
-  endMs: v.number(),
-})
-
-const chunkPreparationValidator = v.object({
-  blockId: v.string(),
-  includeTts: v.boolean(),
-  ttsText: v.union(v.string(), v.null()),
-})
 
 export const getBlockAudio = query({
   args: {
@@ -39,7 +31,7 @@ export const getDocumentAudioReadiness = query({
 export const setChunkPreparation = mutation({
   args: {
     documentId: v.id("documents"),
-    chunks: v.array(chunkPreparationValidator),
+    chunks: v.array(ttsChunkPreparationValidator),
     apiToConvexServiceSecret: v.string(),
   },
   handler: (ctx, { documentId, chunks, apiToConvexServiceSecret }) =>

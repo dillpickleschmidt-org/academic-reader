@@ -8,12 +8,8 @@ import { resolve, join } from "path"
 import { statSync } from "fs"
 import { healthRouter } from "./routes/health"
 import { uploadRouter } from "./routes/upload"
-import { convertRouter } from "./routes/convert"
-import { jobsRouter } from "./routes/jobs"
-import { savedDocumentsRouter } from "./routes/saved-documents"
-import { downloadRouter } from "./routes/download"
 import { chatRouter } from "./routes/chat"
-import { documentEmbeddingsRouter } from "./routes/document-embeddings"
+import { documentsRouter } from "./routes/documents"
 import { ttsRouter } from "./routes/tts"
 import { runtimeConfigRouter } from "./routes/runtime-config"
 import { assetsRouter } from "./routes/assets"
@@ -21,12 +17,8 @@ import { assetsRouter } from "./routes/assets"
 const apiRouter = HttpRouter.empty.pipe(
   HttpRouter.mount("/health", healthRouter),
   HttpRouter.mount("/upload", uploadRouter),
-  HttpRouter.mount("/convert", convertRouter),
-  HttpRouter.mount("/jobs", jobsRouter),
-  HttpRouter.mount("/saved-documents", savedDocumentsRouter),
-  HttpRouter.mount("/files", downloadRouter),
   HttpRouter.mount("/chat", chatRouter),
-  HttpRouter.mount("/documents", documentEmbeddingsRouter),
+  HttpRouter.mount("/documents", documentsRouter),
   HttpRouter.mount("/tts", ttsRouter),
   HttpRouter.mount("/runtime-config", runtimeConfigRouter),
   HttpRouter.mount("/assets", assetsRouter),

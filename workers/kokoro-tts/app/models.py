@@ -1,7 +1,10 @@
 """Thread-safe model loading for Kokoro TTS."""
 
+import builtins
+import json
 import threading
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -17,6 +20,19 @@ class ModelCache:
 
 _model_cache: Optional[ModelCache] = None
 _model_lock = threading.Lock()
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "kokoro-tts",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 
 def get_or_create_model() -> ModelCache:

@@ -1,80 +1,67 @@
 /**
  * Documents API - thin layer for document CRUD operations.
- * Follows nihongo-ninja pattern: API defines args, calls model helpers.
  */
 
 import { v } from "convex/values"
 import { mutation, query, action, internalQuery } from "../_generated/server"
-import { tocValidator } from "../schema"
+import {
+  chunkInputValidator,
+  createDocumentInputValidator,
+  threadActionValidator,
+  tocValidator,
+} from "../validators"
 import * as Documents from "../model/documents"
 
-// ===== Mutations =====
-
-/**
- * Create a document without chunks.
- * Chunks should be added separately using addChunks mutation.
- */
 export const create = mutation({
-  args: {
-    filename: v.string(),
-    storageId: v.string(),
-    pageCount: v.union(v.number(), v.null()),
-    toc: v.union(tocValidator, v.null()),
-  },
+  args: createDocumentInputValidator,
   handler: (ctx, args) => Documents.createDocument(ctx, args),
 })
 
-/**
- * Add chunks to an existing document (batched).
- * Called multiple times for large documents to avoid Convex limits.
- */
-export const addChunks = mutation({
+export const addChunksForServer = mutation({
   args: {
     documentId: v.id("documents"),
-    chunks: v.array(
-      v.object({
-        blockId: v.string(),
-        blockType: v.string(),
-        html: v.string(),
-        section: v.union(v.string(), v.null()),
-        bbox: v.array(v.number()),
-        order: v.number(),
-        includeTts: v.union(v.boolean(), v.null()),
-      }),
-    ),
+    chunks: v.array(chunkInputValidator),
+    apiToConvexServiceSecret: v.string(),
   },
   handler: (ctx, args) =>
-    Documents.addChunksToDocument(ctx, args.documentId, args.chunks),
+    Documents.addChunksToDocumentServer(
+      ctx,
+      args.documentId,
+      args.chunks,
+      args.apiToConvexServiceSecret,
+    ),
 })
 
-/**
- * Update a document's table of contents after background extraction.
- */
-export const updateToc = mutation({
+export const updateTocForServer = mutation({
   args: {
     documentId: v.id("documents"),
     toc: tocValidator,
+    apiToConvexServiceSecret: v.string(),
   },
-  handler: (ctx, { documentId, toc }) =>
-    Documents.updateDocumentToc(ctx, documentId, toc),
+  handler: (ctx, { documentId, toc, apiToConvexServiceSecret }) =>
+    Documents.updateDocumentTocServer(
+      ctx,
+      documentId,
+      toc,
+      apiToConvexServiceSecret,
+    ),
 })
 
-/**
- * Update a document's summary after background generation.
- */
-export const updateSummary = mutation({
+export const updateSummaryForServer = mutation({
   args: {
     documentId: v.id("documents"),
     summary: v.string(),
+    apiToConvexServiceSecret: v.string(),
   },
-  handler: (ctx, { documentId, summary }) =>
-    Documents.updateDocumentSummary(ctx, documentId, summary),
+  handler: (ctx, { documentId, summary, apiToConvexServiceSecret }) =>
+    Documents.updateDocumentSummaryServer(
+      ctx,
+      documentId,
+      summary,
+      apiToConvexServiceSecret,
+    ),
 })
 
-/**
- * Add embeddings to existing chunks.
- * Called when AI chat opens.
- */
 export const addEmbeddings = mutation({
   args: {
     documentId: v.id("documents"),
@@ -84,33 +71,22 @@ export const addEmbeddings = mutation({
     Documents.addEmbeddings(ctx, documentId, embeddings),
 })
 
-/**
- * Delete a document and all its chunks.
- */
 export const remove = mutation({
   args: {
     documentId: v.id("documents"),
-    threadAction: v.union(v.literal("keep"), v.literal("delete")),
+    threadAction: threadActionValidator,
   },
   handler: (ctx, { documentId, threadAction }) =>
     Documents.deleteDocument(ctx, documentId, threadAction),
 })
 
-// ===== Queries =====
-
-/**
- * Get persisted documents (with storage paths) for the current user.
- */
-export const listPersisted = query({
+export const list = query({
   args: {
     limit: v.optional(v.number()),
   },
-  handler: (ctx, { limit }) => Documents.getPersistedDocuments(ctx, limit),
+  handler: (ctx, { limit }) => Documents.listDocuments(ctx, limit),
 })
 
-/**
- * Get a single document by ID.
- */
 export const get = query({
   args: {
     documentId: v.id("documents"),
@@ -118,10 +94,6 @@ export const get = query({
   handler: (ctx, { documentId }) => Documents.getDocument(ctx, documentId),
 })
 
-/**
- * Get all chunks for a document.
- * Used when AI chat opens to generate embeddings.
- */
 export const getChunks = query({
   args: {
     documentId: v.id("documents"),
@@ -130,9 +102,6 @@ export const getChunks = query({
     Documents.getChunksForDocument(ctx, documentId),
 })
 
-/**
- * Check if a document has embeddings generated.
- */
 export const hasEmbeddings = query({
   args: {
     documentId: v.id("documents"),
@@ -140,15 +109,13 @@ export const hasEmbeddings = query({
   handler: (ctx, { documentId }) => Documents.hasEmbeddings(ctx, documentId),
 })
 
-// Internal query for getting chunk data (used by vector search)
 export const getChunkInternal = internalQuery({
   args: {
     chunkId: v.id("chunks"),
   },
-  handler: (ctx, { chunkId }) => Documents.getChunk(ctx, chunkId),
+  handler: (ctx, { chunkId }) => ctx.db.get(chunkId),
 })
 
-// Internal query to verify document access (throws if unauthorized)
 export const verifyDocumentAccess = internalQuery({
   args: {
     documentId: v.id("documents"),
@@ -156,12 +123,6 @@ export const verifyDocumentAccess = internalQuery({
   handler: (ctx, { documentId }) => Documents.getDocument(ctx, documentId),
 })
 
-// ===== Actions =====
-
-/**
- * Search document chunks using vector similarity.
- * Requires query embedding to be pre-computed by caller.
- */
 export const search = action({
   args: {
     documentId: v.id("documents"),

@@ -8,28 +8,41 @@ import { ConvexClient } from "./services/convex-client"
 import { ConversionBackend } from "./services/backends/conversion"
 import { ModelProvider } from "./services/model-provider"
 import { TtsService } from "./services/backends/tts"
-import { JobFileMap } from "./services/job-file-map"
 import { app } from "./router"
-import { wideEventMiddleware } from "./middleware/wide-event"
+import {
+  emitLifecycleEvent,
+  wideEventMiddleware,
+} from "./middleware/wide-event"
 
 const program = Effect.gen(function* () {
   const config = yield* AppConfig
 
-  console.log(`Starting server on port ${config.port}`)
-  console.log(`Conversion backend: ${config.conversionBackend}`)
-  console.log(`TTS backend: ${config.ttsBackend}`)
-  if (config.tlsCert && config.tlsKey) console.log("TLS: enabled")
+  emitLifecycleEvent(
+    {
+      eventName: "server_start",
+      path: "/lifecycle/server-start",
+      status: 200,
+      environment: config.environment,
+      conversionBackend: config.conversionBackend,
+      ttsBackend: config.ttsBackend,
+      port: config.port,
+    },
+    config.otelEndpoint,
+  )
 
   const middleware = HttpMiddleware.make((httpApp) =>
     wideEventMiddleware(
-      config.conversionBackend,
-      config.siteUrl,
+      {
+        environment: config.environment,
+        conversionBackend: config.conversionBackend,
+        ttsBackend: config.ttsBackend,
+      },
       config.otelEndpoint,
     )(
       HttpMiddleware.cors({
-        allowedOrigins: config.siteUrl ? [config.siteUrl] : [],
+        allowedOrigins: [config.siteUrl],
         credentials: true,
-      })(HttpMiddleware.logger(httpApp)),
+      })(httpApp),
     ),
   )
 
@@ -39,14 +52,6 @@ const program = Effect.gen(function* () {
       BunHttpServer.layer({
         port: config.port,
         idleTimeout: 0,
-        ...(config.tlsCert && config.tlsKey
-          ? {
-              tls: {
-                cert: Bun.file(config.tlsCert),
-                key: Bun.file(config.tlsKey),
-              },
-            }
-          : {}),
       }),
     ),
   )
@@ -60,7 +65,6 @@ const MainLive = Layer.mergeAll(
   ConvexClient.Live,
   ModelProvider.Live,
   TtsService.Live,
-  JobFileMap.Live,
 ).pipe(Layer.provideMerge(AppConfig.Live))
 
 const ConversionLive = ConversionBackend.Live.pipe(

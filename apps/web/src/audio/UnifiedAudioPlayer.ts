@@ -1,6 +1,6 @@
-export type PlayerMode = "idle" | "ready"
+type PlayerMode = "idle" | "ready"
 
-export type UnifiedPlayerCallbacks = {
+type UnifiedPlayerCallbacks = {
   onModeChange: (mode: PlayerMode) => void
   onPlayingChange: (isPlaying: boolean) => void
   onTimeUpdate: (currentTime: number, duration: number) => void

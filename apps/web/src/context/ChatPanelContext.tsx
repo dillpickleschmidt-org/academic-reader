@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useEffect,
   type ReactNode,
 } from "react"
 import { useQuery, useMutation } from "convex/react"
@@ -15,10 +16,7 @@ import type {
 import { useDocumentContext } from "./DocumentContext"
 
 type ViewMode = "all" | "document"
-type ThreadListItem = Doc<"chatThreads"> & {
-  documentColor?: number
-  documentName?: string
-}
+type ThreadListItem = Doc<"chatThreads">
 
 interface ChatPanelContextValue {
   isOpen: boolean
@@ -44,6 +42,12 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const [viewMode, setViewMode] = useState<ViewMode>("document")
   const documentContext = useDocumentContext()
   const documentId = documentContext?.documentId ?? null
+
+  useEffect(() => {
+    if (documentId === null && viewMode === "document") {
+      setViewMode("all")
+    }
+  }, [documentId, viewMode])
 
   const allThreads = useQuery(
     api.api.chat.listAllThreads,

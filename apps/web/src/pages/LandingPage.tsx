@@ -24,16 +24,16 @@ export function LandingPage({
   onViewDocument,
   onDeleteDocument,
 }: Props) {
-  const { user } = useAppConfig()
+  const { user, isLoading } = useAppConfig()
 
   return (
     <div className="landing-theme min-h-screen flex flex-col antialiased bg-background text-foreground font-sans overflow-hidden">
-      <Header user={user} />
+      <Header user={user} isLoading={isLoading} />
 
       <main className="flex-1">
         <HeroSection onFileSelect={onFileSelect} />
         <FeaturesSection />
-        {user && onViewDocument && (
+        {!isLoading && user && onViewDocument && (
           <RecentDocumentsSection
             recentDocuments={recentDocuments}
             onViewDocument={onViewDocument}
@@ -49,7 +49,13 @@ export function LandingPage({
   )
 }
 
-function Header({ user }: { user: unknown }) {
+function Header({
+  user,
+  isLoading,
+}: {
+  user: unknown
+  isLoading: boolean
+}) {
   return (
     <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5">
       <div className="flex items-center gap-2.5">
@@ -66,7 +72,9 @@ function Header({ user }: { user: unknown }) {
         >
           Pricing
         </a>
-        {user ? (
+        {isLoading ? (
+          <div className="h-8 w-18 rounded-md bg-muted animate-pulse" />
+        ) : user ? (
           <Button
             variant="ghost"
             size="sm"

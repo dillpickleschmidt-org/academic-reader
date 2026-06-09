@@ -20,5 +20,3 @@ export const SETTINGS = {
     description: "Indent first line of paragraphs",
   },
 } satisfies Record<string, SettingDef>
-
-export type SettingsKey = keyof typeof SETTINGS

@@ -38,9 +38,7 @@ export const GenerateDocumentAudioResult = Schema.Union(
   Schema.Struct({ started: Schema.Literal(true) }),
   Schema.Struct({
     started: Schema.Literal(false),
-    complete: Schema.optional(Schema.Boolean),
-    busy: Schema.optional(Schema.Boolean),
-    alreadyGenerating: Schema.optional(Schema.Boolean),
+    reason: Schema.Literal("complete", "busy", "alreadyGenerating"),
   }),
 )
 export type GenerateDocumentAudioResult = typeof GenerateDocumentAudioResult.Type

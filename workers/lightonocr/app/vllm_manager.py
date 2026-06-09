@@ -1,13 +1,29 @@
 """vLLM subprocess manager for lazy loading."""
+import builtins
+import json
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
 import httpx
 
 VLLM_BASE_URL = "http://localhost:8000/v1"
 
 _vllm_process: subprocess.Popen | None = None
 _vllm_lock = threading.Lock()
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "lightonocr",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 
 def start_vllm(timeout: int = 300) -> bool:

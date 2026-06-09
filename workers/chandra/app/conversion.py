@@ -87,10 +87,9 @@ def _convert_pdf_with_llm(pdf_path: Path, page_range: str | None, llm: "LLM") ->
     markdown_parts: list[str] = []
     all_chunks: list[dict] = []
     all_images: dict[str, str] = {}
+    failed_pages: list[int] = []
 
     for idx, img in enumerate(pdf_images):
-        print(f"[chandra] Processing page {idx + 1} of {total_pages}", flush=True)
-
         try:
             raw, token_count = _run_inference_with_llm(llm, img, prompt)
 
@@ -114,8 +113,8 @@ def _convert_pdf_with_llm(pdf_path: Path, page_range: str | None, llm: "LLM") ->
                 for name, extracted_img in images.items():
                     all_images[name] = pil_to_base64(extracted_img)
 
-        except Exception as e:
-            print(f"[chandra] Warning: Page {idx + 1} had an error: {e}", flush=True)
+        except Exception:
+            failed_pages.append(idx + 1)
             continue
 
     html_content = "\n<hr>\n".join(html_parts)
@@ -123,7 +122,11 @@ def _convert_pdf_with_llm(pdf_path: Path, page_range: str | None, llm: "LLM") ->
 
     return {
         "content": html_content,
-        "metadata": {"page_count": total_pages, "processor": "chandra"},
+        "metadata": {
+            "page_count": total_pages,
+            "processor": "chandra",
+            "failed_pages": len(failed_pages),
+        },
         "formats": {
             "html": html_content,
             "markdown": markdown_content,

@@ -7,20 +7,20 @@ import {
   type ModelProviderService,
 } from "../model-provider"
 
-export interface TocSection {
+interface TocSection {
   id: string
   title: string
   page: number
   children?: TocSection[]
 }
 
-export interface TocResult {
+interface TocResult {
   sections: TocSection[]
   offset: number
   hasRomanNumerals?: boolean
 }
 
-export type TocStatus =
+type TocStatus =
   | "success"
   | "no_toc_text"
   | "empty_sections"
@@ -28,12 +28,12 @@ export type TocStatus =
   | "pdf_read_failed"
   | "error"
 
-export interface TocExtractionMeta {
+interface TocExtractionMeta {
   status: TocStatus
   offsetDetected: boolean
 }
 
-export interface TocExtractionResult {
+interface TocExtractionResult {
   toc: TocResult | null
   meta: TocExtractionMeta
 }

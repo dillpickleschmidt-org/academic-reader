@@ -92,6 +92,6 @@ export const requireAuth: Effect.Effect<
     })
   }
 
-  yield* enrichEvent({ userId: result.userId } as Record<string, unknown>)
+  yield* enrichEvent({ userId: result.userId })
   return { userId: result.userId }
 })

@@ -7,46 +7,10 @@ export const ChunkBlock = Schema.Struct({
   polygon: Schema.Array(Schema.Array(Schema.Number)),
   bbox: Schema.Array(Schema.Number),
   order: Schema.Number,
-  includeTts: Schema.optional(Schema.NullOr(Schema.Boolean)),
-  ttsText: Schema.optional(Schema.NullOr(Schema.String)),
-  section_hierarchy: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String }),
-  ),
-  images: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String }),
-  ),
+  includeTts: Schema.NullOr(Schema.Boolean),
+  ttsText: Schema.NullOr(Schema.String),
 })
 export type ChunkBlock = typeof ChunkBlock.Type
-
-export const ChunkOutput = Schema.Struct({
-  blocks: Schema.Array(ChunkBlock),
-  page_info: Schema.Record({
-    key: Schema.String,
-    value: Schema.Struct({
-      bbox: Schema.Array(Schema.Number),
-      polygon: Schema.Array(Schema.Array(Schema.Number)),
-    }),
-  }),
-  metadata: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-})
-export type ChunkOutput = typeof ChunkOutput.Type
-
-export const AllFormats = Schema.Struct({
-  html: Schema.String,
-  markdown: Schema.String,
-  chunks: Schema.optional(ChunkOutput),
-})
-export type AllFormats = typeof AllFormats.Type
-
-export const ConversionResult = Schema.Struct({
-  content: Schema.String,
-  metadata: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-  formats: Schema.optional(AllFormats),
-  images: Schema.optional(
-    Schema.Record({ key: Schema.String, value: Schema.String }),
-  ),
-})
-export type ConversionResult = typeof ConversionResult.Type
 
 export interface TocSection {
   readonly id: string
@@ -73,26 +37,11 @@ export const LoadedDocument = Schema.Struct({
   html: Schema.String,
   markdown: Schema.String,
   chunks: Schema.Array(ChunkBlock),
-  toc: TocResult,
-  documentId: Schema.String,
-  storageId: Schema.String,
+  toc: Schema.NullOr(TocResult),
 })
 export type LoadedDocument = typeof LoadedDocument.Type
 
-export const SavedDocumentChunk = Schema.Struct({
-  blockId: Schema.String,
-  blockType: Schema.String,
-  html: Schema.String,
-  order: Schema.Number,
-  includeTts: Schema.NullOr(Schema.Boolean),
-  ttsText: Schema.NullOr(Schema.String),
+export const CreateDocumentResponse = Schema.Struct({
+  documentId: Schema.String,
 })
-export type SavedDocumentChunk = typeof SavedDocumentChunk.Type
-
-export const SavedDocumentResponse = Schema.Struct({
-  html: Schema.String,
-  storageId: Schema.String,
-  toc: Schema.NullOr(TocResult),
-  chunks: Schema.Array(SavedDocumentChunk),
-})
-export type SavedDocumentResponse = typeof SavedDocumentResponse.Type
+export type CreateDocumentResponse = typeof CreateDocumentResponse.Type

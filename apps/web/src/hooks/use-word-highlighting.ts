@@ -179,7 +179,7 @@ function buildRanges(
 
 // --- Word alignment ---
 
-export function alignWordIndices(
+function alignWordIndices(
   spokenWords: string[],
   originalWords: string[],
 ): Map<number, number> {

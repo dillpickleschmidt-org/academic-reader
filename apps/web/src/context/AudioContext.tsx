@@ -24,7 +24,7 @@ import type { ChunkBlock } from "@academic-reader/api-client/schemas/document"
 import { AMBIENT_SOUNDS } from "@/audio/constants"
 import { UnifiedAudioPlayer } from "@/audio/UnifiedAudioPlayer"
 import { CrossfadeLooper } from "@/audio/CrossfadeLooper"
-import { useDocumentContext } from "@/context/DocumentContext"
+import type { AudioReadiness } from "@/context/DocumentContext"
 import { readNarratorVoice, writeNarratorVoice } from "@/hooks/use-narrator-voice"
 
 type AudioStore = {
@@ -102,6 +102,7 @@ const AudioContext = createContext<{
   store: AudioStore
   actions: AudioActions
   getPlaybackTime: () => number
+  setDocumentScope: (scope: AudioDocumentScope) => void
 } | null>(null)
 
 function createInitialState(): AudioState {
@@ -145,13 +146,19 @@ function createInitialState(): AudioState {
   }
 }
 
-export function AudioProvider({
-  documentId,
-  children,
-}: {
+interface AudioDocumentScope {
   documentId: string | null
-  children: ReactNode
-}) {
+  chunks: ChunkBlock[] | undefined
+  audioReadiness: AudioReadiness | undefined
+}
+
+const EMPTY_DOCUMENT_SCOPE: AudioDocumentScope = {
+  documentId: null,
+  chunks: undefined,
+  audioReadiness: undefined,
+}
+
+export function AudioProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef<AudioStore>(null!)
   const musicAudioRef = useRef<HTMLAudioElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -178,6 +185,8 @@ export function AudioProvider({
     storeRef.current = createStore(createInitialState())
   }
   const store = storeRef.current
+  const documentScopeRef = useRef<AudioDocumentScope>(EMPTY_DOCUMENT_SCOPE)
+  const previousDocumentIdRef = useRef<string | null>(null)
 
   const safePlay = useCallback((audio: HTMLAudioElement) => {
     audio.play().catch((err) => {
@@ -203,26 +212,54 @@ export function AudioProvider({
     }
   }, [])
 
-  const docContext = useDocumentContext()
-  chunksRef.current = docContext?.chunks
-
   const eligibleBlockIdsRef = useRef<Set<string> | undefined>(undefined)
-  eligibleBlockIdsRef.current = docContext?.audioReadiness?.ttsReady
-    ? new Set(docContext.audioReadiness.eligibleBlockIds)
-    : undefined
 
-  useEffect(() => {
-    const state = store.getState()
-    const blockId = state.playback.blockId
-    if (state.playback.mode !== "waiting" || !blockId) return
+  const resetDocumentPlayback = useCallback(
+    (nextDocumentId: string | null) => {
+      if (previousDocumentIdRef.current === nextDocumentId) return
+      previousDocumentIdRef.current = nextDocumentId
+      if (playbackRequestFiberRef.current) {
+        Effect.runFork(Fiber.interrupt(playbackRequestFiberRef.current))
+        playbackRequestFiberRef.current = null
+      }
+      cleanupPlayer()
+      const state = store.getState()
+      store.setState({
+        playback: {
+          ...state.playback,
+          mode: "idle",
+          blockId: null,
+          error: null,
+          text: null,
+          durationMs: 0,
+          currentTime: 0,
+          isPlaying: false,
+          wordTimestamps: [],
+        },
+      })
+    },
+    [cleanupPlayer, store],
+  )
 
-    const voiceId = state.narrator.voice
-    const readiness = docContext?.audioReadiness
-    const ready = readiness?.voices[voiceId].audioBlockIds.includes(blockId)
-    if (ready) {
-      loadBlockTTSRef.current(blockId)
-    }
-  }, [docContext?.audioReadiness, store])
+  const setDocumentScope = useCallback(
+    (scope: AudioDocumentScope) => {
+      documentScopeRef.current = scope
+      chunksRef.current = scope.chunks
+      eligibleBlockIdsRef.current = scope.audioReadiness?.ttsReady
+        ? new Set(scope.audioReadiness.eligibleBlockIds)
+        : undefined
+      resetDocumentPlayback(scope.documentId)
+
+      const state = store.getState()
+      const blockId = state.playback.blockId
+      if (state.playback.mode !== "waiting" || !blockId) return
+
+      const voiceId = state.narrator.voice
+      const ready = scope.audioReadiness?.voices[voiceId]?.audioBlockIds.includes(blockId)
+      if (ready) loadBlockTTSRef.current(blockId)
+    },
+    [resetDocumentPlayback, store],
+  )
 
   const findNextTtsBlock = useCallback(
     (chunks: ChunkBlock[], currentBlockId: string): ChunkBlock | null => {
@@ -394,6 +431,7 @@ export function AudioProvider({
     ) => {
       const { wordIndex, seekToSeconds, seekFromEndSeconds, spokenWordIndex } = options || {}
 
+      const documentId = documentScopeRef.current.documentId
       if (!documentId) {
         const state = store.getState()
         store.setState({
@@ -516,7 +554,6 @@ export function AudioProvider({
     },
     [
       store,
-      documentId,
       getAudioContext,
       cleanupPlayer,
       createPlayerCallbacks,
@@ -526,6 +563,7 @@ export function AudioProvider({
 
   const generateAudioForDocument = useCallback(
     async (targetVoiceId?: string) => {
+      const documentId = documentScopeRef.current.documentId
       if (!documentId) {
         toast.error("Document not saved - TTS requires a saved document")
         return false
@@ -538,7 +576,7 @@ export function AudioProvider({
         const result = await AppRuntime.runPromise(
           generateDocumentAudio({ documentId, voiceId }),
         )
-        if ("busy" in result && result.busy) {
+        if (!result.started && result.reason === "busy") {
           toast.info("Audio generation is already running. Try again shortly.")
           return false
         }
@@ -550,7 +588,7 @@ export function AudioProvider({
         generationProcessingRef.current = false
       }
     },
-    [documentId, store],
+    [store],
   )
 
   const play = useCallback(() => {
@@ -980,6 +1018,7 @@ export function AudioProvider({
     store: AudioStore
     actions: AudioActions
     getPlaybackTime: () => number
+    setDocumentScope: (scope: AudioDocumentScope) => void
   }>(null!)
 
   if (!valueRef.current) {
@@ -987,9 +1026,11 @@ export function AudioProvider({
       store,
       actions: {} as AudioActions,
       getPlaybackTime: () => playerRef.current?.getCurrentTime() ?? 0,
+      setDocumentScope,
     }
   }
 
+  valueRef.current.setDocumentScope = setDocumentScope
   valueRef.current.actions = {
     setVoice,
     setNarratorSpeed,
@@ -1073,6 +1114,17 @@ export function useAudioSelector<T>(selector: (state: AudioState) => T): T {
 
 export function useAudioActions(): AudioActions {
   return useAudioContext().actions
+}
+
+export function AudioDocumentBinding(scope: AudioDocumentScope) {
+  const { setDocumentScope } = useAudioContext()
+
+  useEffect(() => {
+    setDocumentScope(scope)
+    return () => setDocumentScope(EMPTY_DOCUMENT_SCOPE)
+  }, [scope.documentId, scope.chunks, scope.audioReadiness, setDocumentScope])
+
+  return null
 }
 
 export function useGetPlaybackTime(): () => number {

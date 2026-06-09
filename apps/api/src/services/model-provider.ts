@@ -28,30 +28,29 @@ export class ModelProvider extends Context.Tag("ModelProvider")<
     Effect.gen(function* () {
       const config = yield* AppConfig
 
-      function createModel(provider: string, model: string): LanguageModel {
-        if (provider === "openrouter") {
-          const openrouter = createOpenRouter({
+      const model = () => {
+        if (config.ai.provider === "openrouter") {
+          return createOpenRouter({
             apiKey: config.ai.openrouterApiKey ?? "",
-          })
-          return openrouter.chat(model)
+          }).chat(config.ai.model)
         }
 
-        if (provider === "groq") {
-          const groq = createGroq({ apiKey: config.ai.groqApiKey ?? "" })
-          return groq(model)
+        if (config.ai.provider === "groq") {
+          return createGroq({ apiKey: config.ai.groqApiKey ?? "" })(
+            config.ai.model,
+          )
         }
 
-        const google = createGoogleGenerativeAI({
+        return createGoogleGenerativeAI({
           apiKey: config.ai.googleApiKey,
-        })
-        return google(model)
+        })(config.ai.model)
       }
 
-      function providerOptions(
-        provider: string,
-        model: string,
-      ): ModelProviderOptions {
-        if (provider === "groq" && model.startsWith("openai/gpt-oss-")) {
+      const providerOptions = (): ModelProviderOptions => {
+        if (
+          config.ai.provider === "groq" &&
+          config.ai.model.startsWith("openai/gpt-oss-")
+        ) {
           return { groq: { reasoningEffort: "low" } }
         }
 
@@ -59,30 +58,16 @@ export class ModelProvider extends Context.Tag("ModelProvider")<
       }
 
       return {
-        chatModel: () =>
-          createModel(config.ai.chat.provider, config.ai.chat.model),
-        chatProviderOptions: () =>
-          providerOptions(config.ai.chat.provider, config.ai.chat.model),
-        processingModel: () =>
-          createModel(
-            config.ai.processing.provider,
-            config.ai.processing.model,
-          ),
-        processingProviderOptions: () =>
-          providerOptions(
-            config.ai.processing.provider,
-            config.ai.processing.model,
-          ),
-        summaryModel: () =>
-          createModel(config.ai.summary.provider, config.ai.summary.model),
-        summaryProviderOptions: () =>
-          providerOptions(config.ai.summary.provider, config.ai.summary.model),
-        embeddingModel: () => {
-          const google = createGoogleGenerativeAI({
+        chatModel: model,
+        chatProviderOptions: providerOptions,
+        processingModel: model,
+        processingProviderOptions: providerOptions,
+        summaryModel: model,
+        summaryProviderOptions: providerOptions,
+        embeddingModel: () =>
+          createGoogleGenerativeAI({
             apiKey: config.ai.googleApiKey,
-          })
-          return google.embeddingModel("gemini-embedding-2")
-        },
+          }).embeddingModel("gemini-embedding-2"),
       }
     }),
   )

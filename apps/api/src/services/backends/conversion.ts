@@ -1,44 +1,52 @@
 import { Context, Effect, Layer } from "effect"
 import { BackendError } from "@academic-reader/api-client/errors"
-import type { JobStatus } from "@academic-reader/api-client/schemas/common"
 import { AppConfig } from "../../config"
 import { Storage } from "../storage"
-import { prefixJobId, parseJobId, type WorkerType } from "../job-file-map"
 
 const TIMEOUT_MS = 30_000
 
-export interface ConversionInput {
+type JobStatus =
+  | "pending"
+  | "processing"
+  | "html_ready"
+  | "completed"
+  | "failed"
+
+interface ConversionInput {
   fileId: string
+  requestId: string
+  documentId: string
+  userId: string
   fileUrl?: string
   filename?: string
   mimeType?: string
   processingMode: string
   useLlm: boolean
-  forceOcr?: boolean
-  pageRange?: string
+  forceOcr: boolean
+  pageRange: string
   documentPath?: string
   fileData?: Buffer
 }
 
-export interface ConversionProgress {
+interface ConversionProgress {
   stage: string
   current: number
   total: number
   elapsed?: number
 }
 
-export interface ConversionResult {
+interface ConversionResult {
   content: string
   metadata: Record<string, unknown>
-  formats?: {
+  formats: {
     html: string
     markdown: string
-    chunks?: ChunkOutput
+    chunks: ChunkOutput | null
   }
-  images?: Record<string, string>
+  images: Record<string, string> | null
 }
 
-export interface ChunkOutput {
+interface ChunkOutput {
   blocks: Array<{
     id: string
     block_type: string
@@ -67,8 +75,6 @@ export interface ConversionBackendService {
   readonly name: string
   submitJob(input: ConversionInput): Effect.Effect<string, BackendError>
   getJobStatus(jobId: string): Effect.Effect<ConversionJob, BackendError>
-  supportsStreaming(): boolean
-  getStreamUrl(jobId: string): string | null
   supportsCancellation(): boolean
   cancelJob(jobId: string): Effect.Effect<boolean, BackendError>
 }
@@ -93,6 +99,24 @@ export class ConversionBackend extends Context.Tag("ConversionBackend")<
       }
     }),
   )
+}
+
+type WorkerType = "marker" | "lightonocr" | "chandra"
+
+function parseJobId(jobId: string): {
+  worker: WorkerType
+  rawId: string
+} {
+  if (jobId.startsWith("chandra:")) {
+    return { worker: "chandra", rawId: jobId.slice(8) }
+  }
+  if (jobId.startsWith("lightonocr:")) {
+    return { worker: "lightonocr", rawId: jobId.slice(11) }
+  }
+  if (jobId.startsWith("marker:")) {
+    return { worker: "marker", rawId: jobId.slice(7) }
+  }
+  return { worker: "marker", rawId: jobId }
 }
 
 // Local Backend
@@ -161,7 +185,7 @@ function createLocalBackend(): ConversionBackendService {
                 `[local] LightOnOCR submit failed: ${await response.text()}`,
               )
             const data = (await response.json()) as { job_id: string }
-            return prefixJobId(data.job_id, "lightonocr")
+            return `lightonocr:${data.job_id}`
           }
 
           const params = new URLSearchParams({ use_llm: String(input.useLlm) })
@@ -181,7 +205,7 @@ function createLocalBackend(): ConversionBackendService {
               `[local] Marker submit failed: ${await response.text()}`,
             )
           const data = (await response.json()) as { job_id: string }
-          return prefixJobId(data.job_id, "marker")
+          return `marker:${data.job_id}`
         },
         catch: (e) =>
           new BackendError({ message: String(e), backend: "local" }),
@@ -205,13 +229,6 @@ function createLocalBackend(): ConversionBackendService {
           new BackendError({ message: String(e), backend: "local" }),
       }),
 
-    supportsStreaming: () => true,
-
-    getStreamUrl: (jobId) => {
-      const { baseUrl, rawJobId } = getWorkerUrl(jobId)
-      return `${baseUrl}/jobs/${rawJobId}/stream`
-    },
-
     supportsCancellation: () => true,
 
     cancelJob: (jobId) =>
@@ -234,26 +251,20 @@ function mapLocalResponse(data: LocalWorkerResponse): ConversionJob {
   const status = LOCAL_STATUS_MAP[data.status] ?? "failed"
   const isComplete = status === "completed"
   const result = data.result
+  if (isComplete && !result) {
+    return {
+      jobId: data.job_id,
+      status: "failed",
+      error: "Conversion completed without a result",
+      progress: data.progress,
+    }
+  }
 
   return {
     jobId: data.job_id,
     status,
-    htmlContent: data.html_content || result?.formats?.html,
-    result:
-      isComplete && result
-        ? {
-            content: result.content,
-            metadata: result.metadata,
-            formats: result.formats
-              ? {
-                  html: result.formats.html,
-                  markdown: result.formats.markdown,
-                  chunks: result.formats.chunks,
-                }
-              : undefined,
-            images: result.images,
-          }
-        : undefined,
+    htmlContent: data.html_content || result?.formats.html,
+    result: isComplete ? result : undefined,
     error: data.error,
     progress: data.progress,
   }
@@ -339,8 +350,6 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
           new BackendError({ message: String(e), backend: "datalab" }),
       }),
 
-    supportsStreaming: () => false,
-    getStreamUrl: () => null,
     supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),
   }
@@ -348,28 +357,34 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
 
 function mapDatalabResponse(data: DatalabResponse): ConversionJob {
   const rawStatus =
-    data.status === "complete" && !data.success ? "failed" : data.status
+    data.status === "complete" && data.success === false
+      ? "failed"
+      : data.status
   const status = DATALAB_STATUS_MAP[rawStatus] ?? "failed"
   const isComplete = status === "completed"
-  const rawHtml = data.html ?? ""
+  const html = data.html
+  const markdown = data.markdown
+  const missingContent = isComplete && (!html || markdown === undefined)
 
   return {
     jobId: data.request_id,
-    status,
-    htmlContent: isComplete ? rawHtml : undefined,
-    result: isComplete
+    status: missingContent ? "failed" : status,
+    htmlContent: isComplete && html ? html : undefined,
+    result: isComplete && html && markdown !== undefined
       ? {
-          content: rawHtml,
+          content: html,
           metadata: {},
           formats: {
-            html: rawHtml,
-            markdown: data.markdown ?? "",
-            chunks: data.chunks,
+            html,
+            markdown,
+            chunks: data.chunks ?? null,
           },
-          images: data.images,
+          images: data.images ?? null,
         }
       : undefined,
-    error: data.error,
+    error: missingContent
+      ? "Datalab completed without required html or markdown"
+      : data.error,
   }
 }
 
@@ -440,8 +455,11 @@ function createModalBackend(
               body: JSON.stringify({
                 file_url: input.fileUrl,
                 result_upload_url: resultUploadUrl,
+                request_id: input.requestId,
+                document_id: input.documentId,
+                user_id: input.userId,
                 use_llm: input.useLlm,
-                force_ocr: input.forceOcr ?? false,
+                force_ocr: input.forceOcr,
                 page_range: input.pageRange || null,
               }),
               signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -449,7 +467,7 @@ function createModalBackend(
             if (!res.ok)
               throw new Error(`[modal] Submit failed: ${await res.text()}`)
             const data = (await res.json()) as { id: string }
-            return prefixJobId(data.id, workerType)
+            return `${workerType}:${data.id}`
           },
           catch: (e) =>
             new BackendError({ message: String(e), backend: "modal" }),
@@ -489,8 +507,6 @@ function createModalBackend(
           new BackendError({ message: String(e), backend: "modal" }),
       }),
 
-    supportsStreaming: () => false,
-    getStreamUrl: () => null,
     supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),
   }

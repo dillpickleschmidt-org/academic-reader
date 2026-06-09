@@ -10,14 +10,18 @@
 
 import type * as api_chat from "../api/chat.js";
 import type * as api_config from "../api/config.js";
+import type * as api_documentTasks from "../api/documentTasks.js";
 import type * as api_documents from "../api/documents.js";
 import type * as api_ttsAudio from "../api/ttsAudio.js";
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as model_auth from "../model/auth.js";
 import type * as model_chat from "../model/chat.js";
+import type * as model_documentTasks from "../model/documentTasks.js";
 import type * as model_documents from "../model/documents.js";
+import type * as model_serverAuth from "../model/serverAuth.js";
 import type * as model_ttsAudio from "../model/ttsAudio.js";
+import type * as validators from "../validators.js";
 
 import type {
   ApiFromModules,
@@ -28,14 +32,18 @@ import type {
 declare const fullApi: ApiFromModules<{
   "api/chat": typeof api_chat;
   "api/config": typeof api_config;
+  "api/documentTasks": typeof api_documentTasks;
   "api/documents": typeof api_documents;
   "api/ttsAudio": typeof api_ttsAudio;
   auth: typeof auth;
   http: typeof http;
   "model/auth": typeof model_auth;
   "model/chat": typeof model_chat;
+  "model/documentTasks": typeof model_documentTasks;
   "model/documents": typeof model_documents;
+  "model/serverAuth": typeof model_serverAuth;
   "model/ttsAudio": typeof model_ttsAudio;
+  validators: typeof validators;
 }>;
 
 /**

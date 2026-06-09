@@ -341,13 +341,19 @@ export function AIChatPanel({ onClose }: Props) {
     new DefaultChatTransport({
       api: "/api/chat",
       credentials: "same-origin",
-      body: () => ({
-        threadId: activeThreadIdRef.current ?? undefined,
-        documentContext: {
-          documentId: documentIdRef.current ?? undefined,
-          summary: summaryRef.current ?? undefined,
-        },
-      }),
+      body: () => {
+        if (!activeThreadIdRef.current || !documentIdRef.current) {
+          throw new Error("threadId and documentId are required")
+        }
+
+        return {
+          threadId: activeThreadIdRef.current,
+          documentContext: {
+            documentId: documentIdRef.current,
+            summary: summaryRef.current ?? null,
+          },
+        }
+      },
     }),
   )
 
@@ -397,12 +403,12 @@ export function AIChatPanel({ onClose }: Props) {
   // Auto-send pending message from floating prompt
   const pendingSentRef = useRef<string | null>(null)
   useEffect(() => {
-    if (!pendingMessage || !activeThreadId) return
+    if (!pendingMessage || !activeThreadId || !documentId) return
     if (pendingSentRef.current === pendingMessage) return
     pendingSentRef.current = pendingMessage
     sendMessageRef.current({ text: pendingMessage })
     setPendingMessage(null)
-  }, [pendingMessage, activeThreadId, setPendingMessage])
+  }, [pendingMessage, activeThreadId, documentId, setPendingMessage])
 
   const handleClose = () => {
     setStorageError(null)
@@ -412,9 +418,10 @@ export function AIChatPanel({ onClose }: Props) {
 
   const handleSendMessage = useCallback(
     (text: string) => {
+      if (!activeThreadId || !documentId) return
       sendMessage({ text })
     },
-    [sendMessage],
+    [activeThreadId, documentId, sendMessage],
   )
 
   const isActive = status === "streaming" || status === "submitted"
@@ -584,7 +591,7 @@ export function AIChatPanel({ onClose }: Props) {
                 />
               </div>
             ))}
-            {summary === undefined && documentId && (
+            {summary === null && documentId && (
               <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 Generating summary...

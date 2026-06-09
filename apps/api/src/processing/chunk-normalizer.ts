@@ -51,7 +51,7 @@ export function normalizeChunk(
   }
 }
 
-export interface ChunkInput {
+interface ChunkInput {
   blockId: string
   blockType: string
   html: string

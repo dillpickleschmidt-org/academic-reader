@@ -1,4 +1,4 @@
-export const TYPOGRAPHY_STYLES = [
+const TYPOGRAPHY_STYLES = [
   { id: "classic", name: "Classic" },
   { id: "modern", name: "Modern" },
 ] as const

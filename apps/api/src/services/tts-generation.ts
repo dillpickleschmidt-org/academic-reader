@@ -1,6 +1,7 @@
 import { Cause, Effect } from "effect"
 import { getVoice, TTS_SAMPLE_RATE } from "@academic-reader/api-client/schemas/tts"
 import type { StorageService } from "./storage"
+import { documentLocation, documentPrefix } from "../documents/document-storage"
 import type { TTSBackend, TtsServiceShape } from "./backends/tts"
 import type { ConvexServerSession } from "./convex-client"
 import { pcmToWav } from "../utils/pcm-to-wav"
@@ -11,7 +12,7 @@ import {
 
 let activeGenerationKey: string | null = null
 
-export interface GenerateDocumentAudioOptions {
+interface GenerateDocumentAudioOptions {
   convex: ConvexServerSession
   storage: StorageService
   ttsService: TtsServiceShape
@@ -20,21 +21,23 @@ export interface GenerateDocumentAudioOptions {
   ttsBackend: "local" | "modal"
   documentPath?: string
   event?: WideEvent
+  onProgress?: (stats: DocumentAudioGenerationStats) => Promise<void> | void
+  onComplete?: (stats: DocumentAudioGenerationStats) => Promise<void> | void
+  onFailure?: (error: string) => Promise<void> | void
 }
 
-export interface DocumentAudioGenerationStats {
+interface DocumentAudioGenerationStats {
   requestedBlocks: number
   generatedBlocks: number
+  ttsStreamWarningCount: number
   cleanupError?: string
 }
 
-export type StartGenerationResult =
+type StartGenerationResult =
   | { started: true }
   | {
       started: false
-      complete?: boolean
-      busy?: boolean
-      alreadyGenerating?: boolean
+      reason: "complete" | "busy" | "alreadyGenerating"
     }
 
 interface ChunkForAudio {
@@ -49,11 +52,11 @@ export function startDocumentAudioGeneration(
   const key = `${options.documentId}:${options.voiceId}`
 
   if (activeGenerationKey === key) {
-    return { started: false, alreadyGenerating: true }
+    return { started: false, reason: "alreadyGenerating" }
   }
 
   if (activeGenerationKey !== null) {
-    return { started: false, busy: true }
+    return { started: false, reason: "busy" }
   }
 
   activeGenerationKey = key
@@ -61,27 +64,32 @@ export function startDocumentAudioGeneration(
   void Effect.runPromise(
     generateDocumentAudio(options).pipe(
       Effect.tap((stats) =>
-        Effect.sync(() => {
-          if (!options.event) return
-          emitStreamingEvent(options.event, {
-            durationMs: Math.round(performance.now() - start),
-            status: 200,
-            ...stats,
-          })
+        Effect.promise(async () => {
+          if (options.event) {
+            emitStreamingEvent(options.event, {
+              durationMs: Math.round(performance.now() - start),
+              status: 200,
+              ...stats,
+            })
+          }
+          await options.onComplete?.(stats)
         }),
       ),
       Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          if (!options.event) return
-          emitStreamingEvent(options.event, {
-            durationMs: Math.round(performance.now() - start),
-            status: 500,
-            error: {
-              category: "internal",
-              message: Cause.pretty(cause),
-              code: "AUDIO_GENERATION_FAILED",
-            },
-          })
+        Effect.promise(async () => {
+          const message = Cause.pretty(cause)
+          if (options.event) {
+            emitStreamingEvent(options.event, {
+              durationMs: Math.round(performance.now() - start),
+              status: 500,
+              error: {
+                category: "internal",
+                message,
+                code: "AUDIO_GENERATION_FAILED",
+              },
+            })
+          }
+          await options.onFailure?.(message)
         }),
       ),
       Effect.ensuring(
@@ -95,7 +103,7 @@ export function startDocumentAudioGeneration(
   return { started: true }
 }
 
-export function generateDocumentAudio(
+function generateDocumentAudio(
   options: GenerateDocumentAudioOptions,
 ): Effect.Effect<DocumentAudioGenerationStats, Error> {
   return Effect.gen(function* () {
@@ -113,8 +121,8 @@ export function generateDocumentAudio(
       catch: (e) => e as Error,
     })
     const doc = generationState.document
-    const documentPath =
-      options.documentPath ?? `documents/${doc.userId}/${doc.storageId}`
+    const location = documentLocation(doc, doc.documentId)
+    const documentPath = options.documentPath ?? documentPrefix(location)
 
     if (!generationState.ttsReady) {
       return yield* Effect.fail(new Error("TTS text is not ready yet"))
@@ -126,6 +134,7 @@ export function generateDocumentAudio(
     const stats: DocumentAudioGenerationStats = {
       requestedBlocks: missing.length,
       generatedBlocks: 0,
+      ttsStreamWarningCount: 0,
     }
 
     if (!missing.length) return stats
@@ -135,8 +144,18 @@ export function generateDocumentAudio(
       const backend = yield* options.ttsService.createBackend(options.voiceId)
 
       for (const chunk of missing) {
-        yield* generateChunkAudio(options, backend, documentPath, chunk)
+        stats.ttsStreamWarningCount += yield* generateChunkAudio(
+          options,
+          backend,
+          documentPath,
+          chunk,
+        )
         stats.generatedBlocks++
+        if (options.onProgress) {
+          yield* Effect.promise(() =>
+            Promise.resolve(options.onProgress?.({ ...stats })),
+          ).pipe(Effect.ignore)
+        }
       }
     }).pipe(
       Effect.ensuring(
@@ -162,7 +181,7 @@ function generateChunkAudio(
   backend: TTSBackend,
   documentPath: string,
   chunk: ChunkForAudio,
-) {
+): Effect.Effect<number, Error> {
   return Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
       try: () => backend.synthesize(chunk.ttsText),
@@ -196,5 +215,7 @@ function generateChunkAudio(
         }),
       catch: (e) => e as Error,
     })
+
+    return result.streamWarningCount
   })
 }

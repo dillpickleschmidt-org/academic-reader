@@ -1,5 +1,6 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import { RouterProvider } from "@tanstack/react-router"
 import { createConvexClient } from "@academic-reader/convex/client"
 import {
   authClient,
@@ -7,8 +8,9 @@ import {
 } from "@academic-reader/convex/auth-client"
 import { Toaster } from "@academic-reader/ui/primitives/sonner"
 import { RuntimeConfigProvider, type RuntimeConfig } from "./context/RuntimeConfigContext"
+import { AudioProvider } from "./context/AudioContext"
+import { router } from "./router"
 import "./styles/App.css"
-import App from "./App.tsx"
 
 const rootEl = document.getElementById("root")
 
@@ -29,7 +31,9 @@ async function bootstrap(rootEl: HTMLElement) {
       <StrictMode>
         <RuntimeConfigProvider config={config}>
           <ConvexBetterAuthProvider client={convex} authClient={authClient}>
-            <App />
+            <AudioProvider>
+              <RouterProvider router={router} />
+            </AudioProvider>
             <Toaster />
           </ConvexBetterAuthProvider>
         </RuntimeConfigProvider>

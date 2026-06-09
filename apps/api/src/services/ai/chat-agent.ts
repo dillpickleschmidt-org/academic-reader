@@ -9,10 +9,8 @@ import {
 } from "ai"
 import { z } from "zod"
 import { webSearch } from "@exalabs/ai-sdk"
-import type {
-  ChatMessageParts,
-  ConvexSession,
-} from "../convex-client"
+import type { Doc } from "@academic-reader/convex/convex/_generated/dataModel"
+import type { ConvexSession } from "../convex-client"
 import { ModelProvider, type ModelProviderService } from "../model-provider"
 import { generateEmbedding } from "./embeddings"
 import { generateChatTitle } from "./title-generation"
@@ -20,11 +18,13 @@ import { AppConfig } from "../../config"
 import type { WideEvent } from "../../middleware/wide-event"
 import { emitStreamingEvent } from "../../middleware/wide-event"
 
+type ChatMessageParts = Doc<"chatMessages">["parts"]
+
 interface ChatInput {
   messages: UIMessage[]
   threadId: string
   documentId: string
-  summary?: string
+  summary: string | null
   convex: ConvexSession
   event: WideEvent
 }
@@ -65,9 +65,9 @@ export function runChatStream(
 
     // Poll for summary if not provided
     let resolvedSummary = summary
-    if (resolvedSummary === undefined) {
+    if (resolvedSummary === null) {
       const deadline = Date.now() + 60_000
-      while (resolvedSummary === undefined && Date.now() < deadline) {
+      while (resolvedSummary === null && Date.now() < deadline) {
         const poll = yield* Effect.tryPromise({
           try: () => convex.getDocument(documentId),
           catch: () => null,
@@ -76,7 +76,7 @@ export function runChatStream(
         if (poll && poll.summary !== null) {
           resolvedSummary = poll.summary
         }
-        if (resolvedSummary === undefined) {
+        if (resolvedSummary === null) {
           yield* Effect.sleep("1 second")
         }
       }
@@ -114,6 +114,7 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       documentId,
       convex,
       models,
+      event,
     ) as unknown as ToolSet[string]
 
     if (exaApiKey) {
@@ -192,14 +193,14 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
           ),
         )
         activeStreams.delete(threadId)
-        event.error = {
-          category: "internal",
-          message: error instanceof Error ? error.message : "Chat stream error",
-          code: "CHAT_STREAM_ERROR",
-        }
         emitStreamingEvent(event, {
           status: 500,
           durationMs: Math.round(performance.now() - streamStart),
+          error: {
+            category: "internal",
+            message: error instanceof Error ? error.message : "Chat stream error",
+            code: "CHAT_STREAM_ERROR",
+          },
         })
       },
       onFinish: async ({
@@ -306,6 +307,7 @@ function createSearchTool(
   documentId: string,
   convex: ConvexSession,
   models: ModelProviderService,
+  event: WideEvent,
 ) {
   return tool({
     description:
@@ -342,7 +344,12 @@ function createSearchTool(
           )
           .join("\n\n")
       } catch (error) {
-        console.error("Search error:", error)
+        event.searchDocumentErrorCount =
+          typeof event.searchDocumentErrorCount === "number"
+            ? event.searchDocumentErrorCount + 1
+            : 1
+        event.searchDocumentLastError =
+          error instanceof Error ? error.message : String(error)
         return "Search encountered an error. Please try again."
       }
     },

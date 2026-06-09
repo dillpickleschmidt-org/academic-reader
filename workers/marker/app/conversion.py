@@ -1,8 +1,24 @@
+import builtins
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .html_processing import images_to_base64, inject_image_dimensions
 from .models import get_or_create_models
 from ..shared import extract_chunks
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "marker",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 
 def _create_converter(

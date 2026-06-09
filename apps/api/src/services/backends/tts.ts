@@ -7,11 +7,10 @@ import {
 } from "@academic-reader/api-client/schemas/tts"
 import { AppConfig } from "../../config"
 
-export type { TTSEngine }
-
-export interface SynthesizedSpeech {
+interface SynthesizedSpeech {
   audio: Uint8Array
   wordTimestamps: WordTimestamp[]
+  streamWarningCount: number
 }
 
 export interface TTSBackend {
@@ -72,11 +71,15 @@ export class TtsService extends Context.Tag("TtsService")<
             const decoder = new TextDecoder()
             const pcmChunks: Uint8Array[] = []
             let wordTimestamps: WordTimestamp[] = []
+            let streamWarningCount = 0
             let buffer = ""
 
             const parseLine = (line: string) => {
               const chunk = parseWorkerStreamChunk(line)
-              if (!chunk) return
+              if (!chunk) {
+                streamWarningCount++
+                return
+              }
 
               if (chunk.type === "audio") {
                 const data = Buffer.from(chunk.data, "base64")
@@ -99,7 +102,11 @@ export class TtsService extends Context.Tag("TtsService")<
             }
             if (buffer.trim()) parseLine(buffer)
 
-            return { audio: concatenate(pcmChunks), wordTimestamps }
+            return {
+              audio: concatenate(pcmChunks),
+              wordTimestamps,
+              streamWarningCount,
+            }
           },
         }
       }
@@ -179,12 +186,10 @@ function parseWorkerStreamChunk(line: string): WorkerStreamChunk | null {
   try {
     parsed = JSON.parse(line)
   } catch {
-    console.warn("[tts] Malformed stream JSON, skipping:", line.slice(0, 200))
     return null
   }
 
   if (!parsed || typeof parsed !== "object" || !("type" in parsed)) {
-    console.warn("[tts] Invalid stream chunk, skipping:", line.slice(0, 200))
     return null
   }
 
@@ -205,7 +210,6 @@ function parseWorkerStreamChunk(line: string): WorkerStreamChunk | null {
     return { type: "timestamps", wordTimestamps }
   }
 
-  console.warn("[tts] Unknown stream chunk, skipping:", line.slice(0, 200))
   return null
 }
 

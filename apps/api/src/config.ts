@@ -1,74 +1,50 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer } from "effect"
 
-const ConversionBackend = Schema.Literal("local", "datalab", "modal")
-const TtsBackend = Schema.Literal("local", "modal", "none")
-const Provider = Schema.Literal("google", "openrouter", "groq")
-const ChatProvider = Provider
+type ConversionBackend = "local" | "datalab" | "modal"
+type TtsBackend = "local" | "modal" | "none"
+type AiProvider = "google" | "openrouter" | "groq"
 
-const S3Config = Schema.Struct({
-  apiEndpoint: Schema.String,
-  presignedUrlEndpoint: Schema.String,
-  accessKeyId: Schema.String,
-  secretAccessKey: Schema.String,
-  bucket: Schema.String,
-})
-
-const ConvexConfig = Schema.Struct({
-  apiUrl: Schema.String,
-  httpActionsUrl: Schema.String,
-  publicApiUrl: Schema.String,
-  apiToConvexServiceSecret: Schema.String,
-})
-
-const AiConfig = Schema.Struct({
-  googleApiKey: Schema.String,
-  openrouterApiKey: Schema.optional(Schema.String),
-  groqApiKey: Schema.optional(Schema.String),
-  exaApiKey: Schema.optional(Schema.String),
-  chat: Schema.Struct({
-    provider: ChatProvider,
-    model: Schema.String,
-  }),
-  processing: Schema.Struct({
-    provider: Provider,
-    model: Schema.String,
-  }),
-  summary: Schema.Struct({
-    provider: Provider,
-    model: Schema.String,
-  }),
-})
-
-const TtsWorkersConfig = Schema.Struct({
-  qwen3Url: Schema.String,
-  kokoroUrl: Schema.String,
-})
-
-const ModalConfig = Schema.Struct({
-  markerUrl: Schema.optional(Schema.String),
-  lightonocrUrl: Schema.optional(Schema.String),
-  chandraUrl: Schema.optional(Schema.String),
-  qwen3TtsUrl: Schema.optional(Schema.String),
-  kokoroTtsUrl: Schema.optional(Schema.String),
-})
-
-const AppConfigSchema = Schema.Struct({
-  port: Schema.Number,
-  siteUrl: Schema.optional(Schema.String),
-  conversionBackend: ConversionBackend,
-  ttsBackend: TtsBackend,
-  s3: S3Config,
-  convex: ConvexConfig,
-  ai: AiConfig,
-  ttsWorkers: TtsWorkersConfig,
-  modal: ModalConfig,
-  datalabApiKey: Schema.optional(Schema.String),
-  otelEndpoint: Schema.optional(Schema.String),
-  tlsCert: Schema.optional(Schema.String),
-  tlsKey: Schema.optional(Schema.String),
-})
-
-export type AppConfigShape = typeof AppConfigSchema.Type
+export interface AppConfigShape {
+  port: number
+  siteUrl: string
+  environment: string
+  conversionBackend: ConversionBackend
+  ttsBackend: TtsBackend
+  s3: {
+    apiEndpoint: string
+    presignedUrlEndpoint: string
+    accessKeyId: string
+    secretAccessKey: string
+    bucket: string
+  }
+  convex: {
+    apiUrl: string
+    httpActionsUrl: string
+    publicApiUrl: string
+    apiToConvexServiceSecret: string
+  }
+  ai: {
+    googleApiKey: string
+    openrouterApiKey?: string
+    groqApiKey?: string
+    exaApiKey?: string
+    provider: AiProvider
+    model: string
+  }
+  ttsWorkers: {
+    qwen3Url: string
+    kokoroUrl: string
+  }
+  modal: {
+    markerUrl?: string
+    lightonocrUrl?: string
+    chandraUrl?: string
+    qwen3TtsUrl?: string
+    kokoroTtsUrl?: string
+  }
+  datalabApiKey?: string
+  otelEndpoint?: string
+}
 
 export class AppConfig extends Context.Tag("AppConfig")<
   AppConfig,
@@ -76,9 +52,9 @@ export class AppConfig extends Context.Tag("AppConfig")<
 >() {
   static Live = Layer.effect(
     AppConfig,
-    Effect.gen(function* () {
+    Effect.sync(() => {
       const config = readEnv()
-      yield* validate(config)
+      validate(config)
       return config
     }),
   )
@@ -86,16 +62,26 @@ export class AppConfig extends Context.Tag("AppConfig")<
 
 function readEnv(): AppConfigShape {
   const e = process.env
-  const conversionBackend = (optionalEnv("CONVERSION_BACKEND") ??
-    "local") as AppConfigShape["conversionBackend"]
-  const ttsBackend = (optionalEnv("TTS_BACKEND") ??
-    (conversionBackend === "local" ? "local" : "none")) as AppConfigShape["ttsBackend"]
+  const siteUrl = env("SITE_URL")
+  const conversionBackend = literalEnv(
+    "CONVERSION_BACKEND",
+    ["local", "datalab", "modal"] as const,
+    "local",
+  )
 
   return {
     port: Number(e.PORT) || 8787,
-    siteUrl: optionalEnv("SITE_URL"),
+    siteUrl,
+    environment:
+      optionalEnv("APP_ENV") ??
+      optionalEnv("NODE_ENV") ??
+      (siteUrl.includes("localhost") ? "dev" : "prod"),
     conversionBackend,
-    ttsBackend,
+    ttsBackend: literalEnv(
+      "TTS_BACKEND",
+      ["local", "modal", "none"] as const,
+      conversionBackend === "local" ? "local" : "none",
+    ),
     s3: {
       apiEndpoint: env("S3_API_ENDPOINT"),
       presignedUrlEndpoint: env("S3_PRESIGNED_URL_ENDPOINT"),
@@ -114,27 +100,12 @@ function readEnv(): AppConfigShape {
       openrouterApiKey: optionalEnv("OPENROUTER_API_KEY"),
       groqApiKey: optionalEnv("GROQ_API_KEY"),
       exaApiKey: optionalEnv("EXA_API_KEY"),
-      chat: {
-        provider:
-          (optionalEnv("CHAT_PROVIDER") as
-            | AppConfigShape["ai"]["chat"]["provider"]
-            | undefined) ?? "groq",
-        model: optionalEnv("CHAT_MODEL") ?? "openai/gpt-oss-120b",
-      },
-      processing: {
-        provider:
-          (optionalEnv("PROCESSING_PROVIDER") as
-            | AppConfigShape["ai"]["processing"]["provider"]
-            | undefined) ?? "groq",
-        model: optionalEnv("PROCESSING_MODEL") ?? "openai/gpt-oss-120b",
-      },
-      summary: {
-        provider:
-          (optionalEnv("SUMMARY_PROVIDER") as
-            | AppConfigShape["ai"]["summary"]["provider"]
-            | undefined) ?? "groq",
-        model: optionalEnv("SUMMARY_MODEL") ?? "openai/gpt-oss-120b",
-      },
+      provider: literalEnv(
+        "AI_PROVIDER",
+        ["google", "openrouter", "groq"] as const,
+        "groq",
+      ),
+      model: optionalEnv("AI_MODEL") ?? "openai/gpt-oss-120b",
     },
     ttsWorkers: {
       qwen3Url: env("QWEN3_TTS_WORKER_URL", "http://qwen3-tts:8002"),
@@ -149,89 +120,74 @@ function readEnv(): AppConfigShape {
     },
     datalabApiKey: optionalEnv("DATALAB_API_KEY"),
     otelEndpoint: optionalEnv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-    tlsCert: optionalEnv("TLS_CERT"),
-    tlsKey: optionalEnv("TLS_KEY"),
   }
 }
 
 function validate(config: AppConfigShape) {
-  return Effect.gen(function* () {
-    const decode = Schema.decodeUnknown(AppConfigSchema)
-    const result = yield* Effect.either(decode(config))
+  for (const [key, value] of [
+    ["SITE_URL", config.siteUrl],
+    ["S3_API_ENDPOINT", config.s3.apiEndpoint],
+    ["S3_PRESIGNED_URL_ENDPOINT", config.s3.presignedUrlEndpoint],
+    ["S3_ACCESS_KEY", config.s3.accessKeyId],
+    ["S3_SECRET_KEY", config.s3.secretAccessKey],
+    ["S3_BUCKET", config.s3.bucket],
+    ["API_TO_CONVEX_SERVICE_SECRET", config.convex.apiToConvexServiceSecret],
+  ] as const) {
+    if (!value) invalidConfig(`${key} is required`)
+  }
 
-    if (result._tag === "Left") {
-      console.error("Environment validation failed:")
-      console.error(result.left.message)
-      return yield* Effect.die("Invalid configuration")
+  if (!config.ai.googleApiKey) {
+    invalidConfig("GOOGLE_API_KEY is required for document embeddings")
+  }
+  if (config.conversionBackend === "datalab" && !config.datalabApiKey) {
+    invalidConfig("DATALAB_API_KEY required when CONVERSION_BACKEND=datalab")
+  }
+  if (config.ai.provider === "openrouter" && !config.ai.openrouterApiKey) {
+    invalidConfig("OPENROUTER_API_KEY required when AI_PROVIDER=openrouter")
+  }
+  if (config.ai.provider === "groq" && !config.ai.groqApiKey) {
+    invalidConfig("GROQ_API_KEY required when AI_PROVIDER=groq")
+  }
+  if (config.conversionBackend === "modal" && !config.modal.markerUrl) {
+    invalidConfig("MODAL_MARKER_URL required when CONVERSION_BACKEND=modal")
+  }
+  if (config.ttsBackend === "modal") {
+    if (!config.modal.qwen3TtsUrl) {
+      invalidConfig("MODAL_QWEN3_TTS_URL required when TTS_BACKEND=modal")
     }
-
-    if (!config.siteUrl) {
-      console.error("SITE_URL is required")
-      return yield* Effect.die("Invalid configuration")
+    if (!config.modal.kokoroTtsUrl) {
+      invalidConfig("MODAL_KOKORO_TTS_URL required when TTS_BACKEND=modal")
     }
+  }
+}
 
-    for (const [key, value] of [
-      ["S3_API_ENDPOINT", config.s3.apiEndpoint],
-      ["S3_PRESIGNED_URL_ENDPOINT", config.s3.presignedUrlEndpoint],
-      ["S3_ACCESS_KEY", config.s3.accessKeyId],
-      ["S3_SECRET_KEY", config.s3.secretAccessKey],
-      ["S3_BUCKET", config.s3.bucket],
-      ["API_TO_CONVEX_SERVICE_SECRET", config.convex.apiToConvexServiceSecret],
-    ] as const) {
-      if (!value) {
-        console.error(`${key} is required`)
-        return yield* Effect.die("Invalid configuration")
-      }
-    }
+function literalEnv<T extends string>(
+  name: string,
+  values: readonly T[],
+  fallback: T,
+): T {
+  const value = optionalEnv(name)
+  if (!value) return fallback
+  if ((values as readonly string[]).includes(value)) return value as T
+  return invalidConfig(`${name} must be one of: ${values.join(", ")}`)
+}
 
-    if (!config.ai.googleApiKey) {
-      console.error(
-        "GOOGLE_API_KEY is required for document embeddings",
-      )
-      return yield* Effect.die("Invalid configuration")
-    }
+function invalidConfig(message: string): never {
+  writeConfigError(message)
+  throw new Error("Invalid configuration")
+}
 
-    if (config.conversionBackend === "datalab" && !config.datalabApiKey) {
-      console.error("DATALAB_API_KEY required when CONVERSION_BACKEND=datalab")
-      return yield* Effect.die("Invalid configuration")
-    }
-
-    const providers = [
-      config.ai.chat.provider,
-      config.ai.processing.provider,
-      config.ai.summary.provider,
-    ]
-
-    if (providers.includes("openrouter") && !config.ai.openrouterApiKey) {
-      console.error(
-        "OPENROUTER_API_KEY required when any provider is openrouter",
-      )
-      return yield* Effect.die("Invalid configuration")
-    }
-
-    if ((providers as string[]).includes("groq") && !config.ai.groqApiKey) {
-      console.error("GROQ_API_KEY required when any provider is groq")
-      return yield* Effect.die("Invalid configuration")
-    }
-
-    if (config.conversionBackend === "modal") {
-      if (!config.modal.markerUrl) {
-        console.error("MODAL_MARKER_URL required when CONVERSION_BACKEND=modal")
-        return yield* Effect.die("Invalid configuration")
-      }
-    }
-
-    if (config.ttsBackend === "modal") {
-      if (!config.modal.qwen3TtsUrl) {
-        console.error("MODAL_QWEN3_TTS_URL required when TTS_BACKEND=modal")
-        return yield* Effect.die("Invalid configuration")
-      }
-      if (!config.modal.kokoroTtsUrl) {
-        console.error("MODAL_KOKORO_TTS_URL required when TTS_BACKEND=modal")
-        return yield* Effect.die("Invalid configuration")
-      }
-    }
-  })
+function writeConfigError(message: string) {
+  process.stderr.write(
+    `${JSON.stringify({
+      timestamp: new Date().toISOString(),
+      service: "academic-reader-api",
+      eventName: "config_validation_failed",
+      severity: "ERROR",
+      errorCategory: "configuration",
+      errorMessage: message,
+    })}\n`,
+  )
 }
 
 function env(name: string, fallback = ""): string {

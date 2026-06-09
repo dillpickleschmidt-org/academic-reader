@@ -13,6 +13,7 @@ import { ConvexClient } from "../services/convex-client"
 import { TtsService } from "../services/backends/tts"
 import { AppConfig } from "../config"
 import { startDocumentAudioGeneration } from "../services/tts-generation"
+import { audioUrl } from "../documents/document-storage"
 
 interface GetBlockAudioRequest {
   documentId: string
@@ -64,10 +65,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
         return HttpServerResponse.unsafeJson({ ready: false })
       }
 
-      const audioUrl = `/api/assets/documents/${encodeURIComponent(documentId)}/audio?${new URLSearchParams({ blockId, voiceId })}`
       return HttpServerResponse.unsafeJson({
         ready: true,
-        audioUrl,
+        audioUrl: audioUrl(documentId, blockId, voiceId),
         text: cachedAudio.text,
         durationMs: cachedAudio.durationMs,
         sampleRate: cachedAudio.sampleRate,
@@ -125,7 +125,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
         readiness.voices[voiceId].audioBlockIds.length ===
           readiness.totalEligibleBlocks
       ) {
-        return HttpServerResponse.unsafeJson({ started: false, complete: true })
+        return HttpServerResponse.unsafeJson({
+          started: false,
+          reason: "complete",
+        })
       }
 
       const result = startDocumentAudioGeneration({
@@ -140,8 +143,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
           timestamp: new Date().toISOString(),
           method: "BACKGROUND",
           path: "/tts/generate-document-audio/background",
+          startTimeMs: performance.now(),
           documentId,
           voiceId,
+          ttsBackend: config.ttsBackend,
         },
       })
 
@@ -154,11 +159,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
     Effect.gen(function* () {
       yield* requireAuth
       const config = yield* AppConfig
+      const isProduction =
+        config.environment === "prod" || config.environment === "production"
 
-      if (
-        config.ttsBackend !== "local" ||
-        process.env.NODE_ENV === "production"
-      ) {
+      if (config.ttsBackend !== "local" || isProduction) {
         return HttpServerResponse.unsafeJson(
           { error: "TTS unload is only available in local development" },
           { status: 404 },

@@ -16,7 +16,7 @@ import { NavActions } from "@/components/sidebar/nav-actions"
 import { ColorThemeSelector } from "@/components/sidebar/ColorThemeSelector"
 import { TypographyStyleToggle } from "@/components/sidebar/TypographyStyleToggle"
 import { SettingsDialog } from "@/components/sidebar/SettingsDialog"
-import { AudioSettingsPopover } from "@/components/sidebar/audio-settings"
+import { AudioSettingsPopover } from "@/components/sidebar/audio-settings/AudioSettingsPopover"
 import {
   Sidebar,
   SidebarContent,
@@ -60,48 +60,24 @@ function ChatThreadsNewButton() {
   )
 }
 
-const THREAD_COLORS = [
-  "bg-red-400",
-  "bg-orange-400",
-  "bg-amber-400",
-  "bg-yellow-400",
-  "bg-lime-400",
-  "bg-green-400",
-  "bg-emerald-400",
-  "bg-cyan-400",
-  "bg-sky-400",
-  "bg-blue-400",
-  "bg-violet-400",
-  "bg-pink-400",
-]
-
 const ChatThreadItem = React.memo(function ChatThreadItem({
   threadId,
   title,
   isActive,
   isUnlinked,
-  colorIndex,
-  documentName,
 }: {
   threadId: string
   title: string
   isActive: boolean
   isUnlinked: boolean
-  colorIndex?: number
-  documentName?: string
 }) {
   const { selectThread, deleteThread } = useChatPanel()
   return (
     <SidebarMenuSubButton
       onClick={() => selectThread(threadId)}
-      title={documentName}
+      title={title}
       className={`group/thread relative h-auto my-0.5 py-1 pl-2.75 cursor-pointer overflow-hidden ${isActive ? "bg-muted font-medium" : ""}`}
     >
-      {colorIndex !== undefined && (
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-[2.75%] rounded-tl-sm rounded-bl-sm ${THREAD_COLORS[colorIndex]}`}
-        />
-      )}
       {isUnlinked && (
         <Link2Off className="size-3 shrink-0 text-muted-foreground" />
       )}
@@ -152,8 +128,6 @@ export function ReaderSidebar({
                 title={thread.title ?? "New chat"}
                 isActive={chatPanel.activeThreadId === thread._id}
                 isUnlinked={thread.documentId === null}
-                colorIndex={thread.documentColor}
-                documentName={thread.documentName}
               />
             ))}
           </div>

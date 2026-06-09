@@ -1,5 +1,8 @@
 """Modal worker for Qwen3-TTS."""
 
+import builtins
+import json
+from datetime import datetime, timezone
 import modal
 from pathlib import Path
 
@@ -50,6 +53,19 @@ app = modal.App("qwen3-tts", image=image)
 
 snapshot_key = "v116"
 TIMEOUT_SECONDS = 300
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "qwen3-tts",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 with image.imports():
     import sys

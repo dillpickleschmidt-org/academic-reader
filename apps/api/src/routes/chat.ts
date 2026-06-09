@@ -13,9 +13,9 @@ import { runChatStream } from "../services/ai/chat-agent"
 interface ChatRequest {
   messages: UIMessage[]
   threadId: string
-  documentContext?: {
-    documentId?: string
-    summary?: string
+  documentContext: {
+    documentId: string
+    summary: string | null
   }
 }
 
@@ -30,22 +30,36 @@ export const chatRouter = HttpRouter.empty.pipe(
 
       const body = (yield* request.json) as ChatRequest
       const { messages, threadId, documentContext } = body
+      event.startTimeMs = performance.now()
+      Object.assign(event, {
+        threadId,
+        documentId: documentContext?.documentId,
+        messageCount: messages.length,
+      })
 
-      if (!documentContext?.documentId) {
-        emitStreamingEvent(event, { status: 400 })
+      if (!documentContext || !documentContext.documentId) {
+        emitStreamingEvent(event, {
+          status: 400,
+          error: {
+            category: "validation",
+            message: "documentId is required",
+            code: "MISSING_DOCUMENT_ID",
+          },
+        })
         return yield* new ValidationError({ message: "documentId is required" })
       }
 
       if (!threadId) {
-        emitStreamingEvent(event, { status: 400 })
+        emitStreamingEvent(event, {
+          status: 400,
+          error: {
+            category: "validation",
+            message: "threadId is required",
+            code: "MISSING_THREAD_ID",
+          },
+        })
         return yield* new ValidationError({ message: "threadId is required" })
       }
-
-      Object.assign(event, {
-        threadId,
-        documentId: documentContext.documentId,
-        messageCount: messages.length,
-      })
 
       const responseResult = yield* Effect.either(
         runChatStream({

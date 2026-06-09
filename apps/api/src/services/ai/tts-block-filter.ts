@@ -7,7 +7,7 @@ const BATCH_SIZE = 250
 const MAX_CONCURRENT = 3
 const MAX_OUTPUT_TOKENS = 8_192
 
-export interface TtsBlockFilterErrorDetails {
+interface TtsBlockFilterErrorDetails {
   ttsFilterBatchIndex: number
   ttsFilterGroupSize: number
   ttsFilterFinishReason: FinishReason
@@ -29,12 +29,6 @@ class TtsBlockFilterOutputError extends Error {
     super(message, { cause })
     this.name = "TtsBlockFilterOutputError"
   }
-}
-
-export function getTtsBlockFilterErrorDetails(error: unknown) {
-  return error instanceof TtsBlockFilterOutputError
-    ? error.details
-    : undefined
 }
 
 const BlockFilterElement = z.object({

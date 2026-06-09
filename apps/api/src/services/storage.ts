@@ -10,11 +10,7 @@ const tunnelUrlPath = resolve(
   "../../../../.infra/tunnel/url",
 )
 
-export function getDocumentPath(fileId: string, userId?: string): string {
-  return userId ? `documents/${userId}/${fileId}` : `temp_documents/${fileId}`
-}
-
-export interface SaveFileOptions {
+interface SaveFileOptions {
   contentType?: string
   cacheControl?: string
 }
@@ -27,7 +23,6 @@ export interface StorageService {
   ): Effect.Effect<void, StorageError>
   readFile(key: string): Effect.Effect<Buffer, StorageError>
   readFileAsString(key: string): Effect.Effect<string, StorageError>
-  exists(key: string): Effect.Effect<boolean, StorageError>
   deleteFile(key: string): Effect.Effect<boolean, StorageError>
   deletePrefix(prefix: string): Effect.Effect<number, StorageError>
   copyPrefix(
@@ -38,10 +33,6 @@ export interface StorageService {
   getPresignedUploadUrl(
     key: string,
   ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, StorageError>
-  uploadImages(
-    docPath: string,
-    images: Record<string, string>,
-  ): Effect.Effect<Record<string, string>, StorageError>
 }
 
 export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
@@ -85,7 +76,6 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
           if (url) return url
           await new Promise((r) => setTimeout(r, 500))
         }
-        console.warn("[S3] Tunnel URL not available after waiting")
         return undefined
       }
 
@@ -133,18 +123,6 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
 
         readFileAsString: (key) =>
           Effect.map(service.readFile(key), (buf) => buf.toString("utf-8")),
-
-        exists: (key) =>
-          Effect.tryPromise({
-            try: async () => {
-              const response = await client.fetch(
-                getObjectUrl(key).toString(),
-                { method: "HEAD" },
-              )
-              return response.ok
-            },
-            catch: (e) => new StorageError({ message: String(e), key }),
-          }),
 
         deleteFile: (key) =>
           Effect.tryPromise({
@@ -259,50 +237,6 @@ export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
               }
             },
             catch: (e) => new StorageError({ message: String(e), key }),
-          }),
-
-        uploadImages: (docPath, images) =>
-          Effect.tryPromise({
-            try: async () => {
-              const storageId = docPath.split("/")[2]
-              const baseUrl = `/api/assets/documents/${encodeURIComponent(storageId)}/images`
-              const entries = await Promise.all(
-                Object.entries(images).map(async ([filename, base64Data]) => {
-                  const key = `${docPath}/images/${filename}`
-                  const buffer = Buffer.from(base64Data, "base64")
-                  const ext = filename.split(".").pop()?.toLowerCase() ?? "png"
-                  const mimeTypes: Record<string, string> = {
-                    png: "image/png",
-                    jpg: "image/jpeg",
-                    jpeg: "image/jpeg",
-                    webp: "image/webp",
-                    gif: "image/gif",
-                  }
-
-                  const response = await client.fetch(
-                    getObjectUrl(key).toString(),
-                    {
-                      method: "PUT",
-                      headers: {
-                        "Content-Type": mimeTypes[ext] ?? "image/png",
-                        "Cache-Control": "private, max-age=31536000, immutable",
-                      },
-                      body: new Uint8Array(buffer),
-                    },
-                  )
-                  if (!response.ok) {
-                    const error = await response.text()
-                    throw new Error(
-                      `S3 image upload failed for ${filename}: ${error}`,
-                    )
-                  }
-                  return [filename, `${baseUrl}/${encodeURIComponent(filename)}`] as const
-                }),
-              )
-              return Object.fromEntries(entries)
-            },
-            catch: (e) =>
-              new StorageError({ message: String(e), key: docPath }),
           }),
       }
 

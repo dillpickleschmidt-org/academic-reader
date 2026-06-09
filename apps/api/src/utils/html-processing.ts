@@ -3,10 +3,14 @@ import type { CheerioAPI } from "cheerio"
 import katex from "katex"
 import { escapeHtml } from "./sanitize"
 
-export type HtmlTransform = ($: CheerioAPI) => void
+interface HtmlProcessingStats {
+  katexFailureCount: number
+}
+
+type HtmlTransform = ($: CheerioAPI, stats: HtmlProcessingStats) => void
 
 export const HTML_TRANSFORMS: HtmlTransform[] = [
-  removeImgDescriptions,
+  ($) => $(".img-description").remove(),
   demoteExtraH1s,
   wrapCitations,
   processParagraphs,
@@ -14,19 +18,16 @@ export const HTML_TRANSFORMS: HtmlTransform[] = [
   wrapTablesInScrollContainers,
 ]
 
-export function processHtml(html: string, transforms: HtmlTransform[]): string {
+export function processHtml(html: string, transforms: HtmlTransform[]) {
   const $ = cheerio.load(html)
+  const stats: HtmlProcessingStats = { katexFailureCount: 0 }
   for (const transform of transforms) {
-    transform($)
+    transform($, stats)
   }
-  return $("body").html() ?? ""
+  return { html: $("body").html() ?? "", stats }
 }
 
-export function removeImgDescriptions($: CheerioAPI): void {
-  $(".img-description").remove()
-}
-
-export function demoteExtraH1s($: CheerioAPI): void {
+function demoteExtraH1s($: CheerioAPI): void {
   $("h1").each(function (index) {
     if (index === 0) return
     const $h1 = $(this)
@@ -42,7 +43,7 @@ export function demoteExtraH1s($: CheerioAPI): void {
   })
 }
 
-export function wrapTablesInScrollContainers($: CheerioAPI): void {
+function wrapTablesInScrollContainers($: CheerioAPI): void {
   $("table").each(function () {
     $(this).wrap(
       '<div class="table-container"><div class="table-scroll"></div></div>',
@@ -52,7 +53,7 @@ export function wrapTablesInScrollContainers($: CheerioAPI): void {
 
 const CITATION_PATTERN = /\[(?:[A-Z][^\]]{0,100}\d{4}|[\d,;\s\-–]{1,50})\]/g
 
-export function wrapCitations($: CheerioAPI): void {
+function wrapCitations($: CheerioAPI): void {
   $("body")
     .find("*")
     .contents()
@@ -87,7 +88,7 @@ export function wrapCitations($: CheerioAPI): void {
     })
 }
 
-export function processParagraphs($: CheerioAPI): void {
+function processParagraphs($: CheerioAPI): void {
   const h1 = $("h1").first()
   const authorSectionEnd = h1.length > 0 ? h1.nextAll("h1, h2").first() : null
 
@@ -113,7 +114,7 @@ export function processParagraphs($: CheerioAPI): void {
   })
 }
 
-export function convertMathToHtml($: CheerioAPI): void {
+function convertMathToHtml($: CheerioAPI, stats: HtmlProcessingStats): void {
   $("math").each(function () {
     const latex = $(this).text().trim()
     if (!latex) return
@@ -126,8 +127,8 @@ export function convertMathToHtml($: CheerioAPI): void {
         output: "htmlAndMathml",
       })
       $(this).replaceWith(html)
-    } catch (e) {
-      console.warn(`[html] KaTeX failed for: ${latex.slice(0, 50)}...`, e)
+    } catch {
+      stats.katexFailureCount++
     }
   })
 }
@@ -146,12 +147,12 @@ export function rewriteImageSources(
   return $("body").html() ?? ""
 }
 
-export interface PageMarkerStats {
+interface PageMarkerStats {
   expected: number
   injected: number
 }
 
-export interface PageMarkerResult {
+interface PageMarkerResult {
   html: string
   stats: PageMarkerStats
 }

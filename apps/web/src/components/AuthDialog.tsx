@@ -34,7 +34,7 @@ export function AuthDialog({
   onSuccess,
   showTrigger = true,
 }: AuthDialogProps) {
-  const { authProviders, isLoading } = useAppConfig()
+  const appConfig = useAppConfig()
   const [internalOpen, setInternalOpen] = useState(false)
 
   const open = externalOpen ?? internalOpen
@@ -152,7 +152,7 @@ export function AuthDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {isLoading ? (
+          {appConfig.isLoading ? (
             <>
               <div className="h-11 animate-pulse bg-muted rounded-md" />
               <div className="flex items-center gap-3">
@@ -161,7 +161,7 @@ export function AuthDialog({
                 <Separator className="flex-1" />
               </div>
             </>
-          ) : authProviders.google ? (
+          ) : appConfig.authProviders.google ? (
             <>
               <Button
                 variant="outline"

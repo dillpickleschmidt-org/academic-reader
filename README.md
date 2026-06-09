@@ -127,6 +127,7 @@ User-provided values usually come only from third-party dashboards:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — optional Google sign-in
 - `EXA_API_KEY` — optional web search in chat
 - `GROQ_API_KEY` / `OPENROUTER_API_KEY` — optional alternative AI providers
+- `AI_PROVIDER` / `AI_MODEL` — optional model override for chat, summary, and processing
 
 Generated locally by `bun run infra`:
 
@@ -277,8 +278,9 @@ The app tries to minimize manual environment variables:
 | `MODAL_QWEN3_TTS_URL` | `TTS_BACKEND=modal` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google sign-in |
 | `EXA_API_KEY` | Optional chat web search |
-| `GROQ_API_KEY` | Only if a provider is set to `groq` |
-| `OPENROUTER_API_KEY` | Only if a provider is set to `openrouter` |
+| `GROQ_API_KEY` | Only if `AI_PROVIDER=groq` |
+| `OPENROUTER_API_KEY` | Only if `AI_PROVIDER=openrouter` |
+| `AI_PROVIDER` / `AI_MODEL` | Optional model override for chat, summary, and processing |
 
 See `.env.local.example` and `.env.production.example` for all supported variables.
 
@@ -287,19 +289,17 @@ See `.env.local.example` and `.env.production.example` for all supported variabl
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/upload` | Upload file |
-| `POST /api/convert/:fileId` | Start conversion job |
-| `GET /api/jobs/:jobId/stream` | SSE progress stream |
-| `POST /api/jobs/:jobId/cancel` | Cancel a running job |
-| `GET /api/files/:fileId/download` | Download converted HTML |
-| `GET /api/saved-documents/:documentId` | Load saved document |
-| `DELETE /api/saved-documents/:documentId` | Delete saved document |
-| `GET /api/saved-documents/:id/page/:pageNum` | Get original PDF page |
+| `POST /api/documents` | Create a durable document and start processing |
+| `GET /api/documents/:documentId/content` | Load converted document content |
+| `DELETE /api/documents/:documentId` | Delete a document |
+| `GET /api/documents/:documentId/page/:pageNum` | Get original PDF page |
+| `GET /api/documents/:documentId/download` | Download converted HTML |
 | `POST /api/chat` | AI chat with document context |
-| `POST /api/documents/:id/embeddings` | Generate document embeddings |
+| `POST /api/documents/:documentId/embeddings` | Generate document embeddings |
 | `POST /api/tts/generate-document-audio` | Start cached document audio generation |
 | `POST /api/tts/get-block-audio` | Get cached audio for a block |
 | `POST /api/tts/unload` | Unload local TTS workers |
-| `GET /api/assets/documents/:storageId/images/:filename` | Authenticated document image asset |
+| `GET /api/assets/documents/:documentId/images/:filename` | Authenticated document image asset |
 | `GET /api/assets/documents/:documentId/audio` | Authenticated document audio asset |
 | `GET /api/runtime-config` | Public browser runtime configuration |
 
@@ -315,7 +315,7 @@ Buckets are private. Browser-facing document images/audio are served through aut
 Storage prefixes:
 
 - signed-out uploads: `temp_documents/{fileId}/` — lifecycle cleanup after 7 days
-- signed-in documents: `documents/{userId}/{fileId}/` — permanent until deleted
+- signed-in documents: `documents/{userId}/{documentId}/` — permanent until deleted
 
 Each document folder contains:
 

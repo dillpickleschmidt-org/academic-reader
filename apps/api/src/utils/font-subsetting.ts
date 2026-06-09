@@ -231,8 +231,7 @@ export async function embedSourceSans(): Promise<string> {
   font-display: swap;
   src: url(${dataUri}) format('woff2');
 }`
-  } catch (e) {
-    console.error("Failed to embed Source Sans 3:", e)
+  } catch {
     return "/* Source Sans 3 embedding failed */"
   }
 }
@@ -244,10 +243,7 @@ export async function subsetKatexFonts(
 
   for (const [fontKey, chars] of Object.entries(fontUsage)) {
     const fontData = FONT_DATA[fontKey]
-    if (!fontData) {
-      console.warn(`Unknown font key: ${fontKey}`)
-      continue
-    }
+    if (!fontData) continue
 
     const uniqueChars = [...chars].join("")
     if (!uniqueChars) continue
@@ -267,9 +263,7 @@ export async function subsetKatexFonts(
   font-display: swap;
   src: url(${dataUri}) format('woff2');
 }`)
-    } catch (e) {
-      console.warn(`Failed to subset ${fontKey}:`, e)
-    }
+    } catch {}
   }
 
   return cssBlocks.join("\n")

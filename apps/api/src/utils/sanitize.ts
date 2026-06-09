@@ -1,5 +1,3 @@
-import { load } from "cheerio"
-
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -25,10 +23,6 @@ export function contentDisposition(
   type: "attachment" | "inline" = "attachment",
 ): string {
   return `${type}; filename="${quotedAsciiFilename(filename)}"; filename*=UTF-8''${encodeRfc5987Value(filename)}`
-}
-
-export function stripHtml(html: string): string {
-  return load(html).text().replace(/\s+/g, " ").trim()
 }
 
 function quotedAsciiFilename(filename: string): string {

@@ -5,17 +5,13 @@
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Doc, Id } from "../_generated/dataModel"
 import ttsManifest from "../../../api-client/src/tts-manifest.json"
+import type { TtsChunkPreparation, WordTimestamp } from "../validators"
 import { requireAuth } from "./auth"
+import { requireApiToConvexServiceSecret } from "./serverAuth"
 
 const VOICE_IDS = ttsManifest.voices.map((voice) => voice.id)
 
-export interface WordTimestamp {
-  word: string
-  startMs: number
-  endMs: number
-}
-
-export interface AudioRecord {
+interface AudioRecord {
   storagePath: string
   durationMs: number
   sampleRate: number
@@ -23,7 +19,7 @@ export interface AudioRecord {
   text: string
 }
 
-export interface CreateAudioInput {
+interface CreateAudioInput {
   documentId: Id<"documents">
   blockId: string
   voiceId: string
@@ -33,15 +29,11 @@ export interface CreateAudioInput {
   wordTimestamps: WordTimestamp[]
 }
 
-export interface ChunkPreparationInput {
-  blockId: string
-  includeTts: boolean
-  ttsText: string | null
-}
+type ChunkPreparationInput = TtsChunkPreparation
 
-export interface ServerGenerationState {
+interface ServerGenerationState {
   document: {
-    storageId: string
+    documentId: string
     userId: string
   }
   ttsReady: boolean
@@ -181,7 +173,7 @@ export async function getGenerationState(
   const existing = new Set(records.map((record) => record.blockId))
   return {
     document: {
-      storageId: doc.storageId,
+      documentId,
       userId: doc.userId,
     },
     ttsReady: !hasUndecidedTts,
@@ -237,7 +229,7 @@ export async function getDocumentAudioReadiness(
   }
 
   return {
-    documentCreatedAt: doc.createdAt,
+    documentCreatedAt: doc._creationTime,
     ttsReady: !hasUndecidedTts,
     eligibleBlockIds,
     totalEligibleBlocks: eligibleBlockIds.length,
@@ -314,9 +306,4 @@ async function upsertAudio(
     sampleRate: input.sampleRate,
     wordTimestamps: input.wordTimestamps,
   })
-}
-
-function requireApiToConvexServiceSecret(secret: string) {
-  const expected = process.env.API_TO_CONVEX_SERVICE_SECRET
-  if (!expected || secret !== expected) throw new Error("Unauthorized")
 }

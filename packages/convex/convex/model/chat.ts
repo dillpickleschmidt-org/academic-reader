@@ -1,10 +1,7 @@
-import type { Infer } from "convex/values"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
-import type { messagePartValidator } from "../schema"
+import type { ChatRole, MessagePart } from "../validators"
 import { requireAuth } from "./auth"
-
-type MessagePart = Infer<typeof messagePartValidator>
 
 // ===== Mutation Helpers =====
 
@@ -93,7 +90,7 @@ export async function deleteMessagesFrom(
 export async function addMessage(
   ctx: MutationCtx,
   threadId: Id<"chatThreads">,
-  role: "user" | "assistant",
+  role: ChatRole,
   parts: MessagePart[],
 ) {
   const user = await requireAuth(ctx)
@@ -139,22 +136,11 @@ export async function getMessages(ctx: QueryCtx, threadId: Id<"chatThreads">) {
 export async function listAllThreads(ctx: QueryCtx) {
   const user = await requireAuth(ctx)
 
-  const threads = await ctx.db
+  return ctx.db
     .query("chatThreads")
     .withIndex("by_user", (q) => q.eq("userId", user._id))
     .order("desc")
     .collect()
-
-  return Promise.all(
-    threads.map(async (thread) => {
-      const doc = thread.documentId ? await ctx.db.get(thread.documentId) : null
-      return {
-        ...thread,
-        documentColor: doc?.color,
-        documentName: doc?.filename,
-      }
-    }),
-  )
 }
 
 export async function listThreadsForDocument(

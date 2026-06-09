@@ -24,10 +24,6 @@ export function AmbienceTab() {
     setAmbientVolume(soundId, v)
   }
 
-  const handleResetVolume = (soundId: AmbientSoundId) => {
-    setAmbientVolume(soundId, DEFAULT_VOLUME)
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <Label className="text-xs text-muted-foreground">Ambient Sounds</Label>
@@ -70,7 +66,9 @@ export function AmbienceTab() {
                   />
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem onClick={() => handleResetVolume(sound.id)}>
+                  <ContextMenuItem
+                    onClick={() => setAmbientVolume(sound.id, DEFAULT_VOLUME)}
+                  >
                     Reset volume
                   </ContextMenuItem>
                 </ContextMenuContent>

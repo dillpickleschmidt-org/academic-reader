@@ -1,5 +1,8 @@
 """Modal worker for LightOnOCR conversion."""
+from datetime import datetime, timezone
 from pathlib import Path
+import json
+import time
 import modal
 
 _here = Path(__file__).parent
@@ -30,6 +33,19 @@ image = (
 app = modal.App("lightonocr", image=image)
 
 
+def log_event(**fields):
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "academic-reader-worker",
+        "worker": "lightonocr",
+        **fields,
+    }
+    print(
+        json.dumps({k: v for k, v in event.items() if v is not None}, default=str),
+        flush=True,
+    )
+
+
 @app.cls(
     gpu="H100",
     cpu=2.0,
@@ -43,7 +59,8 @@ class LightOnOCR:
     def load_model(self):
         from vllm import LLM
 
-        print("[lightonocr] Loading vLLM model...", flush=True)
+        start = time.perf_counter()
+        log_event(eventName="models_load_start", method="LIFECYCLE", path="/models/load")
         self.llm = LLM(
             "lightonai/LightOnOCR-2-1B-bbox-soup",
             dtype="bfloat16",
@@ -52,13 +69,22 @@ class LightOnOCR:
             limit_mm_per_prompt={"image": 1},
             gpu_memory_utilization=0.9,
         )
-        print("[lightonocr] Model loaded", flush=True)
+        log_event(
+            eventName="models_load_complete",
+            method="LIFECYCLE",
+            path="/models/load",
+            status=200,
+            durationMs=round((time.perf_counter() - start) * 1000),
+        )
 
     @modal.method()
     def convert(
         self,
         file_url: str,
         result_upload_url: str,
+        request_id: str,
+        document_id: str,
+        user_id: str,
         page_range: str | None = None,
     ) -> dict:
         """Download file, convert with LightOnOCR, upload result to S3."""
@@ -69,7 +95,7 @@ class LightOnOCR:
         import httpx
         from app.conversion import convert_file_with_llm
 
-        # Download file
+        start = time.perf_counter()
         suffix = Path(file_url.split("?")[0]).suffix or ".pdf"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
             r = httpx.get(file_url, follow_redirects=True, timeout=60.0)
@@ -79,13 +105,43 @@ class LightOnOCR:
 
         try:
             result = convert_file_with_llm(path, self.llm, page_range)
+            chunks = (result.get("formats") or {}).get("chunks") or {}
             httpx.put(
                 result_upload_url,
                 content=json.dumps(result),
                 headers={"Content-Type": "application/json"},
                 timeout=120.0,
             ).raise_for_status()
+            log_event(
+                eventName="conversion_complete",
+                requestId=request_id,
+                documentId=document_id,
+                userId=user_id,
+                method="BACKGROUND",
+                path="/modal/lightonocr/convert",
+                status=200,
+                durationMs=round((time.perf_counter() - start) * 1000),
+                pageRange=page_range,
+                chunkCount=len(chunks.get("blocks") or []),
+                imageCount=len(result.get("images") or {}),
+            )
             return {"s3_result": True}
+        except Exception as e:
+            log_event(
+                eventName="conversion_failed",
+                requestId=request_id,
+                documentId=document_id,
+                userId=user_id,
+                method="BACKGROUND",
+                path="/modal/lightonocr/convert",
+                status=500,
+                durationMs=round((time.perf_counter() - start) * 1000),
+                pageRange=page_range,
+                errorCategory="internal",
+                errorMessage=str(e),
+                errorCode="LIGHTONOCR_CONVERSION_FAILED",
+            )
+            raise
         finally:
             path.unlink(missing_ok=True)
 
@@ -103,11 +159,19 @@ def api():
         file_url: str
         result_upload_url: str
         page_range: str | None = None
+        request_id: str
+        document_id: str
+        user_id: str
 
     @web.post("/run")
     async def run(req: ConvertRequest):
         call = await worker.convert.spawn.aio(
-            req.file_url, req.result_upload_url, req.page_range
+            req.file_url,
+            req.result_upload_url,
+            req.request_id,
+            req.document_id,
+            req.user_id,
+            req.page_range,
         )
         return {"id": call.object_id}
 

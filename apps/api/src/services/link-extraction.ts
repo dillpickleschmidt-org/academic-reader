@@ -6,7 +6,7 @@ type CheerioElement = Cheerio<any>[0]
 type MatchCandidate = { element: CheerioElement; matchedText: string }
 type SourceMatch = { element: CheerioElement; index: number }
 
-export interface LinkMapping {
+interface LinkMapping {
   sourceText: string
   targetText: string | null
   targetUrl: string | null
@@ -15,10 +15,10 @@ export interface LinkMapping {
   sourceBbox: [number, number, number, number]
 }
 
-export type BboxMap = Map<string, [number, number, number, number]>
-export type PageDimensions = Map<number, [number, number]>
+type BboxMap = Map<string, [number, number, number, number]>
+type PageDimensions = Map<number, [number, number]>
 
-export function extractLinkMappings(
+function extractLinkMappings(
   pdfBuffer: Buffer | Uint8Array,
 ): LinkMapping[] {
   const doc = mupdf.Document.openDocument(pdfBuffer, "application/pdf")
@@ -38,7 +38,7 @@ export function extractAndInjectLinks(
   return injectLinks(html, mappings)
 }
 
-export function injectLinks(
+function injectLinks(
   html: string,
   mappings: LinkMapping[],
   bboxMap?: BboxMap,

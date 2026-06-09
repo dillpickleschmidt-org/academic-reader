@@ -19,7 +19,7 @@ type TtsRewriteAttempt = "initial" | "repair"
 type RewriteBlock = { id: string; text: string }
 type RewriteEntry = { id: string; text: string }
 
-export interface TtsRewriteErrorDetails {
+interface TtsRewriteErrorDetails {
   ttsRewriteAttempt: TtsRewriteAttempt
   ttsRewriteRepairAttempt: number
   ttsRewriteBatchIndex: number
@@ -40,7 +40,7 @@ export interface TtsRewriteErrorDetails {
   ttsRewriteParsedIds: string[]
 }
 
-export interface RewriteResult {
+interface RewriteResult {
   texts: Record<string, string>
   repairedBlocks: number
 }
@@ -53,10 +53,6 @@ class TtsRewriteOutputError extends Error {
     super(message)
     this.name = "TtsRewriteOutputError"
   }
-}
-
-export function getTtsRewriteErrorDetails(error: unknown) {
-  return error instanceof TtsRewriteOutputError ? error.details : undefined
 }
 
 export function rewriteBlocksForTTS(blocks: { id: string; html: string }[]) {

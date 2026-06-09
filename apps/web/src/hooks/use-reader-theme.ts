@@ -1,8 +1,6 @@
 import { createSetting } from "@/settings/create-setting"
 import type { ReaderTheme } from "@/constants/themes"
 
-export type { ReaderTheme }
-
 const VALID: Set<string> = new Set(["light", "comfort", "dark"])
 
 export const useReaderTheme = createSetting<ReaderTheme>({

@@ -6,7 +6,7 @@ export const UploadResponse = Schema.Struct({
   filename: Schema.String,
   size: Schema.Number,
   content_type: Schema.String,
-  page_count: Schema.optional(Schema.Number),
+  page_count: Schema.NullOr(Schema.Number),
 })
 export type UploadResponse = typeof UploadResponse.Type
 

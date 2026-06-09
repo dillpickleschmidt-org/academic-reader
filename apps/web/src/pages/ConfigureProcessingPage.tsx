@@ -37,8 +37,14 @@ import {
 import { VOICES } from "@academic-reader/api-client/schemas/tts"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import type { BackendType } from "@academic-reader/api-client/schemas/common"
-import type { StageInfo } from "../hooks/use-conversion"
 import { useAppConfig } from "../hooks/use-app-config"
+
+interface StageInfo {
+  stage: string
+  current: number
+  total: number
+  completed: boolean
+}
 
 const AGGRESSIVE_MODE_SUPPORTED_TYPES = [
   "application/pdf",
@@ -77,7 +83,7 @@ const MODE_OPTIONS: {
 interface Props {
   fileName: string
   fileMimeType: string
-  pageCount?: number
+  pageCount: number | null
   uploadProgress: number
   uploadComplete: boolean
   conversionBackend: BackendType
@@ -399,7 +405,7 @@ export function ConfigureProcessingPage({
   onCancel,
   onBack,
 }: Props) {
-  const { user } = useAppConfig()
+  const { user, isLoading: appConfigLoading } = useAppConfig()
   const currentStep: Step = isProcessing ? "convert" : "configure"
 
   return (
@@ -507,7 +513,7 @@ export function ConfigureProcessingPage({
                         (optional)
                       </span>
                     </label>
-                    {pageCount !== undefined && (
+                    {pageCount !== null && (
                       <span className="text-sm text-muted-foreground">
                         {pageCount} {pageCount === 1 ? "page" : "pages"}
                       </span>
@@ -607,7 +613,7 @@ export function ConfigureProcessingPage({
                 )}
 
                 <div className="flex flex-col gap-3 mt-2 items-end">
-                  {!user && (
+                  {!appConfigLoading && !user && (
                     <p className="text-xs text-muted-foreground">
                       We require a free account to prevent abuse by bots. You'll
                       be prompted to sign in / sign up.

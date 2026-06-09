@@ -1,5 +1,8 @@
 """Modal worker for Kokoro TTS."""
 
+import builtins
+import json
+from datetime import datetime, timezone
 import modal
 from pathlib import Path
 
@@ -54,6 +57,19 @@ app = modal.App("kokoro-tts", image=image)
 
 snapshot_key = "v1"
 TIMEOUT_SECONDS = 300
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "kokoro-tts",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 with image.imports():
     import sys

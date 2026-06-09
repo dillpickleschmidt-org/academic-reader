@@ -1,8 +1,24 @@
+import builtins
+import json
 import threading
 import time
+from datetime import datetime, timezone
 
 _model_cache: dict | None = None
 _model_lock = threading.Lock()
+
+
+def print(*values, flush=False, **kwargs):
+    builtins.print(
+        json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "service": "academic-reader-worker",
+            "worker": "marker",
+            "eventName": "worker_lifecycle",
+            "message": " ".join(str(value) for value in values),
+        }),
+        flush=flush,
+    )
 
 
 def get_or_create_models() -> dict:

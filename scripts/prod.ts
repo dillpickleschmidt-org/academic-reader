@@ -133,12 +133,8 @@ async function setup() {
     EXA_API_KEY: existing.EXA_API_KEY || "",
     GROQ_API_KEY: existing.GROQ_API_KEY || "",
     OPENROUTER_API_KEY: existing.OPENROUTER_API_KEY || "",
-    CHAT_PROVIDER: existing.CHAT_PROVIDER || "groq",
-    CHAT_MODEL: existing.CHAT_MODEL || "openai/gpt-oss-120b",
-    PROCESSING_PROVIDER: existing.PROCESSING_PROVIDER || "groq",
-    PROCESSING_MODEL: existing.PROCESSING_MODEL || "openai/gpt-oss-120b",
-    SUMMARY_PROVIDER: existing.SUMMARY_PROVIDER || "groq",
-    SUMMARY_MODEL: existing.SUMMARY_MODEL || "openai/gpt-oss-120b",
+    AI_PROVIDER: existing.AI_PROVIDER || "groq",
+    AI_MODEL: existing.AI_MODEL || "openai/gpt-oss-120b",
     OTEL_EXPORTER_OTLP_ENDPOINT: existing.OTEL_EXPORTER_OTLP_ENDPOINT || "",
   }
 
@@ -351,17 +347,7 @@ function writeEnvFile(env: Record<string, string>) {
         "OPENROUTER_API_KEY",
       ],
     ],
-    [
-      "Models",
-      [
-        "CHAT_PROVIDER",
-        "CHAT_MODEL",
-        "PROCESSING_PROVIDER",
-        "PROCESSING_MODEL",
-        "SUMMARY_PROVIDER",
-        "SUMMARY_MODEL",
-      ],
-    ],
+    ["Models", ["AI_PROVIDER", "AI_MODEL"]],
     ["Observability", ["OTEL_EXPORTER_OTLP_ENDPOINT"]],
   ]
 
@@ -438,6 +424,8 @@ function printMissingDashboardValues(env: Record<string, string>) {
       "S3_BUCKET",
     )
   }
+  if (env.AI_PROVIDER === "groq") required.push("GROQ_API_KEY")
+  if (env.AI_PROVIDER === "openrouter") required.push("OPENROUTER_API_KEY")
   if (env.CONVERSION_BACKEND === "datalab") required.push("DATALAB_API_KEY")
   if (env.CONVERSION_BACKEND === "modal") required.push("MODAL_MARKER_URL")
   if (env.TTS_BACKEND === "modal") {

@@ -1,17 +1,15 @@
-import type { AMBIENT_SOUNDS, MUSIC_TRACKS } from "./constants"
+import type { AMBIENT_SOUNDS } from "./constants"
 
 export type VoiceId = string
 
 // Music types
-export type MusicTrackId = (typeof MUSIC_TRACKS)[number]["id"]
-
 export type MusicTrack = {
   id: string
   name: string
   src: string | null
 }
 
-export type MusicState = {
+type MusicState = {
   playlist: MusicTrack[]
   currentTrackIndex: number
   isPlaying: boolean
@@ -23,7 +21,7 @@ export type MusicState = {
 // Ambience types
 export type AmbientSoundId = (typeof AMBIENT_SOUNDS)[number]["id"]
 
-export type AmbientSoundState = {
+type AmbientSoundState = {
   id: AmbientSoundId
   name: string
   src: string | null
@@ -31,20 +29,14 @@ export type AmbientSoundState = {
   volume: number
 }
 
-// Preset types
-export type AudioPreset = {
-  id: string
-  name: string
-}
-
 // TTS types
-export type WordTimestamp = {
+type WordTimestamp = {
   word: string
   startMs: number
   endMs: number
 }
 
-export type PlaybackMode = "idle" | "loading" | "waiting" | "ready"
+type PlaybackMode = "idle" | "loading" | "waiting" | "ready"
 
 // Unified Audio State
 export type AudioState = {

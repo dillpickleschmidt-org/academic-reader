@@ -8,6 +8,7 @@ import type {
   Id,
 } from "@academic-reader/convex/convex/_generated/dataModel"
 import type { WordTimestamp } from "@academic-reader/api-client/schemas/tts"
+import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { AuthError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
 
@@ -17,7 +18,7 @@ interface ConvexConnectionConfig {
   apiToConvexServiceSecret: string
 }
 
-export interface DocumentChunkInput {
+interface DocumentChunkInput {
   blockId: string
   blockType: string
   html: string
@@ -33,7 +34,7 @@ export interface TtsChunkPreparation {
   ttsText: string | null
 }
 
-export interface BlockAudioRecord {
+interface BlockAudioRecord {
   storagePath: string
   durationMs: number
   sampleRate: number
@@ -41,15 +42,15 @@ export interface BlockAudioRecord {
   wordTimestamps: WordTimestamp[]
 }
 
-export interface DocumentAudioReadiness {
+interface DocumentAudioReadiness {
   ttsReady: boolean
   totalEligibleBlocks: number
   voices: Record<string, { audioBlockIds: string[] }>
 }
 
-export interface TtsGenerationState {
+interface TtsGenerationState {
   document: {
-    storageId: string
+    documentId: string
     userId: string
   }
   ttsReady: boolean
@@ -60,7 +61,7 @@ export interface TtsGenerationState {
   }>
 }
 
-export interface CreateTtsAudioInput {
+interface CreateTtsAudioInput {
   documentId: string
   blockId: string
   voiceId: string
@@ -70,24 +71,53 @@ export interface CreateTtsAudioInput {
   wordTimestamps: WordTimestamp[]
 }
 
-export interface RemoveDocumentResult {
+interface RemoveDocumentResult {
   deleted: boolean
   chunkCount: number
   audioCount: number
+  taskCount: number
   threadCount: number
   messageCount: number
   threadAction: "keep" | "delete"
 }
 
-export type ChatMessageParts = Doc<"chatMessages">["parts"]
+interface CreateDocumentInput {
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  pageCount: number | null
+  conversion: {
+    processingMode: ProcessingMode
+    useLlm: boolean
+    forceOcr: boolean
+    pageRange: string
+    audioVoiceId: string | null
+  }
+}
 
-export interface DocumentTocChild {
+interface CreateDocumentTaskInput {
+  documentId: string
+  kind: Doc<"documentTasks">["kind"]
+  status: Doc<"documentTasks">["status"]
+  progress: Doc<"documentTasks">["progress"]
+  error: string | null
+  conversion: Doc<"documentTasks">["conversion"]
+}
+
+interface UpdateDocumentTaskInput {
+  status?: Doc<"documentTasks">["status"]
+  progress?: Doc<"documentTasks">["progress"]
+  error?: string | null
+  conversion?: Doc<"documentTasks">["conversion"]
+}
+
+interface DocumentTocChild {
   id: string
   title: string
   page: number
 }
 
-export interface DocumentTocSection extends DocumentTocChild {
+interface DocumentTocSection extends DocumentTocChild {
   children?: DocumentTocChild[]
 }
 
@@ -100,24 +130,11 @@ export interface DocumentToc {
 export interface ConvexSession {
   getDocument(documentId: string): Promise<Doc<"documents">>
   getDocumentChunks(documentId: string): Promise<Doc<"chunks">[]>
-  createDocument(input: {
-    filename: string
-    storageId: string
-    pageCount: number | null
-    toc: DocumentToc | null
-  }): Promise<{ documentId: Id<"documents">; storageId: string }>
-  addDocumentChunks(
-    documentId: string,
-    chunks: DocumentChunkInput[],
-  ): Promise<{ added: number }>
-  updateDocumentToc(
-    documentId: string,
-    toc: DocumentToc,
-  ): Promise<{ updated: boolean }>
-  updateDocumentSummary(
-    documentId: string,
-    summary: string,
-  ): Promise<{ updated: boolean }>
+  createDocument(input: CreateDocumentInput): Promise<{
+    documentId: Id<"documents">
+    conversionTaskId: Id<"documentTasks">
+  }>
+  listDocumentTasks(documentId: string): Promise<Doc<"documentTasks">[]>
   removeDocument(
     documentId: string,
     threadAction: "keep" | "delete",
@@ -137,12 +154,12 @@ export interface ConvexSession {
   ): Promise<DocumentAudioReadiness>
   addMessageAndStartStreaming(
     threadId: string,
-    parts: ChatMessageParts,
+    parts: Doc<"chatMessages">["parts"],
   ): Promise<null>
   setChatStreaming(threadId: string, isStreaming: boolean): Promise<null>
   finishChatStreaming(
     threadId: string,
-    parts: ChatMessageParts,
+    parts: Doc<"chatMessages">["parts"],
     title?: string,
   ): Promise<null>
   updateChatThreadTitle(threadId: string, title: string): Promise<null>
@@ -154,6 +171,23 @@ export interface ConvexSession {
 }
 
 export interface ConvexServerSession {
+  createDocumentTask(input: CreateDocumentTaskInput): Promise<Id<"documentTasks">>
+  updateDocumentTask(
+    taskId: string,
+    patch: UpdateDocumentTaskInput,
+  ): Promise<{ updated: boolean }>
+  addDocumentChunks(
+    documentId: string,
+    chunks: DocumentChunkInput[],
+  ): Promise<{ added: number }>
+  updateDocumentToc(
+    documentId: string,
+    toc: DocumentToc,
+  ): Promise<{ updated: boolean }>
+  updateDocumentSummary(
+    documentId: string,
+    summary: string,
+  ): Promise<{ updated: boolean }>
   setTtsChunkPreparation(
     documentId: string,
     chunks: TtsChunkPreparation[],
@@ -165,7 +199,7 @@ export interface ConvexServerSession {
   createTtsAudio(input: CreateTtsAudioInput): Promise<Id<"ttsAudio">>
 }
 
-export interface ConvexClientService {
+interface ConvexClientService {
   userSession(): Effect.Effect<
     ConvexSession,
     AuthError,
@@ -207,15 +241,6 @@ export class ConvexClient extends Context.Tag("ConvexClient")<
   )
 }
 
-export function createConvexSessionFromCookies(
-  config: ConvexConnectionConfig,
-  cookies: Record<string, string>,
-): Effect.Effect<ConvexSession | null> {
-  return connectConvexSessionFromCookies(config, cookies).pipe(
-    Effect.catchAll(() => Effect.succeed(null)),
-  )
-}
-
 function connectConvexSessionFromCookies(
   config: ConvexConnectionConfig,
   cookies: Record<string, string>,
@@ -243,7 +268,7 @@ function connectConvexSessionFromCookies(
   })
 }
 
-export function createConvexServerSession(
+function createConvexServerSession(
   config: Pick<
     ConvexConnectionConfig,
     "apiUrl" | "apiToConvexServiceSecret"
@@ -252,6 +277,40 @@ export function createConvexServerSession(
   const client = new ConvexHttpClient(config.apiUrl)
 
   return {
+    createDocumentTask: (input) =>
+      client.mutation(api.api.documentTasks.createForServer, {
+        documentId: input.documentId as Id<"documents">,
+        kind: input.kind,
+        status: input.status,
+        progress: input.progress,
+        error: input.error,
+        conversion: input.conversion,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
+      }),
+    updateDocumentTask: (taskId, patch) =>
+      client.mutation(api.api.documentTasks.updateForServer, {
+        taskId: taskId as Id<"documentTasks">,
+        ...patch,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
+      }),
+    addDocumentChunks: (documentId, chunks) =>
+      client.mutation(api.api.documents.addChunksForServer, {
+        documentId: documentId as Id<"documents">,
+        chunks,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
+      }),
+    updateDocumentToc: (documentId, toc) =>
+      client.mutation(api.api.documents.updateTocForServer, {
+        documentId: documentId as Id<"documents">,
+        toc: normalizeDocumentToc(toc),
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
+      }),
+    updateDocumentSummary: (documentId, summary) =>
+      client.mutation(api.api.documents.updateSummaryForServer, {
+        documentId: documentId as Id<"documents">,
+        summary,
+        apiToConvexServiceSecret: config.apiToConvexServiceSecret,
+      }),
     setTtsChunkPreparation: (documentId, chunks) =>
       client.mutation(api.api.ttsAudio.setChunkPreparation, {
         documentId: documentId as Id<"documents">,
@@ -291,24 +350,14 @@ function makeConvexSession(client: ConvexHttpClient): ConvexSession {
     createDocument: (input) =>
       client.mutation(api.api.documents.create, {
         filename: input.filename,
-        storageId: input.storageId,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
         pageCount: input.pageCount,
-        toc: input.toc === null ? null : normalizeDocumentToc(input.toc),
+        conversion: input.conversion,
       }),
-    addDocumentChunks: (documentId, chunks) =>
-      client.mutation(api.api.documents.addChunks, {
+    listDocumentTasks: (documentId) =>
+      client.query(api.api.documentTasks.listForDocument, {
         documentId: documentId as Id<"documents">,
-        chunks,
-      }),
-    updateDocumentToc: (documentId, toc) =>
-      client.mutation(api.api.documents.updateToc, {
-        documentId: documentId as Id<"documents">,
-        toc: normalizeDocumentToc(toc),
-      }),
-    updateDocumentSummary: (documentId, summary) =>
-      client.mutation(api.api.documents.updateSummary, {
-        documentId: documentId as Id<"documents">,
-        summary,
       }),
     removeDocument: (documentId, threadAction) =>
       client.mutation(api.api.documents.remove, {

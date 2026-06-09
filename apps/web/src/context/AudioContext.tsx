@@ -95,7 +95,6 @@ type AudioActions = {
 
   // Master actions
   setMasterVolume: (volume: number) => void
-  setActivePreset: (presetId: string | null) => void
 }
 
 const AudioContext = createContext<{
@@ -141,7 +140,6 @@ function createInitialState(): AudioState {
     },
     master: {
       volume: 1.0,
-      activePreset: null,
     },
   }
 }
@@ -679,8 +677,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         music: {
           ...state.music,
           playlist: newPlaylist,
-          isPlaying:
-            wasEmpty && track.src !== null ? true : state.music.isPlaying,
+          isPlaying: wasEmpty ? true : state.music.isPlaying,
           currentTrackIndex: wasEmpty ? 0 : state.music.currentTrackIndex,
         },
       })
@@ -843,10 +840,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const toggleAmbientSound = useCallback(
     (soundId: AmbientSoundId, enabled: boolean) => {
       const state = store.getState()
-      const sound = state.ambience.sounds.find((s) => s.id === soundId)
-
-      if (enabled && !sound?.src) return
-
       store.setState({
         ambience: {
           sounds: state.ambience.sounds.map((s) =>
@@ -899,16 +892,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     [store],
   )
 
-  const setActivePreset = useCallback(
-    (presetId: string | null) => {
-      const state = store.getState()
-      store.setState({
-        master: { ...state.master, activePreset: presetId },
-      })
-    },
-    [store],
-  )
-
   // === Effects for Audio Sync ===
 
   useEffect(() => {
@@ -919,7 +902,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
       const currentTrack = state.music.playlist[state.music.currentTrackIndex]
 
-      if (state.music.isPlaying && currentTrack?.src) {
+      if (state.music.isPlaying && currentTrack) {
         if (currentMusicTrackIdRef.current !== currentTrack.id) {
           currentMusicTrackIdRef.current = currentTrack.id
           audio.src = currentTrack.src
@@ -972,7 +955,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       for (const sound of state.ambience.sounds) {
         const looper = ambienceAudioRefs.current.get(sound.id)
 
-        if (sound.enabled && sound.src) {
+        if (sound.enabled) {
           if (!looper && !pendingAmbienceInits.current.has(sound.id)) {
             pendingAmbienceInits.current.add(sound.id)
             const src = sound.src
@@ -1056,7 +1039,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     toggleAmbientSound,
     setAmbientVolume,
     setMasterVolume,
-    setActivePreset,
   }
 
   return (

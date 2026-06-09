@@ -111,11 +111,10 @@ export function MusicTab() {
   }
 
   const availableTracks = MUSIC_TRACKS.filter(
-    (track) => track.src && !playlist.some((p) => p.id === track.id),
+    (track) => !playlist.some((p) => p.id === track.id),
   )
 
   const currentTrack = playlist[currentTrackIndex]
-  const hasPlayableTracks = playlist.some((t) => t.src)
 
   return (
     <div className="flex flex-col gap-4">
@@ -128,7 +127,6 @@ export function MusicTab() {
               size="icon-sm"
               className="size-8"
               onClick={previousTrack}
-              disabled={!hasPlayableTracks}
             >
               <SkipBack className="size-4" />
             </Button>
@@ -137,7 +135,6 @@ export function MusicTab() {
               size="icon"
               className="size-10"
               onClick={toggleMusicPlayPause}
-              disabled={!hasPlayableTracks}
             >
               {isPlaying ? (
                 <Pause className="size-5" />
@@ -150,7 +147,6 @@ export function MusicTab() {
               size="icon-sm"
               className="size-8"
               onClick={nextTrack}
-              disabled={!hasPlayableTracks}
             >
               <SkipForward className="size-4" />
             </Button>
@@ -256,7 +252,7 @@ export function MusicTab() {
                       className="size-6 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation()
-                        togglePreview(track.id, track.src!)
+                        togglePreview(track.id, track.src)
                       }}
                     >
                       {previewingId === track.id ? (

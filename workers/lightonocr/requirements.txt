@@ -5,4 +5,3 @@ markdown
 httpx
 fastapi
 uvicorn[standard]
-sse-starlette

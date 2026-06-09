@@ -55,7 +55,6 @@ import { triggerEmbeddings } from "@academic-reader/api-client/client"
 import { useAppConfig } from "@/hooks/use-app-config"
 import { useDocumentContext } from "@/context/DocumentContext"
 import { useChatPanel } from "@/context/ChatPanelContext"
-import { useStreamSubscription } from "@/hooks/use-stream-subscription"
 import { authClient } from "@academic-reader/convex/auth-client"
 import { AppRuntime } from "@/lib/runtime"
 
@@ -321,12 +320,10 @@ export function AIChatPanel({ onClose }: Props) {
   const summary = documentContext?.summary
 
   // Load thread and messages together
-  const threadData = useQuery(
+  const persistedMessages = useQuery(
     api.api.chat.getThreadMessages,
     activeThreadId ? { threadId: activeThreadId as Id<"chatThreads"> } : "skip",
   )
-  const activeThread = threadData?.thread
-  const persistedMessages = threadData?.messages
 
   const deleteMessagesFrom = useMutation(api.api.chat.deleteMessagesFrom)
 
@@ -360,13 +357,6 @@ export function AIChatPanel({ onClose }: Props) {
   const { messages, sendMessage, status, setMessages } = useChat({
     transport: transportRef.current,
   })
-
-  // Cross-device streaming subscription
-  const streamingText = useStreamSubscription(
-    activeThreadId,
-    activeThread !== undefined && activeThread.isStreaming,
-    status !== "ready",
-  )
 
   // Keep refs in sync
   documentIdRef.current = documentId
@@ -493,31 +483,20 @@ export function AIChatPanel({ onClose }: Props) {
     [activeThreadId, isActive, messages, setMessages, deleteMessagesFrom],
   )
 
-  // Reversed messages for flex-col-reverse layout (memoized separately from streaming)
   const reversedMessages = useMemo(() => [...messages].reverse(), [messages])
-
-  // Ephemeral streaming message (rendered first due to flex-col-reverse = appears at bottom)
-  const ephemeralMessage = streamingText
-    ? {
-        id: "streaming-ephemeral",
-        role: "assistant" as const,
-        parts: [{ type: "text" as const, text: streamingText }],
-      }
-    : null
 
   const conversationFooter = useMemo(() => {
     const isLoading = status === "submitted" || status === "streaming"
-    const isRemoteStreaming = !!streamingText
-    if (!isLoading && !isRemoteStreaming && !storageError) return null
+    if (!isLoading && !storageError) return null
     return (
       <>
-        {(isLoading || isRemoteStreaming) && <Loader />}
+        {isLoading && <Loader />}
         {storageError && (
           <div className="text-sm text-amber-600">{storageError}</div>
         )}
       </>
     )
-  }, [status, storageError, streamingText])
+  }, [status, storageError])
 
   const handleSignIn = async () => {
     try {
@@ -560,11 +539,6 @@ export function AIChatPanel({ onClose }: Props) {
           <div className="flex flex-col-reverse flex-1 overflow-y-auto">
             {conversationFooter && (
               <div className="p-4">{conversationFooter}</div>
-            )}
-            {ephemeralMessage && (
-              <div key={ephemeralMessage.id} className="px-4 pt-4">
-                <ChatMessage message={ephemeralMessage} />
-              </div>
             )}
             {reversedMessages.map((message) => (
               <div

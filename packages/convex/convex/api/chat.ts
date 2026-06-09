@@ -28,30 +28,18 @@ export const deleteMessagesFrom = mutation({
     Chat.deleteMessagesFrom(ctx, threadId, messageId),
 })
 
-export const setStreaming = mutation({
-  args: {
-    threadId: v.id("chatThreads"),
-    isStreaming: v.boolean(),
-  },
-  handler: (ctx, { threadId, isStreaming }) =>
-    Chat.updateThread(ctx, threadId, { isStreaming }),
-})
-
-export const addMessageAndStartStreaming = mutation({
+export const addUserMessage = mutation({
   args: {
     threadId: v.id("chatThreads"),
     parts: v.array(messagePartValidator),
   },
   handler: async (ctx, { threadId, parts }) => {
     await Chat.addMessage(ctx, threadId, "user", parts)
-    await Chat.updateThread(ctx, threadId, {
-      updatedAt: Date.now(),
-      isStreaming: true,
-    })
+    await Chat.updateThread(ctx, threadId, { updatedAt: Date.now() })
   },
 })
 
-export const finishStreaming = mutation({
+export const addAssistantMessage = mutation({
   args: {
     threadId: v.id("chatThreads"),
     parts: v.array(messagePartValidator),
@@ -61,7 +49,6 @@ export const finishStreaming = mutation({
     await Chat.addMessage(ctx, threadId, "assistant", parts)
     await Chat.updateThread(ctx, threadId, {
       updatedAt: Date.now(),
-      isStreaming: false,
       ...(title !== undefined && { title }),
     })
   },
@@ -82,11 +69,7 @@ export const getThreadMessages = query({
   args: {
     threadId: v.id("chatThreads"),
   },
-  handler: async (ctx, { threadId }) => {
-    const thread = await Chat.getThread(ctx, threadId)
-    const messages = await Chat.getMessages(ctx, threadId)
-    return { thread, messages }
-  },
+  handler: (ctx, { threadId }) => Chat.getMessages(ctx, threadId),
 })
 
 export const listAllThreads = query({

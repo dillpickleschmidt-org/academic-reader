@@ -6,7 +6,7 @@ export type VoiceId = string
 export type MusicTrack = {
   id: string
   name: string
-  src: string | null
+  src: string
 }
 
 type MusicState = {
@@ -24,7 +24,7 @@ export type AmbientSoundId = (typeof AMBIENT_SOUNDS)[number]["id"]
 type AmbientSoundState = {
   id: AmbientSoundId
   name: string
-  src: string | null
+  src: string
   enabled: boolean
   volume: number
 }
@@ -70,6 +70,5 @@ export type AudioState = {
   // Master settings
   master: {
     volume: number
-    activePreset: string | null
   }
 }

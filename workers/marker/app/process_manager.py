@@ -4,14 +4,10 @@ Uses multiprocessing with 'spawn' for true process termination and CUDA compatib
 """
 
 import multiprocessing as mp
-import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 _ctx = mp.get_context("spawn")
-
-# Status type
-JobStatus = Literal["pending", "processing", "html_ready", "completed", "failed", "cancelled"]
 
 
 class ProcessManager:
@@ -21,17 +17,12 @@ class ProcessManager:
         self._manager = _ctx.Manager()
         self._jobs: dict[str, dict[str, Any]] = self._manager.dict()
         self._processes: dict[str, mp.Process] = {}
-        self._queues: dict[str, mp.Queue] = {}
         self._lock = _ctx.Lock()
 
-    def create_job(self, job_id: str, file_id: str, output_format: str) -> None:
+    def create_job(self, job_id: str) -> None:
         """Create a new job with pending status."""
         with self._lock:
-            self._jobs[job_id] = {
-                "status": "pending",
-                "file_id": file_id,
-                "output_format": output_format,
-            }
+            self._jobs[job_id] = {"status": "pending"}
 
     def get_job(self, job_id: str) -> dict | None:
         """Get a job by ID, or None if not found."""
@@ -40,26 +31,10 @@ class ProcessManager:
             # Convert proxy dict to regular dict
             return dict(job) if job else None
 
-    def update_job(self, job_id: str, **updates) -> None:
-        """Update a job with the given fields."""
-        with self._lock:
-            if job_id in self._jobs:
-                current = dict(self._jobs[job_id])
-                current.update(updates)
-                self._jobs[job_id] = current
-
-    def get_queue(self, job_id: str) -> mp.Queue:
-        """Get or create progress queue for a job."""
-        with self._lock:
-            if job_id not in self._queues:
-                self._queues[job_id] = _ctx.Queue()
-            return self._queues[job_id]
-
     def start_job(
         self,
         job_id: str,
         file_path: Path,
-        output_format: str,
         use_llm: bool,
         force_ocr: bool,
         page_range: str | None,
@@ -67,19 +42,15 @@ class ProcessManager:
         """Start a conversion job in a separate process."""
         from .conversion_process import run_conversion_process
 
-        queue = self.get_queue(job_id)
-
         process = _ctx.Process(
             target=run_conversion_process,
             args=(
                 job_id,
                 file_path,
-                output_format,
                 use_llm,
                 force_ocr,
                 page_range,
-                self._jobs,  # Shared dict
-                queue,  # Progress queue
+                self._jobs,
             ),
             daemon=False,  # Must be False so pdftext can spawn child processes
         )
@@ -121,15 +92,9 @@ class ProcessManager:
             return True
 
     def _cleanup_job(self, job_id: str) -> None:
-        """Clean up job resources (queue, process reference)."""
+        """Clean up job resources."""
         # Must be called within lock
         self._processes.pop(job_id, None)
-        queue = self._queues.pop(job_id, None)
-        if queue:
-            try:
-                queue.close()
-            except Exception:
-                pass
 
     def cleanup_finished(self, job_id: str) -> None:
         """Clean up a finished job's resources."""

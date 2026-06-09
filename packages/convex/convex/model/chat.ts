@@ -20,7 +20,6 @@ export async function createThread(
     userId: user._id,
     documentId,
     title: null,
-    isStreaming: false,
     createdAt: now,
     updatedAt: now,
   })
@@ -50,7 +49,6 @@ export async function updateThread(
   threadId: Id<"chatThreads">,
   fields: {
     title?: string
-    isStreaming?: boolean
     updatedAt?: number
   },
 ) {
@@ -108,16 +106,6 @@ export async function addMessage(
 }
 
 // ===== Query Helpers =====
-
-export async function getThread(ctx: QueryCtx, threadId: Id<"chatThreads">) {
-  const user = await requireAuth(ctx)
-  const thread = await ctx.db.get(threadId)
-
-  if (!thread) throw new Error("Thread not found")
-  if (thread.userId !== user._id) throw new Error("Unauthorized")
-
-  return thread
-}
 
 export async function getMessages(ctx: QueryCtx, threadId: Id<"chatThreads">) {
   const user = await requireAuth(ctx)

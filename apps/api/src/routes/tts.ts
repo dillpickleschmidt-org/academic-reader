@@ -5,7 +5,11 @@ import {
 } from "@effect/platform"
 import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
-import { getVoice } from "@academic-reader/api-client/schemas/tts"
+import {
+  getVoice,
+  type GenerateDocumentAudioRequest,
+  type GetBlockAudioRequest,
+} from "@academic-reader/api-client/schemas/tts"
 import { requireAuth } from "../middleware/auth"
 import { getEvent } from "../middleware/wide-event"
 import { Storage } from "../services/storage"
@@ -14,17 +18,6 @@ import { TtsService } from "../services/backends/tts"
 import { AppConfig } from "../config"
 import { startDocumentAudioGeneration } from "../services/tts-generation"
 import { audioUrl } from "../documents/document-storage"
-
-interface GetBlockAudioRequest {
-  documentId: string
-  blockId: string
-  voiceId: string
-}
-
-interface GenerateDocumentAudioRequest {
-  documentId: string
-  voiceId: string
-}
 
 export const ttsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(

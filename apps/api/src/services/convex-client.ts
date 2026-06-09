@@ -152,12 +152,11 @@ export interface ConvexSession {
   getDocumentAudioReadiness(
     documentId: string,
   ): Promise<DocumentAudioReadiness>
-  addMessageAndStartStreaming(
+  addUserMessage(
     threadId: string,
     parts: Doc<"chatMessages">["parts"],
   ): Promise<null>
-  setChatStreaming(threadId: string, isStreaming: boolean): Promise<null>
-  finishChatStreaming(
+  addAssistantMessage(
     threadId: string,
     parts: Doc<"chatMessages">["parts"],
     title?: string,
@@ -383,18 +382,13 @@ function makeConvexSession(client: ConvexHttpClient): ConvexSession {
       client.query(api.api.ttsAudio.getDocumentAudioReadiness, {
         documentId: documentId as Id<"documents">,
       }),
-    addMessageAndStartStreaming: (threadId, parts) =>
-      client.mutation(api.api.chat.addMessageAndStartStreaming, {
+    addUserMessage: (threadId, parts) =>
+      client.mutation(api.api.chat.addUserMessage, {
         threadId: threadId as Id<"chatThreads">,
         parts,
       }),
-    setChatStreaming: (threadId, isStreaming) =>
-      client.mutation(api.api.chat.setStreaming, {
-        threadId: threadId as Id<"chatThreads">,
-        isStreaming,
-      }),
-    finishChatStreaming: (threadId, parts, title) =>
-      client.mutation(api.api.chat.finishStreaming, {
+    addAssistantMessage: (threadId, parts, title) =>
+      client.mutation(api.api.chat.addAssistantMessage, {
         threadId: threadId as Id<"chatThreads">,
         parts,
         title,

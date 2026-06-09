@@ -6,6 +6,8 @@ import { UploadResponse, type ConversionOptions } from "./schemas/upload"
 import {
   GenerateDocumentAudioResult,
   GetBlockAudioResponse,
+  type GenerateDocumentAudioRequest,
+  type GetBlockAudioRequest,
 } from "./schemas/tts"
 
 export type { ConversionOptions }
@@ -108,10 +110,7 @@ export const deleteDocument = (
       )
   })
 
-export const generateDocumentAudio = (params: {
-  documentId: string
-  voiceId: string
-}) =>
+export const generateDocumentAudio = (params: GenerateDocumentAudioRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client
@@ -127,11 +126,7 @@ export const generateDocumentAudio = (params: {
       )
   })
 
-export const getBlockAudio = (params: {
-  documentId: string
-  blockId: string
-  voiceId: string
-}) =>
+export const getBlockAudio = (params: GetBlockAudioRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client

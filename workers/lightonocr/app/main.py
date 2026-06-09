@@ -1,17 +1,15 @@
 """LightOnOCR worker with job-based API."""
 import asyncio
-import json
 import tempfile
 import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
-from sse_starlette.sse import EventSourceResponse
 
 from .conversion import convert_file
 from .utils import get_suffix
@@ -129,25 +127,6 @@ async def get_job_status(job_id: str):
         response["error"] = job.error
 
     return JSONResponse(content=response)
-
-
-@app.get("/jobs/{job_id}/stream")
-async def stream_job(job_id: str):
-    """SSE stream for job completion. Required by server-side stream proxy."""
-    job = jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    async def event_generator() -> AsyncGenerator[dict, None]:
-        while job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
-            await asyncio.sleep(0.5)
-
-        if job.status == JobStatus.COMPLETED and job.result:
-            yield {"event": "completed", "data": json.dumps(job.result)}
-        elif job.status == JobStatus.FAILED:
-            yield {"event": "failed", "data": json.dumps({"error": job.error})}
-
-    return EventSourceResponse(event_generator())
 
 
 @app.post("/cancel/{job_id}")

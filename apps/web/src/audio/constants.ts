@@ -11,7 +11,6 @@ export const AMBIENT_SOUNDS = [
     name: "Brown Noise",
     src: "/audio/ambience/brown_noise.mp3",
   },
-  { id: "forest", name: "Forest", src: null },
   { id: "ocean", name: "Ocean", src: "/audio/ambience/ocean_waves.mp3" },
   { id: "thunder", name: "Thunder", src: "/audio/ambience/dry_thunder.mp3" },
   { id: "thunderstorm", name: "Thunderstorm", src: "/audio/ambience/thunderstorm.mp3" },
@@ -19,14 +18,12 @@ export const AMBIENT_SOUNDS = [
 
 // prettier-ignore
 export const MUSIC_TRACKS = [
-  { id: "dawn-of-time", name: "Dawn of Time", src: "/audio/music/dawn_of_time.mp3", previewStart: 31.5 },
-  { id: "distant-echo", name: "Distant Echo", src: "/audio/music/Distant Echo - Jakob Ahlbom.mp3", previewStart: 78 },
-  { id: "flora-and-fauna", name: "Flora and Fauna", src: "/audio/music/Flora and Fauna - Aerian.mp3", previewStart: 78 },
-  { id: "into-the-forest", name: "Into the Forest", src: "/audio/music/Into the Forest - Jakob Ahlbom.mp3", previewStart: 108 },
-  { id: "rimfrost", name: "Rimfrost", src: "/audio/music/Rimfrost - Strom.mp3", previewStart: 26 },
-  { id: "sen", name: "Sen", src: "/audio/music/Sen - Trevor Kowalski.mp3", previewStart: 31 },
-  { id: "something-good", name: "Something Good Will Come Out of This", src: "/audio/music/Something Good Will Come Out of This - Hanna Lindgren.mp3", previewStart: 35 },
-  { id: "tides", name: "Tides", src: "/audio/music/Tides - Jakob Ahlbom.mp3", previewStart: 34 },
+  { id: "dawn-of-time", name: "Dawn of Time", src: "/audio/music/dawn_of_time.mp3" },
+  { id: "distant-echo", name: "Distant Echo", src: "/audio/music/Distant Echo - Jakob Ahlbom.mp3" },
+  { id: "flora-and-fauna", name: "Flora and Fauna", src: "/audio/music/Flora and Fauna - Aerian.mp3" },
+  { id: "into-the-forest", name: "Into the Forest", src: "/audio/music/Into the Forest - Jakob Ahlbom.mp3" },
+  { id: "rimfrost", name: "Rimfrost", src: "/audio/music/Rimfrost - Strom.mp3" },
+  { id: "sen", name: "Sen", src: "/audio/music/Sen - Trevor Kowalski.mp3" },
+  { id: "something-good", name: "Something Good Will Come Out of This", src: "/audio/music/Something Good Will Come Out of This - Hanna Lindgren.mp3" },
+  { id: "tides", name: "Tides", src: "/audio/music/Tides - Jakob Ahlbom.mp3" },
 ] as const
-
-export const DEFAULT_PRESETS: readonly { id: string; name: string }[] = []

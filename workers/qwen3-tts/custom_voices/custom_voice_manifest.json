@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "model_type": "qwen3_tts",
+  "model": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+  "hidden_size": 2048,
+  "voices": {
+    "male_1": {
+      "name": "male_1",
+      "file": "male_1.safetensors",
+      "mode": "xvec",
+      "embedding_dim": 2048
+    }
+  }
+}

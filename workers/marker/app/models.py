@@ -39,32 +39,3 @@ def get_or_create_models() -> dict:
         else:
             print("[models] Using cached models", flush=True)
         return _model_cache
-
-
-def is_loaded() -> bool:
-    """Check if models are currently loaded."""
-    return _model_cache is not None
-
-
-def unload_models() -> bool:
-    """Unload models and free GPU memory.
-
-    Thread-safe and idempotent. Returns True if models were unloaded,
-    False if already unloaded.
-    """
-    global _model_cache
-    with _model_lock:
-        if _model_cache is None:
-            print("[models] Already unloaded", flush=True)
-            return False
-
-        print("[models] Unloading marker models...", flush=True)
-        del _model_cache
-        _model_cache = None
-
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        print("[models] Models unloaded, VRAM freed", flush=True)
-        return True

@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .html_processing import images_to_base64, inject_image_dimensions
+from .html_processing import inject_image_dimensions
 from .models import get_or_create_models
 from ..shared import extract_chunks
 
@@ -67,7 +67,7 @@ def _render_all_formats(document) -> dict:
     }
 
 
-def _process_html(html: str, images: dict, embed_images: bool = False) -> tuple[str, dict | None]:
+def _process_html(html: str, images: dict) -> tuple[str, dict | None]:
     """Process HTML content with image handling.
 
     Injects image dimensions for layout stability.
@@ -101,34 +101,3 @@ def _build_and_render_all(
         print(f"[conversion] Got {len(all_formats['chunks']['blocks'])} chunks")
 
     return all_formats
-
-
-def run_conversion_sync(
-    file_path: Path,
-    output_format: str,
-    use_llm: bool,
-    force_ocr: bool,
-    page_range: str | None,
-) -> dict:
-    """Synchronous conversion without job tracking. Used by serverless handler."""
-    all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
-
-    # Process HTML (inject dimensions) - server handles image upload and URL rewriting
-    html_content, images = _process_html(all_formats["html"], all_formats["images"])
-
-    # Return requested format as content
-    if output_format == "markdown":
-        content = all_formats["markdown"]
-    else:
-        content = html_content
-
-    return {
-        "content": content,
-        "metadata": all_formats["metadata"],
-        "formats": {
-            "html": html_content,
-            "markdown": all_formats["markdown"],
-            "chunks": all_formats["chunks"],
-        },
-        "images": images_to_base64(images) if images else None,
-    }

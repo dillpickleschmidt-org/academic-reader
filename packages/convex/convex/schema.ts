@@ -58,7 +58,6 @@ export default defineSchema({
     userId: v.string(),
     documentId: v.union(v.id("documents"), v.null()),
     title: v.union(v.string(), v.null()),
-    isStreaming: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

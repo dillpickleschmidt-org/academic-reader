@@ -29,53 +29,47 @@ export function AmbienceTab() {
       <Label className="text-xs text-muted-foreground">Ambient Sounds</Label>
 
       <div className="flex flex-col gap-1">
-        {sounds.map((sound) => {
-          const isAvailable = !!sound.src
-          return (
-            <div
-              key={sound.id}
-              className="flex items-center gap-3 rounded-md py-1"
-            >
-              <Checkbox
-                id={`ambience-${sound.id}`}
-                checked={sound.enabled}
-                disabled={!isAvailable}
-                onCheckedChange={(checked) =>
-                  toggleAmbientSound(sound.id, checked === true)
-                }
-              />
-              <ContextMenu>
-                <ContextMenuTrigger className="flex flex-1 items-center gap-3">
-                  <label
-                    htmlFor={`ambience-${sound.id}`}
-                    className={`min-w-25 text-sm ${isAvailable ? "cursor-pointer" : "cursor-not-allowed text-muted-foreground"}`}
-                  >
-                    {sound.name}
-                  </label>
-                  <Slider
-                    value={[sound.volume]}
-                    onValueChange={(value) =>
-                      handleVolumeChange(sound.id, value)
-                    }
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    size="sm"
-                    className={`flex-1 transition-opacity ${!sound.enabled || !isAvailable ? "pointer-events-none opacity-30" : ""}`}
-                    disabled={!sound.enabled || !isAvailable}
-                  />
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    onClick={() => setAmbientVolume(sound.id, DEFAULT_VOLUME)}
-                  >
-                    Reset volume
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            </div>
-          )
-        })}
+        {sounds.map((sound) => (
+          <div
+            key={sound.id}
+            className="flex items-center gap-3 rounded-md py-1"
+          >
+            <Checkbox
+              id={`ambience-${sound.id}`}
+              checked={sound.enabled}
+              onCheckedChange={(checked) =>
+                toggleAmbientSound(sound.id, checked === true)
+              }
+            />
+            <ContextMenu>
+              <ContextMenuTrigger className="flex flex-1 items-center gap-3">
+                <label
+                  htmlFor={`ambience-${sound.id}`}
+                  className="min-w-25 text-sm cursor-pointer"
+                >
+                  {sound.name}
+                </label>
+                <Slider
+                  value={[sound.volume]}
+                  onValueChange={(value) => handleVolumeChange(sound.id, value)}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  size="sm"
+                  className={`flex-1 transition-opacity ${!sound.enabled ? "pointer-events-none opacity-30" : ""}`}
+                  disabled={!sound.enabled}
+                />
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem
+                  onClick={() => setAmbientVolume(sound.id, DEFAULT_VOLUME)}
+                >
+                  Reset volume
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          </div>
+        ))}
       </div>
     </div>
   )

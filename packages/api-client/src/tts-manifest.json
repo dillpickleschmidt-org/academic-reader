@@ -5,12 +5,7 @@
     {
       "id": "male_1",
       "displayName": "Male 1",
-      "engine": "qwen3",
-      "qwen3": {
-        "promptFile": "male_1.pt",
-        "temperature": 0.9,
-        "topP": 1.0
-      }
+      "engine": "qwen3"
     },
     {
       "id": "female_1",

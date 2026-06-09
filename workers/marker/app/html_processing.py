@@ -3,13 +3,6 @@ import base64
 from io import BytesIO
 
 
-def _replace_image_src(html: str, old_src: str, new_src: str) -> str:
-    """Replace image src attribute handling both quote styles."""
-    return html.replace(f"src='{old_src}'", f"src='{new_src}'").replace(
-        f'src="{old_src}"', f'src="{new_src}"'
-    )
-
-
 def inject_image_dimensions(html: str, images: dict) -> str:
     """Add width/height attributes to img tags to prevent layout shift."""
     if not images:
@@ -45,16 +38,3 @@ def images_to_base64(images: dict, jpeg_quality: int = 85) -> dict[str, str]:
     if not images:
         return {}
     return {name: _pil_to_base64(img, jpeg_quality) for name, img in images.items()}
-
-
-def embed_images_as_base64(html: str, images: dict, jpeg_quality: int = 85) -> str:
-    """Replace image src references with base64 data URLs."""
-    if not images:
-        return html
-
-    for image_name, pil_image in images.items():
-        b64_data = _pil_to_base64(pil_image, jpeg_quality)
-        data_url = f"data:image/jpeg;base64,{b64_data}"
-        html = _replace_image_src(html, image_name, data_url)
-
-    return html

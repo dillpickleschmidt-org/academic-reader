@@ -48,17 +48,11 @@ export function runChatStream(
       activeStreams.delete(threadId)
     }
 
-    // Save user message and set streaming flag
     const userText = extractUserMessage(messages)
     if (userText) {
       const parts: ChatMessageParts = [{ type: "text", text: userText }]
       yield* Effect.tryPromise({
-        try: () => convex.addMessageAndStartStreaming(threadId, parts),
-        catch: (e) => e as Error,
-      })
-    } else {
-      yield* Effect.tryPromise({
-        try: () => convex.setChatStreaming(threadId, true),
+        try: () => convex.addUserMessage(threadId, parts),
         catch: (e) => e as Error,
       })
     }
@@ -172,26 +166,6 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
       stopWhen: stepCountIs(20),
       providerOptions: models.chatProviderOptions(),
       onError: ({ error }) => {
-        const cleanupStart = performance.now()
-        void convex.setChatStreaming(threadId, false).catch((e: unknown) =>
-          emitStreamingEvent(
-            {
-              ...event,
-              timestamp: new Date().toISOString(),
-              method: "BACKGROUND",
-              path: "/chat/cleanup",
-            },
-            {
-              status: 500,
-              durationMs: Math.round(performance.now() - cleanupStart),
-              error: {
-                category: "convex",
-                message: e instanceof Error ? e.message : String(e),
-                code: "CHAT_STREAMING_CLEANUP_FAILED",
-              },
-            },
-          ),
-        )
         activeStreams.delete(threadId)
         emitStreamingEvent(event, {
           status: 500,
@@ -229,22 +203,13 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
         parts.push({ type: "text", text })
 
         try {
-          await convex.finishChatStreaming(threadId, parts, fallbackTitle)
+          await convex.addAssistantMessage(threadId, parts, fallbackTitle)
         } catch (e) {
-          let cleanupError: string | undefined
-          try {
-            await convex.setChatStreaming(threadId, false)
-          } catch (cleanup) {
-            cleanupError =
-              cleanup instanceof Error ? cleanup.message : String(cleanup)
-          }
-
           emitStreamingEvent(event, {
             status: 500,
             durationMs: Math.round(performance.now() - streamStart),
             chatSteps: steps.length,
             chatFinishReason: finishReason,
-            chatCleanupError: cleanupError,
             error: {
               category: "convex",
               message: e instanceof Error ? e.message : String(e),

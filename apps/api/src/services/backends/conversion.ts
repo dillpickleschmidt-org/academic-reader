@@ -8,7 +8,6 @@ const TIMEOUT_MS = 30_000
 type JobStatus =
   | "pending"
   | "processing"
-  | "html_ready"
   | "completed"
   | "failed"
 
@@ -65,7 +64,6 @@ export interface ConversionJob {
   jobId: string
   status: JobStatus
   result?: ConversionResult
-  htmlContent?: string
   error?: string
   progress?: ConversionProgress
   s3Result?: boolean
@@ -129,12 +127,10 @@ interface LocalWorkerResponse {
   status:
     | "pending"
     | "processing"
-    | "html_ready"
     | "completed"
     | "failed"
     | "cancelled"
   result?: ConversionResult
-  html_content?: string
   error?: string
   progress?: ConversionProgress
 }
@@ -142,7 +138,6 @@ interface LocalWorkerResponse {
 const LOCAL_STATUS_MAP: Record<string, JobStatus> = {
   pending: "pending",
   processing: "processing",
-  html_ready: "html_ready",
   completed: "completed",
   failed: "failed",
   cancelled: "failed",
@@ -263,7 +258,6 @@ function mapLocalResponse(data: LocalWorkerResponse): ConversionJob {
   return {
     jobId: data.job_id,
     status,
-    htmlContent: data.html_content || result?.formats.html,
     result: isComplete ? result : undefined,
     error: data.error,
     progress: data.progress,
@@ -369,7 +363,6 @@ function mapDatalabResponse(data: DatalabResponse): ConversionJob {
   return {
     jobId: data.request_id,
     status: missingContent ? "failed" : status,
-    htmlContent: isComplete && html ? html : undefined,
     result: isComplete && html && markdown !== undefined
       ? {
           content: html,

@@ -14,11 +14,9 @@ RUN ln -sf $(command -v python3) /usr/local/bin/python
 COPY workers/qwen3-tts/requirements.txt .
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
-COPY packages/api-client/src/tts-manifest.json ./tts-manifest.json
-COPY workers/tts_manifest.py ./tts_manifest.py
 COPY workers/qwen3-tts/qwen3_tts.yaml ./qwen3_tts.yaml
 COPY workers/qwen3-tts/app/ ./app/
-COPY workers/qwen3-tts/voices/ ./voices/
+COPY workers/qwen3-tts/custom_voices/ ./custom_voices/
 
 RUN python3 -c "\
 from huggingface_hub import snapshot_download; \

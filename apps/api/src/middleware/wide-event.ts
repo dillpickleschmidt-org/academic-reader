@@ -1,3 +1,4 @@
+import { inspect } from "node:util"
 import { FiberRef, Effect } from "effect"
 import { HttpMiddleware, HttpServerRequest } from "@effect/platform"
 import { SeverityNumber } from "@opentelemetry/api-logs"
@@ -89,17 +90,26 @@ function getOtelLogger(endpoint?: string) {
 }
 
 function emitEvent(event: WideEvent, otelEndpoint?: string) {
+  const completed = completeEvent(event)
+  const severityText = completed.error ? "ERROR" : "INFO"
+
+  if (!otelEndpoint) {
+    process.stdout.write(
+      `${inspect({
+        service: SERVICE_NAME,
+        serviceVersion: SERVICE_VERSION,
+        severity: severityText,
+        ...eventAttributes(completed),
+      }, { colors: true, depth: null, compact: false })}\n`,
+    )
+    return
+  }
+
   const logger = getOtelLogger(otelEndpoint)
   if (!logger) return
 
-  const completed = completeEvent(event)
-  const severityNumber = completed.error
-    ? SeverityNumber.ERROR
-    : SeverityNumber.INFO
-  const severityText = completed.error ? "ERROR" : "INFO"
-
   logger.emit({
-    severityNumber,
+    severityNumber: completed.error ? SeverityNumber.ERROR : SeverityNumber.INFO,
     severityText,
     attributes: eventAttributes(completed),
   })

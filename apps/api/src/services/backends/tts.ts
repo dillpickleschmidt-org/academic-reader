@@ -10,6 +10,17 @@ import { AppConfig } from "../../config"
 interface SynthesizedSpeech {
   audio: Uint8Array
   wordTimestamps: WordTimestamp[]
+  timing: TtsWordTimingResult
+}
+
+export type TtsWordTimingSource = "native" | "forced_alignment"
+export type TtsWordTimingStatus = "ok" | "unavailable" | "failed"
+
+export interface TtsWordTimingResult {
+  source: TtsWordTimingSource
+  status: TtsWordTimingStatus
+  error: string | null
+  diagnostics: unknown | null
 }
 
 export interface TTSBackend {
@@ -23,7 +34,6 @@ export interface TtsServiceShape {
 }
 
 const TTS_ACTIVATION_TIMEOUT_MS = 300 * 1000
-const QWEN3_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 
 export class TtsService extends Context.Tag("TtsService")<
   TtsService,
@@ -60,7 +70,7 @@ export class TtsService extends Context.Tag("TtsService")<
               throw new Error(`Kokoro TTS failed: ${await response.text()}`)
             }
 
-            return parseKokoroResponse(await response.json())
+            return parseWorkerResponse(await response.json(), "Kokoro")
           },
         }
       }
@@ -68,45 +78,16 @@ export class TtsService extends Context.Tag("TtsService")<
       function createQwen3Backend(baseUrl: string, voiceId: string): TTSBackend {
         return {
           async synthesize(text) {
-            const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+            const response = await fetch(`${baseUrl}/synthesize`, {
               method: "POST",
-              headers: {
-                "Authorization": "Bearer EMPTY",
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: QWEN3_MODEL,
-                input: text,
-                voice: voiceId,
-                task_type: "Base",
-                language: "English",
-                response_format: "pcm",
-                stream: true,
-                max_new_tokens: 4096,
-              }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text, voice_id: voiceId }),
             })
             if (!response.ok) {
               throw new Error(`Qwen3 TTS failed: ${await response.text()}`)
             }
-            if (response.headers.get("content-type")?.includes("application/json")) {
-              throw new Error(`Qwen3 TTS failed: ${await response.text()}`)
-            }
-            if (!response.body) {
-              throw new Error("No response body for Qwen3 TTS stream")
-            }
 
-            const reader = response.body.getReader()
-            const pcmChunks: Uint8Array[] = []
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              if (value.length > 0) pcmChunks.push(value)
-            }
-
-            return {
-              audio: concatenate(pcmChunks),
-              wordTimestamps: [],
-            }
+            return parseWorkerResponse(await response.json(), "Qwen3")
           },
         }
       }
@@ -186,12 +167,15 @@ export class TtsService extends Context.Tag("TtsService")<
   )
 }
 
-function parseKokoroResponse(value: unknown): SynthesizedSpeech {
+function parseWorkerResponse(
+  value: unknown,
+  engineName: string,
+): SynthesizedSpeech {
   if (!value || typeof value !== "object" || !("audio" in value)) {
-    throw new Error("Invalid Kokoro TTS response")
+    throw new Error(`Invalid ${engineName} TTS response`)
   }
   if (typeof value.audio !== "string") {
-    throw new Error("Invalid Kokoro TTS audio response")
+    throw new Error(`Invalid ${engineName} TTS audio response`)
   }
 
   const wordTimestamps =
@@ -202,6 +186,42 @@ function parseKokoroResponse(value: unknown): SynthesizedSpeech {
   return {
     audio: Buffer.from(value.audio, "base64"),
     wordTimestamps,
+    timing: parseWordTimingResult(value, engineName),
+  }
+}
+
+function parseWordTimingResult(
+  value: Record<string, unknown>,
+  engineName: string,
+): TtsWordTimingResult {
+  if (
+    !("timing" in value) ||
+    !value.timing ||
+    typeof value.timing !== "object"
+  ) {
+    throw new Error(`Invalid ${engineName} TTS timing response`)
+  }
+
+  const timing = value.timing as Record<string, unknown>
+  if (timing.source !== "native" && timing.source !== "forced_alignment") {
+    throw new Error(`Invalid ${engineName} TTS timing source`)
+  }
+  if (
+    timing.status !== "ok" &&
+    timing.status !== "unavailable" &&
+    timing.status !== "failed"
+  ) {
+    throw new Error(`Invalid ${engineName} TTS timing status`)
+  }
+  if (timing.error !== null && typeof timing.error !== "string") {
+    throw new Error(`Invalid ${engineName} TTS timing error`)
+  }
+
+  return {
+    source: timing.source,
+    status: timing.status,
+    error: timing.error,
+    diagnostics: "diagnostics" in timing ? timing.diagnostics : null,
   }
 }
 
@@ -216,15 +236,4 @@ function isWordTimestamp(value: unknown): value is WordTimestamp {
     "endMs" in value &&
     typeof value.endMs === "number"
   )
-}
-
-function concatenate(chunks: Uint8Array[]): Uint8Array {
-  const totalLen = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-  const audio = new Uint8Array(totalLen)
-  let offset = 0
-  for (const chunk of chunks) {
-    audio.set(chunk, offset)
-    offset += chunk.length
-  }
-  return audio
 }

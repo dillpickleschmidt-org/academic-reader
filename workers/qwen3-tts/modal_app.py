@@ -18,11 +18,18 @@ image = (
         f"python3 -m pip install --no-cache-dir git+https://github.com/vllm-project/vllm-omni.git@{VLLM_OMNI_REF}",
     )
     .run_commands(
+        "TORCH_VERSION=$(python3 -c \"import torch; print(torch.__version__.split('+')[0])\") "
+        "&& CUDA_VERSION=$(python3 -c \"import torch; print('cu' + torch.version.cuda.replace('.', '') if torch.version.cuda else 'cpu')\") "
+        "&& python3 -m pip install --no-cache-dir --no-deps --index-url https://download.pytorch.org/whl/${CUDA_VERSION} torchaudio==${TORCH_VERSION}",
+    )
+    .run_commands(
         'python3 -c "from huggingface_hub import snapshot_download; snapshot_download(\'Qwen/Qwen3-TTS-12Hz-1.7B-Base\')"',
     )
+    .run_commands(
+        'python3 -c "from torchaudio.pipelines import MMS_FA; MMS_FA.get_model()"',
+    )
     .add_local_dir(CUSTOM_VOICES_DIR, remote_path="/app/custom_voices")
-    .add_local_file(Path(__file__).parent / "app/__init__.py", remote_path="/app/app/__init__.py")
-    .add_local_file(Path(__file__).parent / "app/main.py", remote_path="/app/app/main.py")
+    .add_local_dir(Path(__file__).parent / "app", remote_path="/app/app")
     .add_local_file(DEPLOY_CONFIG_PATH, remote_path="/app/qwen3_tts.yaml")
 )
 

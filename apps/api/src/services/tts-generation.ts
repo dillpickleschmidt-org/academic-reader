@@ -2,7 +2,13 @@ import { Cause, Effect } from "effect"
 import { getVoice, TTS_SAMPLE_RATE } from "@academic-reader/api-client/schemas/tts"
 import type { StorageService } from "./storage"
 import { documentLocation, documentPrefix } from "../documents/document-storage"
-import type { TTSBackend, TtsServiceShape } from "./backends/tts"
+import type {
+  TTSBackend,
+  TtsServiceShape,
+  TtsWordTimingResult,
+  TtsWordTimingSource,
+  TtsWordTimingStatus,
+} from "./backends/tts"
 import type { ConvexServerSession } from "./convex-client"
 import { pcmToWav } from "../utils/pcm-to-wav"
 import {
@@ -29,6 +35,15 @@ interface GenerateDocumentAudioOptions {
 interface DocumentAudioGenerationStats {
   requestedBlocks: number
   generatedBlocks: number
+  timestampedBlocks: number
+  untimestampedBlocks: number
+  wordTimestampCount: number
+  timingSourceCounts: Record<TtsWordTimingSource, number>
+  timingStatusCounts: Record<TtsWordTimingStatus, number>
+  timingFailedBlocks: number
+  timingFailureBlockIds: string[]
+  timingFailureErrors: string[]
+  timingFailureDiagnostics?: unknown
   cleanupError?: string
 }
 
@@ -43,6 +58,11 @@ interface ChunkForAudio {
   blockId: string
   ttsText: string
   order: number
+}
+
+interface ChunkAudioResult {
+  wordTimestampCount: number
+  timing: TtsWordTimingResult
 }
 
 export function startDocumentAudioGeneration(
@@ -133,6 +153,21 @@ function generateDocumentAudio(
     const stats: DocumentAudioGenerationStats = {
       requestedBlocks: missing.length,
       generatedBlocks: 0,
+      timestampedBlocks: 0,
+      untimestampedBlocks: 0,
+      wordTimestampCount: 0,
+      timingSourceCounts: {
+        native: 0,
+        forced_alignment: 0,
+      },
+      timingStatusCounts: {
+        ok: 0,
+        unavailable: 0,
+        failed: 0,
+      },
+      timingFailedBlocks: 0,
+      timingFailureBlockIds: [],
+      timingFailureErrors: [],
     }
 
     if (!missing.length) return stats
@@ -142,8 +177,24 @@ function generateDocumentAudio(
       const backend = yield* options.ttsService.createBackend(options.voiceId)
 
       for (const chunk of missing) {
-        yield* generateChunkAudio(options, backend, documentPath, chunk)
+        const result = yield* generateChunkAudio(
+          options,
+          backend,
+          documentPath,
+          chunk,
+        )
         stats.generatedBlocks++
+        stats.wordTimestampCount += result.wordTimestampCount
+        if (result.wordTimestampCount > 0) {
+          stats.timestampedBlocks++
+        } else {
+          stats.untimestampedBlocks++
+        }
+        stats.timingSourceCounts[result.timing.source]++
+        stats.timingStatusCounts[result.timing.status]++
+        if (result.timing.status === "failed") {
+          recordTimingFailure(stats, chunk.blockId, result.timing)
+        }
         if (options.onProgress) {
           yield* Effect.promise(() =>
             Promise.resolve(options.onProgress?.({ ...stats })),
@@ -174,7 +225,7 @@ function generateChunkAudio(
   backend: TTSBackend,
   documentPath: string,
   chunk: ChunkForAudio,
-): Effect.Effect<void, Error> {
+): Effect.Effect<ChunkAudioResult, Error> {
   return Effect.gen(function* () {
     const result = yield* Effect.tryPromise({
       try: () => backend.synthesize(chunk.ttsText),
@@ -208,5 +259,29 @@ function generateChunkAudio(
         }),
       catch: (e) => e as Error,
     })
+
+    return {
+      wordTimestampCount: result.wordTimestamps.length,
+      timing: result.timing,
+    }
   })
+}
+
+function recordTimingFailure(
+  stats: DocumentAudioGenerationStats,
+  blockId: string,
+  timing: TtsWordTimingResult,
+) {
+  stats.timingFailedBlocks++
+  stats.timingFailureBlockIds.push(blockId)
+
+  if (
+    timing.error !== null &&
+    !stats.timingFailureErrors.includes(timing.error)
+  ) {
+    stats.timingFailureErrors.push(timing.error)
+  }
+  if (!stats.timingFailureDiagnostics && timing.diagnostics !== null) {
+    stats.timingFailureDiagnostics = timing.diagnostics
+  }
 }

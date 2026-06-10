@@ -42,6 +42,12 @@ async def synthesize_route(request: SynthesizeRequest):
     return {
         "audio": base64.b64encode(audio).decode("ascii"),
         "wordTimestamps": word_timestamps,
+        "timing": {
+            "source": "native",
+            "status": "ok" if word_timestamps else "unavailable",
+            "error": None,
+            "diagnostics": None,
+        },
     }
 
 

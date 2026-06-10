@@ -115,7 +115,6 @@ export const documentsRouter = HttpRouter.empty.pipe(
           filename: body.filename,
           contentType: body.mimeType,
           fileSize: body.sizeBytes,
-          backend: config.conversionBackend,
           conversionBackend: config.conversionBackend,
           ttsBackend: config.ttsBackend,
           processingMode: body.processingMode,

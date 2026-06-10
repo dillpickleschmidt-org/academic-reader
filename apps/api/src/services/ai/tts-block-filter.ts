@@ -20,6 +20,12 @@ interface TtsBlockFilterErrorDetails {
   ttsFilterPromptChars: number
 }
 
+interface TtsBlockFilterResult {
+  map: Record<string, boolean>
+  candidateBlocks: number
+  batches: number
+}
+
 class TtsBlockFilterOutputError extends Error {
   constructor(
     message: string,
@@ -105,7 +111,13 @@ export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {
       map[b.id] = false
     }
 
-    if (textBlocks.length === 0) return map
+    if (textBlocks.length === 0) {
+      return {
+        map,
+        candidateBlocks: 0,
+        batches: 0,
+      } satisfies TtsBlockFilterResult
+    }
 
     const model = models.processingModel()
     const groups: (typeof textBlocks)[] = []
@@ -174,6 +186,10 @@ export function filterBlocksForTTS(blocks: { id: string; html: string }[]) {
       }
     }
 
-    return map
+    return {
+      map,
+      candidateBlocks: textBlocks.length,
+      batches: groups.length,
+    } satisfies TtsBlockFilterResult
   })
 }

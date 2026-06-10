@@ -42,7 +42,6 @@ export interface WideEvent extends Record<string, unknown> {
   durationMs?: number
   startTimeMs?: number
   error?: WideEventError
-  manualEmit?: boolean
 }
 
 const SERVICE_NAME = "academic-reader-api"
@@ -96,8 +95,6 @@ function emitEvent(event: WideEvent, otelEndpoint?: string) {
   if (!otelEndpoint) {
     process.stdout.write(
       `${inspect({
-        service: SERVICE_NAME,
-        serviceVersion: SERVICE_VERSION,
         severity: severityText,
         ...eventAttributes(completed),
       }, { colors: true, depth: null, compact: false })}\n`,
@@ -176,7 +173,6 @@ export const wideEventMiddleware = (
       }
 
       const manualEmit = isManualEmitRoute(path)
-      event.manualEmit = manualEmit
 
       yield* FiberRef.set(WideEventRef, event)
 

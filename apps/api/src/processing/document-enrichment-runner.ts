@@ -13,7 +13,7 @@ import { documentPrefix, originalFileKey } from "../documents/document-storage"
 import type { DocumentLocation } from "../documents/document-storage"
 import type { ChunkBlock } from "./chunk-normalizer"
 import { prepareTtsChunks, summaryEnrichment, tocEnrichment } from "./enrichments"
-import { runTrackedTask, type DocumentTaskWriter } from "./document-task-writer"
+import type { DocumentTaskWriter } from "./document-task-writer"
 import { startDocumentAudioGeneration } from "../services/tts-generation"
 
 export function startDocumentEnrichmentTasks(options: {
@@ -56,25 +56,28 @@ export function startDocumentEnrichmentTasks(options: {
   ]).catch(() => {})
 }
 
-function runOptionalEnrichmentTask(
+async function runOptionalEnrichmentTask(
   options: Parameters<typeof startDocumentEnrichmentTasks>[0],
   kind: "toc" | "summary" | "tts-prep",
-  run: (taskId: string) => Promise<void>,
-) {
+  run: (taskId: string) => Promise<Record<string, unknown>>,
+): Promise<boolean> {
   const startTimeMs = performance.now()
-  return runTrackedTask(
-    options.taskWriter,
-    kind,
-    (taskId) => run(taskId),
-    {
-      onFailure: (taskId, error) =>
-        emitOptionalTaskFailure(options, kind, taskId, startTimeMs, error),
-    },
-  )
+  const taskId = await options.taskWriter.createRunningTask(kind)
+
+  try {
+    const stats = await run(taskId)
+    await options.taskWriter.succeed(taskId)
+    emitOptionalTaskSuccess(options, kind, taskId, startTimeMs, stats)
+    return true
+  } catch (error) {
+    await options.taskWriter.fail(taskId, error)
+    emitOptionalTaskFailure(options, kind, taskId, startTimeMs, error)
+    return false
+  }
 }
 
 async function runTtsTasks(options: Parameters<typeof startDocumentEnrichmentTasks>[0]) {
-  await runOptionalEnrichmentTask(options, "tts-prep", () =>
+  const prepSucceeded = await runOptionalEnrichmentTask(options, "tts-prep", () =>
     runEnrichmentEffect(
       options,
       prepareTtsChunks(
@@ -85,7 +88,7 @@ async function runTtsTasks(options: Parameters<typeof startDocumentEnrichmentTas
     ),
   )
 
-  if (!options.audioVoiceId || options.config.ttsBackend === "none") return
+  if (!prepSucceeded || !options.audioVoiceId || options.config.ttsBackend === "none") return
 
   const taskId = await options.taskWriter.createRunningTask("tts-audio")
   const result = startDocumentAudioGeneration({
@@ -105,7 +108,6 @@ async function runTtsTasks(options: Parameters<typeof startDocumentEnrichmentTas
       documentId: options.documentId,
       taskId,
       taskKind: "tts-audio",
-      optionalTask: true,
       voiceId: options.audioVoiceId,
       ttsBackend: options.config.ttsBackend,
     },
@@ -135,7 +137,6 @@ async function runTtsTasks(options: Parameters<typeof startDocumentEnrichmentTas
         documentId: options.documentId,
         taskId,
         taskKind: "tts-audio",
-        optionalTask: true,
         voiceId: options.audioVoiceId,
         ttsBackend: options.config.ttsBackend,
       },
@@ -157,9 +158,9 @@ async function runTtsTasks(options: Parameters<typeof startDocumentEnrichmentTas
   }
 }
 
-function runEnrichmentEffect(
+function runEnrichmentEffect<A>(
   options: Parameters<typeof startDocumentEnrichmentTasks>[0],
-  effect: Effect.Effect<void, unknown, any>,
+  effect: Effect.Effect<A, unknown, any>,
 ) {
   return Effect.runPromise(
     effect.pipe(
@@ -167,7 +168,20 @@ function runEnrichmentEffect(
       Effect.provideService(Storage, options.storage),
       Effect.provideService(ModelProvider, options.modelProvider),
       Effect.provideService(TtsService, options.ttsService),
-    ) as Effect.Effect<void, unknown, never>,
+    ) as Effect.Effect<A, unknown, never>,
+  )
+}
+
+function emitOptionalTaskSuccess(
+  options: Parameters<typeof startDocumentEnrichmentTasks>[0],
+  taskKind: string,
+  taskId: string,
+  startTimeMs: number,
+  stats: Record<string, unknown>,
+) {
+  emitStreamingEvent(
+    enrichmentEvent(options, taskKind, taskId, startTimeMs),
+    { status: 200, ...stats },
   )
 }
 
@@ -179,18 +193,9 @@ function emitOptionalTaskFailure(
   error: unknown,
 ) {
   emitStreamingEvent(
+    enrichmentEvent(options, taskKind, taskId, startTimeMs),
     {
-      ...options.event,
-      timestamp: new Date().toISOString(),
-      method: "BACKGROUND",
-      path: `/enrichment/${taskKind}`,
-      startTimeMs,
-      documentId: options.documentId,
-      taskId,
-      taskKind,
-      optionalTask: true,
-    },
-    {
+      ...errorDetails(error),
       status: 500,
       error: {
         category: "internal",
@@ -199,4 +204,30 @@ function emitOptionalTaskFailure(
       },
     },
   )
+}
+
+function enrichmentEvent(
+  options: Parameters<typeof startDocumentEnrichmentTasks>[0],
+  taskKind: string,
+  taskId: string,
+  startTimeMs: number,
+): WideEvent {
+  return {
+    ...options.event,
+    timestamp: new Date().toISOString(),
+    method: "BACKGROUND",
+    path: `/enrichment/${taskKind}`,
+    startTimeMs,
+    documentId: options.documentId,
+    taskId,
+    taskKind,
+  }
+}
+
+function errorDetails(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error) || !("details" in error)) return {}
+  const details = (error as { details?: unknown }).details
+  return details && typeof details === "object" && !Array.isArray(details)
+    ? details as Record<string, unknown>
+    : {}
 }

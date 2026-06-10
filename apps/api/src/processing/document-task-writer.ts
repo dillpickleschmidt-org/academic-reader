@@ -58,21 +58,3 @@ export function createDocumentTaskWriter(
       }).then(() => undefined),
   }
 }
-
-export async function runTrackedTask(
-  writer: DocumentTaskWriter,
-  kind: OptionalDocumentTaskKind,
-  run: (taskId: Id<"documentTasks">) => Promise<void>,
-  callbacks: {
-    onFailure?: (taskId: Id<"documentTasks">, error: unknown) => void
-  } = {},
-) {
-  const taskId = await writer.createRunningTask(kind)
-  try {
-    await run(taskId)
-    await writer.succeed(taskId)
-  } catch (error) {
-    await writer.fail(taskId, error)
-    callbacks.onFailure?.(taskId, error)
-  }
-}

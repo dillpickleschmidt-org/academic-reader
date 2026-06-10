@@ -12,6 +12,7 @@ import { generateDocumentSummary } from "../services/ai/summary-generation"
 import type { ChunkBlock } from "./chunk-normalizer"
 
 const TTS_BATCH_SIZE = 200
+const EMPTY_TOC: DocumentToc = { sections: [], offset: 0 }
 
 export function tocEnrichment(
   documentId: string,
@@ -26,12 +27,14 @@ export function tocEnrichment(
       .pipe(Effect.either)
 
     if (pdfResult._tag === "Left") {
-      yield* persistToc(convex, documentId, { sections: [], offset: 0 })
-      return
+      yield* persistToc(convex, documentId, EMPTY_TOC)
+      return tocStats(EMPTY_TOC, "pdf_read_failed", false)
     }
 
     const result = yield* extractTableOfContents(textContent, pdfResult.right)
-    yield* persistToc(convex, documentId, result.toc ?? { sections: [], offset: 0 })
+    const toc = result.toc ?? EMPTY_TOC
+    yield* persistToc(convex, documentId, toc)
+    return tocStats(toc, result.meta.status, result.meta.offsetDetected)
   })
 }
 
@@ -41,7 +44,8 @@ export function prepareTtsChunks(
   convex: ConvexServerSession,
 ) {
   return Effect.gen(function* () {
-    const filterMap = yield* filterBlocksForTTS(chunks)
+    const filterResult = yield* filterBlocksForTTS(chunks)
+    const filterMap = filterResult.map
     const includedChunks = chunks.filter((c) => filterMap[c.id] === true)
     const rewriteResult = yield* rewriteBlocksForTTS(includedChunks)
     const textByBlockId = new Map(Object.entries(rewriteResult.texts))
@@ -73,6 +77,20 @@ export function prepareTtsChunks(
         catch: (e) => e as Error,
       })
     }
+
+    const preparedBlocks = preparations.filter((p) => p.includeTts).length
+    return {
+      ttsTotalBlocks: chunks.length,
+      ttsFilterCandidateBlocks: filterResult.candidateBlocks,
+      ttsFilterSkippedBeforeLlm: chunks.length - filterResult.candidateBlocks,
+      ttsFilterBatches: filterResult.batches,
+      ttsIncludedBlocks: includedChunks.length,
+      ttsPreparedBlocks: preparedBlocks,
+      ttsSkippedBlocks: chunks.length - preparedBlocks,
+      ttsRewrittenBlocks: Object.keys(rewriteResult.texts).length,
+      ttsRepairedBlocks: rewriteResult.repairedBlocks,
+      ttsPreparationBatches: Math.ceil(preparations.length / TTS_BATCH_SIZE),
+    }
   })
 }
 
@@ -88,7 +106,26 @@ export function summaryEnrichment(
       try: () => convex.updateDocumentSummary(documentId, summary),
       catch: (e) => e as Error,
     })
+
+    return {
+      summaryInputChars: chunkHtml.length,
+      summaryChars: summary.length,
+    }
   })
+}
+
+function tocStats(toc: DocumentToc, status: string, offsetDetected: boolean) {
+  return {
+    tocStatus: status,
+    tocSectionCount: toc.sections.length,
+    tocChildSectionCount: toc.sections.reduce(
+      (sum, section) => sum + (section.children?.length ?? 0),
+      0,
+    ),
+    tocOffset: toc.offset,
+    tocOffsetDetected: offsetDetected,
+    tocHasRomanNumerals: toc.hasRomanNumerals ?? false,
+  }
 }
 
 function persistToc(

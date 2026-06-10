@@ -88,8 +88,6 @@ async function runDocumentProcessing(options: StartDocumentProcessingOptions) {
   await promoteUploadedFile(options.storage, location, options.fileId)
 
   const backendJobId = await submitConversionJob({
-    config: options.config,
-    storage: options.storage,
     backend: options.backend,
     taskWriter,
     conversionTaskId: options.conversionTaskId,
@@ -117,7 +115,7 @@ async function runDocumentProcessing(options: StartDocumentProcessingOptions) {
       },
       backendJobId,
     )
-    const result = await loadConversionResult(options.storage, location, job)
+    const result = await loadConversionResult(options.backend, location, job)
     const processed = await persistConversionResult({
       config: options.config,
       storage: options.storage,

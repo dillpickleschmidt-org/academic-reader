@@ -5,7 +5,11 @@ from pathlib import Path
 
 from .html_processing import inject_image_dimensions
 from .models import get_or_create_models
-from ..shared import extract_chunks
+
+try:
+    from ..shared import extract_chunks
+except ImportError:
+    from shared import extract_chunks
 
 
 def print(*values, flush=False, **kwargs):
@@ -21,12 +25,44 @@ def print(*values, flush=False, **kwargs):
     )
 
 
+def convert_file(
+    file_path: Path,
+    use_llm: bool,
+    force_ocr: bool,
+    page_range: str | None,
+    artifact_dict: dict | None = None,
+) -> dict:
+    all_formats = _build_and_render_all(
+        file_path,
+        use_llm,
+        force_ocr,
+        page_range,
+        artifact_dict,
+    )
+    html_content, images = _process_html(all_formats["html"], all_formats["images"])
+
+    from .html_processing import images_to_base64
+
+    return {
+        "content": html_content,
+        "metadata": all_formats["metadata"],
+        "formats": {
+            "html": html_content,
+            "markdown": all_formats["markdown"],
+            "chunks": all_formats["chunks"],
+        },
+        "images": images_to_base64(images) if images else None,
+    }
+
+
 def _create_converter(
     use_llm: bool,
     force_ocr: bool,
     page_range: str | None,
+    artifact_dict: dict | None = None,
 ):
     """Create a configured PDF converter (without renderer - we'll run all renderers manually)."""
+    import os
     from marker.config.parser import ConfigParser
     from marker.converters.pdf import PdfConverter
     from .config import BATCH_SIZE_OVERRIDES
@@ -37,13 +73,15 @@ def _create_converter(
         "force_ocr": force_ocr,
         **BATCH_SIZE_OVERRIDES,
     }
+    if use_llm and os.getenv("GOOGLE_API_KEY"):
+        config_dict["gemini_api_key"] = os.getenv("GOOGLE_API_KEY")
     if page_range:
         config_dict["page_range"] = page_range
 
     config_parser = ConfigParser(config_dict)
     return PdfConverter(
         config=config_parser.generate_config_dict(),
-        artifact_dict=get_or_create_models(),
+        artifact_dict=artifact_dict or get_or_create_models(),
         processor_list=config_parser.get_processors(),
         renderer=config_parser.get_renderer(),
     )
@@ -87,9 +125,10 @@ def _build_and_render_all(
     use_llm: bool,
     force_ocr: bool,
     page_range: str | None,
+    artifact_dict: dict | None = None,
 ) -> dict:
     """Build document once and render to all formats."""
-    converter = _create_converter(use_llm, force_ocr, page_range)
+    converter = _create_converter(use_llm, force_ocr, page_range, artifact_dict)
 
     # Build and process document (expensive part)
     document = converter.build_document(str(file_path))

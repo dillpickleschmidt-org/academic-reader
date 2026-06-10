@@ -1,4 +1,19 @@
 import { Schema } from "effect"
+import { ProcessingMode } from "./common"
+
+export const CreateDocumentRequest = Schema.Struct({
+  fileId: Schema.NonEmptyString,
+  filename: Schema.NonEmptyString,
+  mimeType: Schema.NonEmptyString,
+  sizeBytes: Schema.Number,
+  pageCount: Schema.NullOr(Schema.Number),
+  processingMode: ProcessingMode,
+  useLlm: Schema.Boolean,
+  forceOcr: Schema.Boolean,
+  pageRange: Schema.String,
+  audioVoiceId: Schema.String,
+})
+export type CreateDocumentRequest = typeof CreateDocumentRequest.Type
 
 export const ChunkBlock = Schema.Struct({
   id: Schema.String,

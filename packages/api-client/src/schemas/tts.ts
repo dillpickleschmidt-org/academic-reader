@@ -9,9 +9,9 @@ export const WordTimestamp = Schema.Struct({
 export type WordTimestamp = typeof WordTimestamp.Type
 
 export const GetBlockAudioRequest = Schema.Struct({
-  documentId: Schema.String,
-  blockId: Schema.String,
-  voiceId: Schema.String,
+  documentId: Schema.NonEmptyString,
+  blockId: Schema.NonEmptyString,
+  voiceId: Schema.NonEmptyString,
 })
 export type GetBlockAudioRequest = typeof GetBlockAudioRequest.Type
 
@@ -29,8 +29,8 @@ export const GetBlockAudioResponse = Schema.Union(
 export type GetBlockAudioResponse = typeof GetBlockAudioResponse.Type
 
 export const GenerateDocumentAudioRequest = Schema.Struct({
-  documentId: Schema.String,
-  voiceId: Schema.String,
+  documentId: Schema.NonEmptyString,
+  voiceId: Schema.NonEmptyString,
 })
 export type GenerateDocumentAudioRequest = typeof GenerateDocumentAudioRequest.Type
 

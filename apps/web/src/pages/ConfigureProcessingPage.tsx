@@ -7,8 +7,6 @@ import {
   AlertCircle,
   Sparkles,
   ScanText,
-  Circle,
-  X,
   ChevronDown,
 } from "lucide-react"
 import { cn } from "@academic-reader/ui/utils"
@@ -38,13 +36,6 @@ import { VOICES } from "@academic-reader/api-client/schemas/tts"
 import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import type { BackendType } from "@academic-reader/api-client/schemas/common"
 import { useAppConfig } from "../hooks/use-app-config"
-
-interface StageInfo {
-  stage: string
-  current: number
-  total: number
-  completed: boolean
-}
 
 const AGGRESSIVE_MODE_SUPPORTED_TYPES = [
   "application/pdf",
@@ -96,15 +87,12 @@ interface Props {
   narratorVoice: string
   error: string
   isProcessing: boolean
-  isCancelling: boolean
-  stages: StageInfo[]
   onProcessingModeChange: (mode: ProcessingMode) => void
   onUseLlmChange: (value: boolean) => void
   onForceOcrChange: (value: boolean) => void
   onPageRangeChange: (value: string) => void
   onNarratorVoiceChange: (value: string) => void
   onStartConversion: () => void
-  onCancel: () => void
   onBack: () => void
 }
 
@@ -151,109 +139,6 @@ function StepIndicator({
       >
         {label}
       </span>
-    </div>
-  )
-}
-
-function ProcessingStepItem({
-  label,
-  status,
-  progress,
-}: {
-  label: string
-  status: "pending" | "active" | "completed"
-  progress: { current: number; total: number } | null
-}) {
-  const isIndeterminate = progress && progress.total === 0
-  const isExpanded = status === "active" && progress && !isIndeterminate
-  const percentage = progress
-    ? progress.total > 0
-      ? Math.round((progress.current / progress.total) * 100)
-      : 0
-    : 0
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center gap-2.5">
-        {status === "completed" ? (
-          <Check className="w-4 h-4 text-green-600 dark:text-green-500" />
-        ) : status === "active" ? (
-          <Loader2 className="w-4 h-4 animate-spin text-primary" />
-        ) : (
-          <Circle className="w-4 h-4 text-muted-foreground/40" />
-        )}
-        <span
-          className={cn(
-            "text-sm transition-colors",
-            status === "pending"
-              ? "text-muted-foreground/60"
-              : "text-foreground",
-          )}
-        >
-          {label}
-        </span>
-      </div>
-
-      {status === "active" && isIndeterminate && (
-        <div className="ml-6.5 mt-2">
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div className="h-full w-1/3 bg-primary rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]" />
-          </div>
-        </div>
-      )}
-
-      <div
-        className={cn(
-          "overflow-hidden transition-all duration-300 ease-out ml-6.5",
-          isExpanded ? "max-h-12 opacity-100 mt-2" : "max-h-0 opacity-0",
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {progress?.current}/{progress?.total}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProcessingView({ stages }: { stages: StageInfo[] }) {
-  if (stages.length === 0) {
-    return (
-      <div className="flex flex-col">
-        <ProcessingStepItem
-          label="Starting..."
-          status="active"
-          progress={{ current: 0, total: 0 }}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col">
-      {stages.map((stage) => {
-        const status = stage.completed ? "completed" : "active"
-
-        return (
-          <ProcessingStepItem
-            key={stage.stage}
-            label={stage.stage}
-            status={status}
-            progress={{
-              current: stage.current,
-              total: stage.total,
-            }}
-          />
-        )
-      })}
     </div>
   )
 }
@@ -394,15 +279,12 @@ export function ConfigureProcessingPage({
   narratorVoice,
   error,
   isProcessing,
-  isCancelling,
-  stages,
   onProcessingModeChange,
   onUseLlmChange,
   onForceOcrChange,
   onPageRangeChange,
   onNarratorVoiceChange,
   onStartConversion,
-  onCancel,
   onBack,
 }: Props) {
   const { user, isLoading: appConfigLoading } = useAppConfig()
@@ -474,32 +356,10 @@ export function ConfigureProcessingPage({
             )}
           >
             {isProcessing ? (
-              <>
-                <ProcessingView stages={stages} />
-                <div className="mt-4">
-                  <Button
-                    variant="outline"
-                    onClick={onCancel}
-                    disabled={isCancelling}
-                    className="h-10"
-                  >
-                    {isCancelling ? (
-                      <>
-                        <Loader2
-                          className="w-4 h-4 mr-2 animate-spin"
-                          strokeWidth={2}
-                        />
-                        Cancelling...
-                      </>
-                    ) : (
-                      <>
-                        <X className="w-4 h-4 mr-2" strokeWidth={2} />
-                        Cancel
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Creating document...
+              </div>
             ) : (
               <>
                 <div>

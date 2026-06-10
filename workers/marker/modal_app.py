@@ -1,4 +1,5 @@
 """Modal worker for Marker PDF conversion."""
+
 from datetime import datetime, timezone
 from pathlib import Path
 import json
@@ -14,6 +15,12 @@ image = (
     .apt_install("build-essential")
     .pip_install("marker-pdf==1.9.2", "httpx", "pydantic", "fastapi[standard]")
     .add_local_file(_here / "shared.py", "/root/shared.py")
+    .add_local_file(_here / "app/__init__.py", "/root/app/__init__.py")
+    .add_local_file(_here / "app/config.py", "/root/app/config.py")
+    .add_local_file(_here / "app/conversion.py", "/root/app/conversion.py")
+    .add_local_file(_here / "app/html_processing.py", "/root/app/html_processing.py")
+    .add_local_file(_here / "app/models.py", "/root/app/models.py")
+    .add_local_file(_here.parent / "modal_conversion.py", "/root/modal_conversion.py")
 )
 
 app = modal.App("marker", image=image)
@@ -74,106 +81,40 @@ class Marker:
         force_ocr: bool = False,
         page_range: str | None = None,
     ) -> dict:
-        """Download file, convert with Marker, upload result to S3."""
-        import json
-        import tempfile
         import sys
-        from pathlib import Path
-
-        import httpx
-
         sys.path.insert(0, "/root")
-        from shared import extract_chunks, encode_images
-        from marker.config.parser import ConfigParser
-        from marker.converters.pdf import PdfConverter
-        from marker.renderers.html import HTMLRenderer
-        from marker.renderers.markdown import MarkdownRenderer
+        from app.conversion import convert_file
+        from modal_conversion import run_conversion_job
 
-        start = time.perf_counter()
-        suffix = Path(file_url.split("?")[0]).suffix or ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-            r = httpx.get(file_url, follow_redirects=True, timeout=60.0)
-            r.raise_for_status()
-            f.write(r.content)
-            path = Path(f.name)
-
-        try:
-            import os
-            config = {"output_format": "html", "use_llm": use_llm, "force_ocr": force_ocr}
-            if use_llm:
-                config["gemini_api_key"] = os.getenv("GOOGLE_API_KEY")
-            if page_range:
-                config["page_range"] = page_range
-            parser = ConfigParser(config)
-            converter = PdfConverter(
-                config=parser.generate_config_dict(),
+        return run_conversion_job(
+            worker="marker",
+            file_url=file_url,
+            result_upload_url=result_upload_url,
+            request_id=request_id,
+            document_id=document_id,
+            user_id=user_id,
+            page_range=page_range,
+            convert=lambda path: convert_file(
+                path,
+                use_llm,
+                force_ocr,
+                page_range,
                 artifact_dict=self.model_dict,
-                processor_list=parser.get_processors(),
-                renderer=parser.get_renderer(),
-            )
-            doc = converter.build_document(str(path))
-
-            html = HTMLRenderer({"add_block_ids": True})(doc)
-            md = MarkdownRenderer()(doc)
-            chunks = extract_chunks(doc)
-
-            result = {
-                "content": html.html,
-                "metadata": html.metadata,
-                "formats": {"html": html.html, "markdown": md.markdown, "chunks": chunks},
-                "images": encode_images(html.images) if html.images else None,
-            }
-
-            httpx.put(
-                result_upload_url,
-                content=json.dumps(result),
-                headers={"Content-Type": "application/json"},
-                timeout=120.0,
-            ).raise_for_status()
-            log_event(
-                eventName="conversion_complete",
-                requestId=request_id,
-                documentId=document_id,
-                userId=user_id,
-                method="BACKGROUND",
-                path="/modal/marker/convert",
-                status=200,
-                durationMs=round((time.perf_counter() - start) * 1000),
-                useLlm=use_llm,
-                forceOcr=force_ocr,
-                pageRange=page_range,
-                chunkCount=len(chunks.get("blocks", [])),
-                imageCount=len(html.images) if html.images else 0,
-            )
-            return {"s3_result": True}
-        except Exception as e:
-            log_event(
-                eventName="conversion_failed",
-                requestId=request_id,
-                documentId=document_id,
-                userId=user_id,
-                method="BACKGROUND",
-                path="/modal/marker/convert",
-                status=500,
-                durationMs=round((time.perf_counter() - start) * 1000),
-                useLlm=use_llm,
-                forceOcr=force_ocr,
-                pageRange=page_range,
-                errorCategory="internal",
-                errorMessage=str(e),
-                errorCode="MARKER_CONVERSION_FAILED",
-            )
-            raise
-        finally:
-            path.unlink(missing_ok=True)
+            ),
+            path="/modal/marker/convert",
+            error_code="MARKER_CONVERSION_FAILED",
+            extra_fields={"useLlm": use_llm, "forceOcr": force_ocr},
+        )
 
 
-# HTTP API for job submission and polling
 @app.function()
 @modal.asgi_app()
 def api():
+    import sys
+    sys.path.insert(0, "/root")
     from fastapi import FastAPI
     from pydantic import BaseModel
+    from modal_conversion import modal_status
 
     web = FastAPI()
     worker = Marker()
@@ -204,13 +145,6 @@ def api():
 
     @web.get("/status/{call_id}")
     async def status(call_id: str):
-        try:
-            fc = modal.FunctionCall.from_id(call_id)
-            out = await fc.get.aio(timeout=0)
-            return {"status": "COMPLETED", "output": out}
-        except TimeoutError:
-            return {"status": "IN_PROGRESS"}
-        except Exception as e:
-            return {"status": "FAILED", "error": str(e)}
+        return await modal_status(call_id)
 
     return web

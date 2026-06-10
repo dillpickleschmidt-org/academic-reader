@@ -19,7 +19,7 @@ import { DocumentProvider } from "@/context/DocumentContext"
 import { AudioDocumentBinding } from "@/context/AudioContext"
 import { useAppConfig } from "@/hooks/use-app-config"
 import { useDocumentCreation } from "@/hooks/use-document-creation"
-import { useNarratorVoice } from "@/hooks/use-narrator-voice"
+import { useNarratorVoicePreference } from "@/audio/narrator-preference"
 import { useRuntimeConfig } from "@/context/RuntimeConfigContext"
 import {
   SidebarInset,
@@ -89,7 +89,7 @@ function HomeRoute() {
   const navigate = useNavigate()
   const { user } = useAppConfig()
   const flow = useDocumentCreation()
-  const [narratorVoice, setNarratorVoice] = useNarratorVoice()
+  const [narratorVoice, setNarratorVoice] = useNarratorVoicePreference()
   const [deleteDialog, setDeleteDialog] = useState<{
     documentId: string
     filename: string
@@ -175,15 +175,12 @@ function HomeRoute() {
           narratorVoice={narratorVoice}
           error={flow.error}
           isProcessing={flow.isCreating}
-          isCancelling={false}
-          stages={[]}
           onProcessingModeChange={flow.setProcessingMode}
           onUseLlmChange={flow.setUseLlm}
           onForceOcrChange={flow.setForceOcr}
           onPageRangeChange={flow.setPageRange}
           onNarratorVoiceChange={setNarratorVoice}
           onStartConversion={() => void flow.createDocument()}
-          onCancel={() => {}}
           onBack={flow.reset}
         />
       </>

@@ -1,7 +1,11 @@
 import { HttpClient, HttpClientResponse, HttpBody } from "@effect/platform"
 import { Effect } from "effect"
 import { ApiError } from "./errors"
-import { CreateDocumentResponse, LoadedDocument } from "./schemas/document"
+import {
+  CreateDocumentResponse,
+  LoadedDocument,
+  type CreateDocumentRequest,
+} from "./schemas/document"
 import { UploadResponse, type ConversionOptions } from "./schemas/upload"
 import {
   GenerateDocumentAudioResult,
@@ -58,18 +62,7 @@ export const downloadFile = async (
   setTimeout(() => URL.revokeObjectURL(blobUrl), 1000)
 }
 
-export const createDocumentFromUpload = (params: {
-  fileId: string
-  filename: string
-  mimeType: string
-  sizeBytes: number
-  pageCount: number | null
-  processingMode: ConversionOptions["processingMode"]
-  useLlm: boolean
-  forceOcr: boolean
-  pageRange: string
-  audioVoiceId: string
-}) =>
+export const createDocumentFromUpload = (params: CreateDocumentRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client

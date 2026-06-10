@@ -1,4 +1,5 @@
 """Modal worker for LightOnOCR conversion."""
+
 from datetime import datetime, timezone
 from pathlib import Path
 import json
@@ -28,6 +29,7 @@ image = (
     .add_local_file(_here / "app/__init__.py", "/root/app/__init__.py")
     .add_local_file(_here / "app/conversion.py", "/root/app/conversion.py")
     .add_local_file(_here / "app/markdown_utils.py", "/root/app/markdown_utils.py")
+    .add_local_file(_here.parent / "modal_conversion.py", "/root/modal_conversion.py")
 )
 
 app = modal.App("lightonocr", image=image)
@@ -87,70 +89,33 @@ class LightOnOCR:
         user_id: str,
         page_range: str | None = None,
     ) -> dict:
-        """Download file, convert with LightOnOCR, upload result to S3."""
-        import json
-        import tempfile
-        from pathlib import Path
-
-        import httpx
+        import sys
+        sys.path.insert(0, "/root")
         from app.conversion import convert_file_with_llm
+        from modal_conversion import run_conversion_job
 
-        start = time.perf_counter()
-        suffix = Path(file_url.split("?")[0]).suffix or ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-            r = httpx.get(file_url, follow_redirects=True, timeout=60.0)
-            r.raise_for_status()
-            f.write(r.content)
-            path = Path(f.name)
-
-        try:
-            result = convert_file_with_llm(path, self.llm, page_range)
-            chunks = (result.get("formats") or {}).get("chunks") or {}
-            httpx.put(
-                result_upload_url,
-                content=json.dumps(result),
-                headers={"Content-Type": "application/json"},
-                timeout=120.0,
-            ).raise_for_status()
-            log_event(
-                eventName="conversion_complete",
-                requestId=request_id,
-                documentId=document_id,
-                userId=user_id,
-                method="BACKGROUND",
-                path="/modal/lightonocr/convert",
-                status=200,
-                durationMs=round((time.perf_counter() - start) * 1000),
-                pageRange=page_range,
-                chunkCount=len(chunks.get("blocks") or []),
-                imageCount=len(result.get("images") or {}),
-            )
-            return {"s3_result": True}
-        except Exception as e:
-            log_event(
-                eventName="conversion_failed",
-                requestId=request_id,
-                documentId=document_id,
-                userId=user_id,
-                method="BACKGROUND",
-                path="/modal/lightonocr/convert",
-                status=500,
-                durationMs=round((time.perf_counter() - start) * 1000),
-                pageRange=page_range,
-                errorCategory="internal",
-                errorMessage=str(e),
-                errorCode="LIGHTONOCR_CONVERSION_FAILED",
-            )
-            raise
-        finally:
-            path.unlink(missing_ok=True)
+        return run_conversion_job(
+            worker="lightonocr",
+            file_url=file_url,
+            result_upload_url=result_upload_url,
+            request_id=request_id,
+            document_id=document_id,
+            user_id=user_id,
+            page_range=page_range,
+            convert=lambda path: convert_file_with_llm(path, self.llm, page_range),
+            path="/modal/lightonocr/convert",
+            error_code="LIGHTONOCR_CONVERSION_FAILED",
+        )
 
 
 @app.function()
 @modal.asgi_app()
 def api():
+    import sys
+    sys.path.insert(0, "/root")
     from fastapi import FastAPI
     from pydantic import BaseModel
+    from modal_conversion import modal_status
 
     web = FastAPI()
     worker = LightOnOCR()
@@ -177,13 +142,6 @@ def api():
 
     @web.get("/status/{call_id}")
     async def status(call_id: str):
-        fc = modal.FunctionCall.from_id(call_id)
-        try:
-            out = await fc.get.aio(timeout=0)
-            return {"status": "COMPLETED", "output": out}
-        except modal.exception.OutputExpiredError:
-            return {"status": "FAILED", "error": "expired"}
-        except TimeoutError:
-            return {"status": "IN_PROGRESS"}
+        return await modal_status(call_id)
 
     return web

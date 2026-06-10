@@ -31,29 +31,13 @@ def run_conversion_process(
     try:
         _update_shared_job(jobs_dict, job_id, status="processing")
 
-        from .conversion import _build_and_render_all, _process_html
-        from .html_processing import images_to_base64
-
-        all_formats = _build_and_render_all(file_path, use_llm, force_ocr, page_range)
-
-        # Process HTML (inject image dimensions) - no base64 embedding
-        # Server will upload images to bucket and rewrite URLs
-        html_content, images = _process_html(all_formats["html"], all_formats["images"])
+        from .conversion import convert_file
 
         _update_shared_job(
             jobs_dict,
             job_id,
             status="completed",
-            result={
-                "content": html_content,
-                "metadata": all_formats["metadata"],
-                "formats": {
-                    "html": html_content,
-                    "markdown": all_formats["markdown"],
-                    "chunks": all_formats["chunks"],
-                },
-                "images": images_to_base64(images) if images else None,
-            },
+            result=convert_file(file_path, use_llm, force_ocr, page_range),
         )
     except FileNotFoundError:
         _update_shared_job(jobs_dict, job_id, status="failed", error="File not found")

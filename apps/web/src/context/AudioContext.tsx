@@ -25,7 +25,11 @@ import { AMBIENT_SOUNDS } from "@/audio/constants"
 import { UnifiedAudioPlayer } from "@/audio/UnifiedAudioPlayer"
 import { CrossfadeLooper } from "@/audio/CrossfadeLooper"
 import type { AudioReadiness } from "@/context/DocumentContext"
-import { readNarratorVoice, writeNarratorVoice } from "@/hooks/use-narrator-voice"
+import {
+  getNarratorVoicePreference,
+  setNarratorVoicePreference,
+  subscribeNarratorVoicePreference,
+} from "@/audio/narrator-preference"
 
 type AudioStore = {
   getState: () => AudioState
@@ -107,7 +111,7 @@ const AudioContext = createContext<{
 function createInitialState(): AudioState {
   return {
     narrator: {
-      voice: readNarratorVoice(),
+      voice: getNarratorVoicePreference(),
       speed: 1.0,
       volume: 1.0,
     },
@@ -300,7 +304,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   )
 
   // === Narrator Actions ===
-  const setVoice = useCallback(
+  const applyNarratorVoice = useCallback(
     (voiceId: VoiceId) => {
       const state = store.getState()
       if (state.narrator.voice === voiceId) return
@@ -310,7 +314,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         playbackRequestFiberRef.current = null
       }
 
-      writeNarratorVoice(voiceId)
       store.setState({
         narrator: { ...state.narrator, voice: voiceId },
       })
@@ -341,6 +344,23 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       })
     },
     [store, cleanupPlayer],
+  )
+
+  const setVoice = useCallback(
+    (voiceId: VoiceId) => {
+      if (setNarratorVoicePreference(voiceId)) {
+        applyNarratorVoice(voiceId)
+      }
+    },
+    [applyNarratorVoice],
+  )
+
+  useEffect(
+    () =>
+      subscribeNarratorVoicePreference(() => {
+        applyNarratorVoice(getNarratorVoicePreference())
+      }),
+    [applyNarratorVoice],
   )
 
   const setNarratorSpeed = useCallback(

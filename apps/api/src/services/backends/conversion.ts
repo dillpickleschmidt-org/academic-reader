@@ -1,7 +1,13 @@
 import { Context, Effect, Layer } from "effect"
-import { BackendError } from "@academic-reader/api-client/errors"
+import { BackendError, StorageError } from "@academic-reader/api-client/errors"
+import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { AppConfig } from "../../config"
-import { Storage } from "../storage"
+import type { DocumentLocation } from "../../documents/document-storage"
+import {
+  originalFileKey,
+  resultJsonKey,
+} from "../../documents/document-storage"
+import { Storage, type StorageService } from "../storage"
 
 const TIMEOUT_MS = 30_000
 
@@ -16,15 +22,13 @@ interface ConversionInput {
   requestId: string
   documentId: string
   userId: string
-  fileUrl?: string
-  filename?: string
-  mimeType?: string
-  processingMode: string
+  location: DocumentLocation
+  filename: string
+  mimeType: string
+  processingMode: ProcessingMode
   useLlm: boolean
   forceOcr: boolean
   pageRange: string
-  documentPath?: string
-  fileData?: Buffer
 }
 
 interface ConversionProgress {
@@ -34,13 +38,13 @@ interface ConversionProgress {
   elapsed?: number
 }
 
-interface ConversionResult {
+export interface ConversionResult {
   content: string
   metadata: Record<string, unknown>
   formats: {
     html: string
     markdown: string
-    chunks: ChunkOutput | null
+    chunks: { blocks?: unknown[] } | null
   }
   images: Record<string, string> | null
 }
@@ -71,8 +75,14 @@ export interface ConversionJob {
 
 export interface ConversionBackendService {
   readonly name: string
-  submitJob(input: ConversionInput): Effect.Effect<string, BackendError>
+  submitJob(
+    input: ConversionInput,
+  ): Effect.Effect<string, BackendError | StorageError>
   getJobStatus(jobId: string): Effect.Effect<ConversionJob, BackendError>
+  loadResult(
+    location: DocumentLocation,
+    job: ConversionJob,
+  ): Effect.Effect<ConversionResult, BackendError | StorageError>
   supportsCancellation(): boolean
   cancelJob(jobId: string): Effect.Effect<boolean, BackendError>
 }
@@ -89,9 +99,9 @@ export class ConversionBackend extends Context.Tag("ConversionBackend")<
 
       switch (config.conversionBackend) {
         case "local":
-          return createLocalBackend()
+          return createLocalBackend(storage)
         case "datalab":
-          return createDatalabBackend(config.datalabApiKey ?? "")
+          return createDatalabBackend(config.datalabApiKey ?? "", storage)
         case "modal":
           return createModalBackend(config.modal, storage)
       }
@@ -115,6 +125,117 @@ function parseJobId(jobId: string): {
     return { worker: "marker", rawId: jobId.slice(7) }
   }
   return { worker: "marker", rawId: jobId }
+}
+
+function normalizeConversionResult(value: unknown): ConversionResult {
+  if (!value || typeof value !== "object") {
+    throw new Error("Conversion result is not an object")
+  }
+
+  const result = value as {
+    content?: unknown
+    metadata?: unknown
+    formats?: {
+      html?: unknown
+      markdown?: unknown
+      chunks?: unknown
+    }
+    images?: unknown
+  }
+
+  if (typeof result.content !== "string") {
+    throw new Error("Conversion result is missing content")
+  }
+  if (!isRecord(result.metadata)) {
+    throw new Error("Conversion result is missing metadata")
+  }
+  if (!result.formats || typeof result.formats !== "object") {
+    throw new Error("Conversion result is missing formats")
+  }
+  if (typeof result.formats.html !== "string") {
+    throw new Error("Conversion result is missing HTML")
+  }
+  if (typeof result.formats.markdown !== "string") {
+    throw new Error("Conversion result is missing markdown")
+  }
+
+  return {
+    content: result.content,
+    metadata: result.metadata,
+    formats: {
+      html: result.formats.html,
+      markdown: result.formats.markdown,
+      chunks: normalizeChunks(result.formats.chunks),
+    },
+    images: normalizeImages(result.images),
+  }
+}
+
+function normalizeChunks(value: unknown): { blocks?: unknown[] } | null {
+  if (value === null || value === undefined) return null
+  if (!isRecord(value)) throw new Error("Conversion chunks must be an object")
+  if (value.blocks !== undefined && !Array.isArray(value.blocks)) {
+    throw new Error("Conversion chunk blocks must be an array")
+  }
+  return { blocks: value.blocks }
+}
+
+function normalizeImages(value: unknown): Record<string, string> | null {
+  if (value === null || value === undefined) return null
+  if (!isRecord(value)) throw new Error("Conversion images must be an object")
+
+  const images: Record<string, string> = {}
+  for (const [key, image] of Object.entries(value)) {
+    if (typeof image !== "string") {
+      throw new Error(`Conversion image ${key} must be a string`)
+    }
+    images[key] = image
+  }
+  return images
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value)
+}
+
+function createResultLoader(
+  backend: string,
+  storage: StorageService,
+): ConversionBackendService["loadResult"] {
+  return (location, job) =>
+    Effect.gen(function* () {
+      if (job.s3Result) {
+        const resultKey = resultJsonKey(location)
+        const resultJson = yield* storage.readFileAsString(resultKey)
+        yield* storage.deleteFile(resultKey)
+        return yield* decodeConversionResult(backend, () =>
+          JSON.parse(resultJson),
+        )
+      }
+
+      if (!job.result) {
+        return yield* new BackendError({
+          message: "Conversion completed without a result",
+          backend,
+        })
+      }
+
+      return yield* decodeConversionResult(backend, () => job.result)
+    })
+}
+
+function decodeConversionResult(
+  backend: string,
+  read: () => unknown,
+): Effect.Effect<ConversionResult, BackendError> {
+  return Effect.try({
+    try: () => normalizeConversionResult(read()),
+    catch: (error) =>
+      new BackendError({
+        message: error instanceof Error ? error.message : String(error),
+        backend,
+      }),
+  })
 }
 
 // Local Backend
@@ -143,7 +264,7 @@ const LOCAL_STATUS_MAP: Record<string, JobStatus> = {
   cancelled: "failed",
 }
 
-function createLocalBackend(): ConversionBackendService {
+function createLocalBackend(storage: StorageService): ConversionBackendService {
   function getWorkerUrl(jobId: string): { baseUrl: string; rawJobId: string } {
     const { worker, rawId } = parseJobId(jobId)
     const baseUrl = worker === "lightonocr" ? LIGHTONOCR_URL : MARKER_URL
@@ -154,22 +275,51 @@ function createLocalBackend(): ConversionBackendService {
     name: "local",
 
     submitJob: (input) =>
-      Effect.tryPromise({
-        try: async () => {
-          if (input.processingMode === "aggressive") {
-            throw new Error(
+      Effect.gen(function* () {
+        if (input.processingMode === "aggressive") {
+          return yield* new BackendError({
+            message:
               "[local] Aggressive mode requires modal backend (CHANDRA needs >16GB VRAM)",
-            )
-          }
+            backend: "local",
+          })
+        }
 
-          if (input.processingMode === "balanced") {
-            const params = new URLSearchParams()
-            if (input.fileUrl) params.set("file_url", input.fileUrl)
-            if (input.mimeType) params.set("mime_type", input.mimeType)
+        const fileUrl = yield* storage.getPresignedReadUrl(
+          originalFileKey(input.location),
+        )
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            if (input.processingMode === "balanced") {
+              const params = new URLSearchParams()
+              params.set("file_url", fileUrl)
+              params.set("mime_type", input.mimeType)
+              if (input.pageRange) params.set("page_range", input.pageRange)
+
+              const response = await fetch(
+                `${LIGHTONOCR_URL}/convert?${params}`,
+                {
+                  method: "POST",
+                  signal: AbortSignal.timeout(TIMEOUT_MS),
+                },
+              )
+              if (!response.ok)
+                throw new Error(
+                  `[local] LightOnOCR submit failed: ${await response.text()}`,
+                )
+              const data = (await response.json()) as { job_id: string }
+              return `lightonocr:${data.job_id}`
+            }
+
+            const params = new URLSearchParams({
+              use_llm: String(input.useLlm),
+              file_url: fileUrl,
+            })
+            if (input.forceOcr) params.set("force_ocr", "true")
             if (input.pageRange) params.set("page_range", input.pageRange)
 
             const response = await fetch(
-              `${LIGHTONOCR_URL}/convert?${params}`,
+              `${MARKER_URL}/convert/${input.fileId}?${params}`,
               {
                 method: "POST",
                 signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -177,33 +327,14 @@ function createLocalBackend(): ConversionBackendService {
             )
             if (!response.ok)
               throw new Error(
-                `[local] LightOnOCR submit failed: ${await response.text()}`,
+                `[local] Marker submit failed: ${await response.text()}`,
               )
             const data = (await response.json()) as { job_id: string }
-            return `lightonocr:${data.job_id}`
-          }
-
-          const params = new URLSearchParams({ use_llm: String(input.useLlm) })
-          if (input.forceOcr) params.set("force_ocr", "true")
-          if (input.pageRange) params.set("page_range", input.pageRange)
-          if (input.fileUrl) params.set("file_url", input.fileUrl)
-
-          const response = await fetch(
-            `${MARKER_URL}/convert/${input.fileId}?${params}`,
-            {
-              method: "POST",
-              signal: AbortSignal.timeout(TIMEOUT_MS),
-            },
-          )
-          if (!response.ok)
-            throw new Error(
-              `[local] Marker submit failed: ${await response.text()}`,
-            )
-          const data = (await response.json()) as { job_id: string }
-          return `marker:${data.job_id}`
-        },
-        catch: (e) =>
-          new BackendError({ message: String(e), backend: "local" }),
+            return `marker:${data.job_id}`
+          },
+          catch: (e) =>
+            new BackendError({ message: String(e), backend: "local" }),
+        })
       }),
 
     getJobStatus: (jobId) =>
@@ -223,6 +354,8 @@ function createLocalBackend(): ConversionBackendService {
         catch: (e) =>
           new BackendError({ message: String(e), backend: "local" }),
       }),
+
+    loadResult: createResultLoader("local", storage),
 
     supportsCancellation: () => true,
 
@@ -287,43 +420,48 @@ const DATALAB_STATUS_MAP: Record<string, JobStatus> = {
   failed: "failed",
 }
 
-function createDatalabBackend(apiKey: string): ConversionBackendService {
+function createDatalabBackend(
+  apiKey: string,
+  storage: StorageService,
+): ConversionBackendService {
   const baseUrl = "https://www.datalab.to/api/v1/marker"
 
   return {
     name: "datalab",
 
     submitJob: (input) =>
-      Effect.tryPromise({
-        try: async () => {
-          if (!input.fileData)
-            throw new Error("[datalab] fileData is required for direct upload")
+      Effect.gen(function* () {
+        const fileData = yield* storage.readFile(originalFileKey(input.location))
 
-          const formData = new FormData()
-          const fileBytes = Buffer.isBuffer(input.fileData)
-            ? new Uint8Array(input.fileData)
-            : input.fileData
-          const blob = new Blob([fileBytes], { type: "application/pdf" })
-          formData.append("file", blob, input.filename || "document.pdf")
-          formData.append("output_format", "html,markdown,json,chunks")
-          formData.append("add_block_ids", "true")
-          formData.append("mode", input.processingMode)
-          if (input.forceOcr) formData.append("force_ocr", "true")
-          if (input.pageRange) formData.append("page_range", input.pageRange)
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const formData = new FormData()
+            const blob = new Blob([new Uint8Array(fileData)], {
+              type: input.mimeType,
+            })
+            formData.append("file", blob, input.filename)
+            formData.append("output_format", "html,markdown,json,chunks")
+            formData.append("add_block_ids", "true")
+            formData.append("mode", input.processingMode)
+            if (input.forceOcr) formData.append("force_ocr", "true")
+            if (input.pageRange) formData.append("page_range", input.pageRange)
 
-          const response = await fetch(baseUrl, {
-            method: "POST",
-            headers: { "X-API-Key": apiKey },
-            body: formData,
-            signal: AbortSignal.timeout(DATALAB_TIMEOUT_MS),
-          })
-          if (!response.ok)
-            throw new Error(`[datalab] Submit failed: ${await response.text()}`)
-          const data = (await response.json()) as { request_id: string }
-          return data.request_id
-        },
-        catch: (e) =>
-          new BackendError({ message: String(e), backend: "datalab" }),
+            const response = await fetch(baseUrl, {
+              method: "POST",
+              headers: { "X-API-Key": apiKey },
+              body: formData,
+              signal: AbortSignal.timeout(DATALAB_TIMEOUT_MS),
+            })
+            if (!response.ok)
+              throw new Error(
+                `[datalab] Submit failed: ${await response.text()}`,
+              )
+            const data = (await response.json()) as { request_id: string }
+            return data.request_id
+          },
+          catch: (e) =>
+            new BackendError({ message: String(e), backend: "datalab" }),
+        })
       }),
 
     getJobStatus: (jobId) =>
@@ -343,6 +481,8 @@ function createDatalabBackend(apiKey: string): ConversionBackendService {
         catch: (e) =>
           new BackendError({ message: String(e), backend: "datalab" }),
       }),
+
+    loadResult: createResultLoader("datalab", storage),
 
     supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),
@@ -397,11 +537,7 @@ const MODAL_STATUS_MAP: Record<string, JobStatus> = {
 
 function createModalBackend(
   endpoints: ModalEndpoints,
-  storage: {
-    getPresignedUploadUrl(
-      key: string,
-    ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, any>
-  },
+  storage: StorageService,
 ): ConversionBackendService {
   function getEndpoint(worker: WorkerType): string | undefined {
     if (worker === "chandra") return endpoints.chandraUrl
@@ -429,14 +565,10 @@ function createModalBackend(
           })
         }
 
-        if (!input.documentPath) {
-          return yield* new BackendError({
-            message: "[modal] documentPath is required for result upload",
-            backend: "modal",
-          })
-        }
-
-        const resultKey = `${input.documentPath}/result.json`
+        const fileUrl = yield* storage.getPresignedReadUrl(
+          originalFileKey(input.location),
+        )
+        const resultKey = resultJsonKey(input.location)
         const { uploadUrl: resultUploadUrl } =
           yield* storage.getPresignedUploadUrl(resultKey)
 
@@ -446,7 +578,7 @@ function createModalBackend(
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                file_url: input.fileUrl,
+                file_url: fileUrl,
                 result_upload_url: resultUploadUrl,
                 request_id: input.requestId,
                 document_id: input.documentId,
@@ -499,6 +631,8 @@ function createModalBackend(
         catch: (e) =>
           new BackendError({ message: String(e), backend: "modal" }),
       }),
+
+    loadResult: createResultLoader("modal", storage),
 
     supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),

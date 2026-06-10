@@ -8,7 +8,7 @@ import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { authClient } from "@academic-reader/convex/auth-client"
 import { AppRuntime } from "@/lib/runtime"
 import { useAppConfig } from "./use-app-config"
-import { readNarratorVoice } from "./use-narrator-voice"
+import { getNarratorVoicePreference } from "@/audio/narrator-preference"
 
 const PENDING_DOCUMENT_KEY = "pendingDocumentCreation"
 
@@ -122,7 +122,7 @@ export function useDocumentCreation() {
         useLlm,
         forceOcr,
         pageRange,
-        audioVoiceId: readNarratorVoice(),
+        audioVoiceId: getNarratorVoicePreference(),
       }
 
       if (!options?.skipAuthCheck && appConfigLoading) return

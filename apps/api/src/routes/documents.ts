@@ -4,8 +4,8 @@ import {
   HttpServerResponse,
 } from "@effect/platform"
 import { Effect } from "effect"
-import type { ProcessingMode } from "@academic-reader/api-client/schemas/common"
 import { ValidationError } from "@academic-reader/api-client/errors"
+import { CreateDocumentRequest } from "@academic-reader/api-client/schemas/document"
 import { getVoice } from "@academic-reader/api-client/schemas/tts"
 import { AppConfig } from "../config"
 import { requireAuth } from "../middleware/auth"
@@ -22,19 +22,7 @@ import { deleteDocument } from "../documents/delete-document"
 import { extractDocumentPage } from "../documents/document-page"
 import { generateDocumentDownload } from "../documents/document-download"
 import { generateDocumentEmbeddings } from "../documents/document-embeddings"
-
-interface CreateDocumentRequest {
-  fileId: string
-  filename: string
-  mimeType: string
-  sizeBytes: number
-  pageCount: number | null
-  processingMode: ProcessingMode
-  useLlm: boolean
-  forceOcr: boolean
-  pageRange: string
-  audioVoiceId: string
-}
+import { decodeJsonBody } from "./request-body"
 
 export const documentsRouter = HttpRouter.empty.pipe(
   HttpRouter.post(
@@ -49,25 +37,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
       const event = yield* getEvent
       const { userId } = yield* requireAuth
       const convex = yield* convexService.userSession()
-      const request = yield* HttpServerRequest.HttpServerRequest
-      const body = (yield* request.json) as CreateDocumentRequest
-
-      if (
-        !body.fileId ||
-        !body.filename ||
-        !body.mimeType ||
-        body.sizeBytes === undefined ||
-        body.pageCount === undefined ||
-        !body.processingMode ||
-        body.useLlm === undefined ||
-        body.forceOcr === undefined ||
-        body.pageRange === undefined ||
-        body.audioVoiceId === undefined
-      ) {
-        return yield* new ValidationError({
-          message: "Missing required upload metadata",
-        })
-      }
+      const body = yield* decodeJsonBody(CreateDocumentRequest)
 
       const audioVoiceId =
         config.ttsBackend === "none" ? null : body.audioVoiceId

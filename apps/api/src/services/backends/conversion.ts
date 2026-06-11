@@ -18,10 +18,7 @@ type JobStatus =
   | "failed"
 
 interface ConversionInput {
-  fileId: string
   requestId: string
-  documentId: string
-  userId: string
   location: DocumentLocation
   filename: string
   mimeType: string
@@ -65,7 +62,6 @@ interface ChunkOutput {
 }
 
 export interface ConversionJob {
-  jobId: string
   status: JobStatus
   result?: ConversionResult
   error?: string
@@ -74,7 +70,6 @@ export interface ConversionJob {
 }
 
 export interface ConversionBackendService {
-  readonly name: string
   submitJob(
     input: ConversionInput,
   ): Effect.Effect<string, BackendError | StorageError>
@@ -83,15 +78,14 @@ export interface ConversionBackendService {
     location: DocumentLocation,
     job: ConversionJob,
   ): Effect.Effect<ConversionResult, BackendError | StorageError>
-  supportsCancellation(): boolean
   cancelJob(jobId: string): Effect.Effect<boolean, BackendError>
 }
 
-export class ConversionBackend extends Context.Tag("ConversionBackend")<
+export class ConversionBackend extends Context.Service<
   ConversionBackend,
   ConversionBackendService
->() {
-  static Live = Layer.effect(
+>()("ConversionBackend") {
+  static layer = Layer.effect(
     ConversionBackend,
     Effect.gen(function* () {
       const config = yield* AppConfig
@@ -272,8 +266,6 @@ function createLocalBackend(storage: StorageService): ConversionBackendService {
   }
 
   return {
-    name: "local",
-
     submitJob: (input) =>
       Effect.gen(function* () {
         if (input.processingMode === "aggressive") {
@@ -319,7 +311,7 @@ function createLocalBackend(storage: StorageService): ConversionBackendService {
             if (input.pageRange) params.set("page_range", input.pageRange)
 
             const response = await fetch(
-              `${MARKER_URL}/convert/${input.fileId}?${params}`,
+              `${MARKER_URL}/convert/${input.location.documentId}?${params}`,
               {
                 method: "POST",
                 signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -357,8 +349,6 @@ function createLocalBackend(storage: StorageService): ConversionBackendService {
 
     loadResult: createResultLoader("local", storage),
 
-    supportsCancellation: () => true,
-
     cancelJob: (jobId) =>
       Effect.tryPromise({
         try: async () => {
@@ -381,7 +371,6 @@ function mapLocalResponse(data: LocalWorkerResponse): ConversionJob {
   const result = data.result
   if (isComplete && !result) {
     return {
-      jobId: data.job_id,
       status: "failed",
       error: "Conversion completed without a result",
       progress: data.progress,
@@ -389,7 +378,6 @@ function mapLocalResponse(data: LocalWorkerResponse): ConversionJob {
   }
 
   return {
-    jobId: data.job_id,
     status,
     result: isComplete ? result : undefined,
     error: data.error,
@@ -427,8 +415,6 @@ function createDatalabBackend(
   const baseUrl = "https://www.datalab.to/api/v1/marker"
 
   return {
-    name: "datalab",
-
     submitJob: (input) =>
       Effect.gen(function* () {
         const fileData = yield* storage.readFile(originalFileKey(input.location))
@@ -484,7 +470,6 @@ function createDatalabBackend(
 
     loadResult: createResultLoader("datalab", storage),
 
-    supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),
   }
 }
@@ -501,7 +486,6 @@ function mapDatalabResponse(data: DatalabResponse): ConversionJob {
   const missingContent = isComplete && (!html || markdown === undefined)
 
   return {
-    jobId: data.request_id,
     status: missingContent ? "failed" : status,
     result: isComplete && html && markdown !== undefined
       ? {
@@ -546,8 +530,6 @@ function createModalBackend(
   }
 
   return {
-    name: "modal",
-
     submitJob: (input) =>
       Effect.gen(function* () {
         const useChandra = input.processingMode === "aggressive"
@@ -581,8 +563,8 @@ function createModalBackend(
                 file_url: fileUrl,
                 result_upload_url: resultUploadUrl,
                 request_id: input.requestId,
-                document_id: input.documentId,
-                user_id: input.userId,
+                document_id: input.location.documentId,
+                user_id: input.location.userId,
                 use_llm: input.useLlm,
                 force_ocr: input.forceOcr,
                 page_range: input.pageRange || null,
@@ -622,7 +604,6 @@ function createModalBackend(
           }
 
           return {
-            jobId,
             status: MODAL_STATUS_MAP[data.status] ?? ("pending" as JobStatus),
             s3Result: data.output?.s3_result,
             error: data.error,
@@ -634,7 +615,6 @@ function createModalBackend(
 
     loadResult: createResultLoader("modal", storage),
 
-    supportsCancellation: () => false,
     cancelJob: () => Effect.succeed(false),
   }
 }

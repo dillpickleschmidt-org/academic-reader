@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect"
-import { HttpServerRequest } from "@effect/platform"
+import { HttpServerRequest } from "effect/unstable/http"
 import { ConvexHttpClient } from "convex/browser"
 import { getToken } from "@convex-dev/better-auth/utils"
 import { api } from "@academic-reader/convex/convex/_generated/api"
@@ -207,11 +207,11 @@ interface ConvexClientService {
   server(): ConvexServerSession
 }
 
-export class ConvexClient extends Context.Tag("ConvexClient")<
+export class ConvexClient extends Context.Service<
   ConvexClient,
   ConvexClientService
->() {
-  static Live = Layer.effect(
+>()("ConvexClient") {
+  static layer = Layer.effect(
     ConvexClient,
     Effect.gen(function* () {
       const config = yield* AppConfig

@@ -1,18 +1,16 @@
-import { HttpServerRequest } from "@effect/platform"
+import { HttpServerRequest } from "effect/unstable/http"
 import { Effect, Schema } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 
-export function decodeJsonBody<A, I>(schema: Schema.Schema<A, I, never>) {
-  return Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest
-    const body = yield* request.json
-    return yield* Schema.decodeUnknown(schema)(body).pipe(
-      Effect.mapError(
-        (error) =>
-          new ValidationError({
-            message: `Invalid request body: ${error.message}`,
-          }),
-      ),
-    )
-  })
+export function decodeJsonBody<A, I, RD, RE>(
+  schema: Schema.Codec<A, I, RD, RE>,
+) {
+  return HttpServerRequest.schemaBodyJson(schema).pipe(
+    Effect.mapError(
+      (error) =>
+        new ValidationError({
+          message: `Invalid request body: ${error.message}`,
+        }),
+    ),
+  )
 }

@@ -123,7 +123,7 @@ function embedImagesFromStorage(
           const buffer = yield* storage.readFile(imageKey(location, filename))
           const base64 = buffer.toString("base64")
           $(el).attr("src", `data:${imageMimeType(filename)};base64,${base64}`)
-        }).pipe(Effect.catchAll(() => Effect.void)),
+        }).pipe(Effect.catch(() => Effect.void)),
       ),
       { concurrency: "unbounded" },
     )

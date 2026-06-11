@@ -167,7 +167,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const ambienceAudioRefs = useRef<Map<string, CrossfadeLooper>>(new Map())
   const currentMusicTrackIdRef = useRef<string | null>(null)
   const pendingAmbienceInits = useRef(new Set<string>())
-  const playbackRequestFiberRef = useRef<Fiber.RuntimeFiber<void, unknown> | null>(null)
+  const playbackRequestFiberRef = useRef<Fiber.Fiber<void, unknown> | null>(null)
   const playerRef = useRef<UnifiedAudioPlayer | null>(null)
   const generationProcessingRef = useRef(false)
   const chunksRef = useRef<ChunkBlock[] | undefined>(undefined)
@@ -502,7 +502,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
             return
           }
 
-          const ctx = yield* Effect.promise(getAudioContext)
+          const ctx = yield* Effect.tryPromise({
+            try: getAudioContext,
+            catch: toError,
+          })
           const state = store.getState()
           cleanupPlayer()
           playerRef.current = new UnifiedAudioPlayer(
@@ -512,7 +515,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           )
           playerRef.current.setPlaybackRate(state.narrator.speed)
 
-          yield* Effect.promise(() => playerRef.current!.loadFromUrl(data.audioUrl))
+          yield* Effect.tryPromise({
+            try: () => playerRef.current!.loadFromUrl(data.audioUrl),
+            catch: toError,
+          })
 
           store.setState({
             playback: {
@@ -546,7 +552,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
           playerRef.current.play()
         }).pipe(
-          Effect.catchAll((err) =>
+          Effect.catch((err) =>
             Effect.sync(() => {
               console.error("[TTS] Playback error:", err)
               cleanupPlayer()
@@ -1068,6 +1074,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       {children}
     </AudioContext.Provider>
   )
+}
+
+function toError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 function findCurrentSpokenWordIndex(

@@ -12,8 +12,7 @@
     "./client": "./src/client.ts"
   },
   "dependencies": {
-    "effect": "^3.19.16",
-    "@effect/platform": "^0.94.3"
+    "effect": "4.0.0-beta.78"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

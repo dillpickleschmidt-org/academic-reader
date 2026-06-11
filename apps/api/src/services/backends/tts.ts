@@ -35,11 +35,11 @@ export interface TtsServiceShape {
 
 const TTS_ACTIVATION_TIMEOUT_MS = 300 * 1000
 
-export class TtsService extends Context.Tag("TtsService")<
+export class TtsService extends Context.Service<
   TtsService,
   TtsServiceShape
->() {
-  static Live = Layer.effect(
+>()("TtsService") {
+  static layer = Layer.effect(
     TtsService,
     Effect.gen(function* () {
       const config = yield* AppConfig
@@ -58,7 +58,11 @@ export class TtsService extends Context.Tag("TtsService")<
           : config.modal.kokoroTtsUrl
       }
 
-      function createKokoroBackend(baseUrl: string, voiceId: string): TTSBackend {
+      function createWorkerBackend(
+        baseUrl: string,
+        voiceId: string,
+        engineName: string,
+      ): TTSBackend {
         return {
           async synthesize(text) {
             const response = await fetch(`${baseUrl}/synthesize`, {
@@ -67,27 +71,10 @@ export class TtsService extends Context.Tag("TtsService")<
               body: JSON.stringify({ text, voice_id: voiceId }),
             })
             if (!response.ok) {
-              throw new Error(`Kokoro TTS failed: ${await response.text()}`)
+              throw new Error(`${engineName} TTS failed: ${await response.text()}`)
             }
 
-            return parseWorkerResponse(await response.json(), "Kokoro")
-          },
-        }
-      }
-
-      function createQwen3Backend(baseUrl: string, voiceId: string): TTSBackend {
-        return {
-          async synthesize(text) {
-            const response = await fetch(`${baseUrl}/synthesize`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text, voice_id: voiceId }),
-            })
-            if (!response.ok) {
-              throw new Error(`Qwen3 TTS failed: ${await response.text()}`)
-            }
-
-            return parseWorkerResponse(await response.json(), "Qwen3")
+            return parseWorkerResponse(await response.json(), engineName)
           },
         }
       }
@@ -111,9 +98,11 @@ export class TtsService extends Context.Tag("TtsService")<
               })
             }
 
-            return voice.engine === "qwen3"
-              ? createQwen3Backend(url, voiceId)
-              : createKokoroBackend(url, voiceId)
+            return createWorkerBackend(
+              url,
+              voiceId,
+              voice.engine === "qwen3" ? "Qwen3" : "Kokoro",
+            )
           }),
 
         activateWorker: (engine) =>

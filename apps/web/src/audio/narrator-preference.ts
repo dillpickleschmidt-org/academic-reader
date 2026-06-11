@@ -6,7 +6,6 @@ import {
 
 const KEY = "narrator-voice"
 const listeners = new Set<() => void>()
-let storageListenerActive = false
 
 export function getNarratorVoicePreference(): string {
   if (typeof window === "undefined") return DEFAULT_VOICE_ID
@@ -22,16 +21,25 @@ export function setNarratorVoicePreference(voiceId: string): boolean {
   try {
     localStorage.setItem(KEY, voiceId)
   } catch {}
-  notifyNarratorVoiceListeners()
+  listeners.forEach((listener) => listener())
   return true
 }
 
 export function subscribeNarratorVoicePreference(listener: () => void) {
   listeners.add(listener)
-  attachStorageListener()
+  if (typeof window === "undefined") {
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === KEY) listener()
+  }
+  window.addEventListener("storage", onStorage)
   return () => {
     listeners.delete(listener)
-    detachStorageListenerIfIdle()
+    window.removeEventListener("storage", onStorage)
   }
 }
 
@@ -47,26 +55,4 @@ export function useNarratorVoicePreference(): [string, (voiceId: string) => void
   }, [])
 
   return [voiceId, setVoiceId]
-}
-
-function notifyNarratorVoiceListeners() {
-  listeners.forEach((listener) => listener())
-}
-
-function attachStorageListener() {
-  if (storageListenerActive || typeof window === "undefined") return
-  window.addEventListener("storage", onStorage)
-  storageListenerActive = true
-}
-
-function detachStorageListenerIfIdle() {
-  if (!storageListenerActive || listeners.size > 0 || typeof window === "undefined") {
-    return
-  }
-  window.removeEventListener("storage", onStorage)
-  storageListenerActive = false
-}
-
-function onStorage(event: StorageEvent) {
-  if (event.key === KEY) notifyNarratorVoiceListeners()
 }

@@ -2,7 +2,7 @@ import {
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
-} from "@effect/platform"
+} from "effect/unstable/http"
 import { Effect } from "effect"
 import { requireAuth } from "../middleware/auth"
 import { Storage } from "../services/storage"
@@ -18,9 +18,10 @@ const MIME_TYPES: Record<string, string> = {
   wav: "audio/wav",
 }
 
-export const assetsRouter = HttpRouter.empty.pipe(
-  HttpRouter.get(
-    "/documents/:documentId/images/:filename",
+export const assetsRouter = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/assets/documents/:documentId/images/:filename",
     Effect.gen(function* () {
       const { userId } = yield* requireAuth
       const storage = yield* Storage
@@ -28,29 +29,30 @@ export const assetsRouter = HttpRouter.empty.pipe(
       const documentId = params.documentId
       const filename = params.filename
       if (!documentId || !filename) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing asset path" },
           { status: 400 },
         )
       }
 
       const location: DocumentLocation = { userId, documentId }
-      const result = yield* storage.readFile(imageKey(location, filename)).pipe(Effect.either)
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
+      const result = yield* storage.readFile(imageKey(location, filename)).pipe(Effect.result)
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
           { error: "Asset not found" },
           { status: 404 },
         )
       }
 
-      return HttpServerResponse.uint8Array(result.right, {
+      return HttpServerResponse.uint8Array(result.success, {
         headers: assetHeaders(filename),
       })
     }),
   ),
 
-  HttpRouter.get(
-    "/documents/:documentId/audio",
+  HttpRouter.route(
+    "GET",
+    "/api/assets/documents/:documentId/audio",
     Effect.gen(function* () {
       const convexService = yield* ConvexClient
       const convex = yield* convexService.userSession()
@@ -62,7 +64,7 @@ export const assetsRouter = HttpRouter.empty.pipe(
       const blockId = url.searchParams.get("blockId")
       const voiceId = url.searchParams.get("voiceId")
       if (!documentId || !blockId || !voiceId) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing audio parameters" },
           { status: 400 },
         )
@@ -73,26 +75,26 @@ export const assetsRouter = HttpRouter.empty.pipe(
         catch: (e) => e as Error,
       })
       if (!audio) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Audio not found" },
           { status: 404 },
         )
       }
 
-      const result = yield* storage.readFile(audio.storagePath).pipe(Effect.either)
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
+      const result = yield* storage.readFile(audio.storagePath).pipe(Effect.result)
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
           { error: "Audio not found" },
           { status: 404 },
         )
       }
 
-      return HttpServerResponse.uint8Array(result.right, {
+      return HttpServerResponse.uint8Array(result.success, {
         headers: assetHeaders("audio.wav"),
       })
     }),
   ),
-)
+])
 
 function assetHeaders(filename: string) {
   return {

@@ -1,4 +1,4 @@
-import { HttpRouter, HttpServerResponse } from "@effect/platform"
+import { HttpRouter, HttpServerResponse } from "effect/unstable/http"
 import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import {
@@ -16,16 +16,17 @@ import { startDocumentAudioGeneration } from "../services/tts-generation"
 import { audioUrl } from "../documents/document-storage"
 import { decodeJsonBody } from "./request-body"
 
-export const ttsRouter = HttpRouter.empty.pipe(
-  HttpRouter.post(
-    "/get-block-audio",
+export const ttsRouter = HttpRouter.addAll([
+  HttpRouter.route(
+    "POST",
+    "/api/tts/get-block-audio",
     Effect.gen(function* () {
       const config = yield* AppConfig
       const convexService = yield* ConvexClient
       const convex = yield* convexService.userSession()
 
       if (config.ttsBackend === "none") {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "TTS is disabled" },
           { status: 404 },
         )
@@ -47,10 +48,10 @@ export const ttsRouter = HttpRouter.empty.pipe(
       })
 
       if (!cachedAudio) {
-        return HttpServerResponse.unsafeJson({ ready: false })
+        return HttpServerResponse.jsonUnsafe({ ready: false })
       }
 
-      return HttpServerResponse.unsafeJson({
+      return HttpServerResponse.jsonUnsafe({
         ready: true,
         audioUrl: audioUrl(documentId, blockId, voiceId),
         text: cachedAudio.text,
@@ -61,8 +62,9 @@ export const ttsRouter = HttpRouter.empty.pipe(
     }),
   ),
 
-  HttpRouter.post(
-    "/generate-document-audio",
+  HttpRouter.route(
+    "POST",
+    "/api/tts/generate-document-audio",
     Effect.gen(function* () {
       const config = yield* AppConfig
       const storage = yield* Storage
@@ -72,7 +74,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const event = yield* getEvent
 
       if (config.ttsBackend === "none") {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "TTS is disabled" },
           { status: 404 },
         )
@@ -94,7 +96,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
       })
 
       if (!readiness.ttsReady) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "TTS text is not ready yet" },
           { status: 409 },
         )
@@ -105,7 +107,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
         readiness.voices[voiceId].audioBlockIds.length ===
           readiness.totalEligibleBlocks
       ) {
-        return HttpServerResponse.unsafeJson({
+        return HttpServerResponse.jsonUnsafe({
           started: false,
           reason: "complete",
         })
@@ -130,12 +132,13 @@ export const ttsRouter = HttpRouter.empty.pipe(
         },
       })
 
-      return HttpServerResponse.unsafeJson(result)
+      return HttpServerResponse.jsonUnsafe(result)
     }),
   ),
 
-  HttpRouter.post(
-    "/unload",
+  HttpRouter.route(
+    "POST",
+    "/api/tts/unload",
     Effect.gen(function* () {
       yield* requireAuth
       const config = yield* AppConfig
@@ -143,7 +146,7 @@ export const ttsRouter = HttpRouter.empty.pipe(
         config.environment === "prod" || config.environment === "production"
 
       if (config.ttsBackend !== "local" || isProduction) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "TTS unload is only available in local development" },
           { status: 404 },
         )
@@ -152,11 +155,11 @@ export const ttsRouter = HttpRouter.empty.pipe(
       const ttsService = yield* TtsService
       const results: Record<string, boolean> = {}
       for (const engine of ["qwen3", "kokoro"] as const) {
-        const result = yield* ttsService.unloadWorker(engine).pipe(Effect.either)
-        results[engine] = result._tag === "Right"
+        const result = yield* ttsService.unloadWorker(engine).pipe(Effect.result)
+        results[engine] = result._tag === "Success"
       }
 
-      return HttpServerResponse.unsafeJson({ unloaded: results })
+      return HttpServerResponse.jsonUnsafe({ unloaded: results })
     }),
   ),
-)
+])

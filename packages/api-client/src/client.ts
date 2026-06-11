@@ -1,6 +1,10 @@
-import { HttpClient, HttpClientResponse, HttpBody } from "@effect/platform"
+import {
+  HttpBody,
+  HttpClient,
+  HttpClientError,
+  HttpClientResponse,
+} from "effect/unstable/http"
 import { Effect } from "effect"
-import { ApiError } from "./errors"
 import {
   CreateDocumentResponse,
   LoadedDocument,
@@ -16,6 +20,16 @@ import {
 
 export type { ConversionOptions }
 
+export class ApiError extends Error {
+  readonly _tag = "ApiError"
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
 export const uploadFile = (file: File) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
@@ -26,11 +40,11 @@ export const uploadFile = (file: File) =>
         body: HttpBody.formData(formData),
       })
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap(HttpClientResponse.schemaBodyJson(UploadResponse)),
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const downloadFile = async (
   documentId: string,
@@ -65,28 +79,27 @@ export const downloadFile = async (
 export const createDocumentFromUpload = (params: CreateDocumentRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
+    const body = yield* HttpBody.json(params)
     return yield* client
-      .post("/api/documents", {
-        body: HttpBody.unsafeJson(params),
-      })
+      .post("/api/documents", { body })
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap(
           HttpClientResponse.schemaBodyJson(CreateDocumentResponse),
         ),
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const loadDocumentContent = (documentId: string) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client.get(`/api/documents/${documentId}/content`).pipe(
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.flatMap(HttpClientResponse.schemaBodyJson(LoadedDocument)),
       Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
     )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const deleteDocument = (
   documentId: string,
@@ -97,51 +110,51 @@ export const deleteDocument = (
     return yield* client
       .del(`/api/documents/${documentId}?threadAction=${threadAction}`)
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.asVoid,
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
-export const generateDocumentAudio = (params: GenerateDocumentAudioRequest) =>
+export const generateDocumentAudio = (
+  params: GenerateDocumentAudioRequest,
+) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
+    const body = yield* HttpBody.json(params)
     return yield* client
-      .post("/api/tts/generate-document-audio", {
-        body: HttpBody.unsafeJson(params),
-      })
+      .post("/api/tts/generate-document-audio", { body })
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap(
           HttpClientResponse.schemaBodyJson(GenerateDocumentAudioResult),
         ),
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const getBlockAudio = (params: GetBlockAudioRequest) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
+    const body = yield* HttpBody.json(params)
     return yield* client
-      .post("/api/tts/get-block-audio", {
-        body: HttpBody.unsafeJson(params),
-      })
+      .post("/api/tts/get-block-audio", { body })
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap(HttpClientResponse.schemaBodyJson(GetBlockAudioResponse)),
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const triggerEmbeddings = (documentId: string) =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     return yield* client.post(`/api/documents/${documentId}/embeddings`).pipe(
+      Effect.flatMap(HttpClientResponse.filterStatusOk),
       Effect.asVoid,
       Effect.scoped,
-      Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
     )
-  })
+  }).pipe(Effect.mapError(toApiError))
 
 export const fetchPdfPage = (documentId: string, pageNum: number) =>
   Effect.gen(function* () {
@@ -149,8 +162,15 @@ export const fetchPdfPage = (documentId: string, pageNum: number) =>
     return yield* client
       .get(`/api/documents/${documentId}/page/${pageNum}`)
       .pipe(
+        Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap((response) => response.arrayBuffer),
         Effect.scoped,
-        Effect.mapError((e) => new ApiError({ message: String(e), status: 0 })),
       )
-  })
+  }).pipe(Effect.mapError(toApiError))
+
+function toApiError(error: unknown) {
+  return new ApiError(
+    HttpClientError.isHttpClientError(error) ? (error.response?.status ?? 0) : 0,
+    error instanceof Error ? error.message : String(error),
+  )
+}

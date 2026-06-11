@@ -19,11 +19,11 @@ export interface ModelProviderService {
   embeddingModel(): EmbeddingModel
 }
 
-export class ModelProvider extends Context.Tag("ModelProvider")<
+export class ModelProvider extends Context.Service<
   ModelProvider,
   ModelProviderService
->() {
-  static Live = Layer.effect(
+>()("ModelProvider") {
+  static layer = Layer.effect(
     ModelProvider,
     Effect.gen(function* () {
       const config = yield* AppConfig

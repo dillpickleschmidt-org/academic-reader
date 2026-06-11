@@ -25,7 +25,7 @@ export function deleteDocument(options: {
 
     const conversionTask = tasks.find((task) => task.kind === "conversion")
     const backendJobId = conversionTask?.conversion?.backendJobId
-    if (backendJobId && options.backend.supportsCancellation()) {
+    if (backendJobId) {
       yield* options.backend.cancelJob(backendJobId).pipe(Effect.ignore)
     }
 

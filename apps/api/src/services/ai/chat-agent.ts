@@ -65,7 +65,7 @@ export function runChatStream(
         const poll = yield* Effect.tryPromise({
           try: () => convex.getDocument(documentId),
           catch: () => null,
-        }).pipe(Effect.catchAll(() => Effect.succeed(null)))
+        }).pipe(Effect.catch(() => Effect.succeed(null)))
 
         if (poll && poll.summary !== null) {
           resolvedSummary = poll.summary
@@ -228,31 +228,43 @@ Do not narrate or announce tool usage. Just use tools silently and provide the a
             method: "BACKGROUND",
             path: "/chat/title",
           }
-          Effect.runPromise(
+          Effect.runFork(
             generateChatTitle(userText, text).pipe(
               Effect.provideService(ModelProvider, models),
+              Effect.flatMap((llmTitle) =>
+                llmTitle
+                  ? Effect.tryPromise({
+                      try: () =>
+                        convex.updateChatThreadTitle(threadId, llmTitle),
+                      catch: toError,
+                    }).pipe(Effect.as(llmTitle))
+                  : Effect.succeed(null),
+              ),
+              Effect.tap((llmTitle) =>
+                Effect.sync(() => {
+                  if (!llmTitle) return
+                  emitStreamingEvent(titleEvent, {
+                    status: 200,
+                    durationMs: Math.round(performance.now() - titleStart),
+                    titleLength: llmTitle.length,
+                  })
+                }),
+              ),
+              Effect.catch((err) =>
+                Effect.sync(() =>
+                  emitStreamingEvent(titleEvent, {
+                    status: 500,
+                    durationMs: Math.round(performance.now() - titleStart),
+                    error: {
+                      category: "internal",
+                      message: err instanceof Error ? err.message : String(err),
+                      code: "CHAT_TITLE_GENERATION_FAILED",
+                    },
+                  }),
+                ),
+              ),
             ),
           )
-            .then(async (llmTitle) => {
-              if (!llmTitle) return
-              await convex.updateChatThreadTitle(threadId, llmTitle)
-              emitStreamingEvent(titleEvent, {
-                status: 200,
-                durationMs: Math.round(performance.now() - titleStart),
-                titleLength: llmTitle.length,
-              })
-            })
-            .catch((err) =>
-              emitStreamingEvent(titleEvent, {
-                status: 500,
-                durationMs: Math.round(performance.now() - titleStart),
-                error: {
-                  category: "internal",
-                  message: err instanceof Error ? err.message : String(err),
-                  code: "CHAT_TITLE_GENERATION_FAILED",
-                },
-              }),
-            )
         }
 
         emitStreamingEvent(event, {
@@ -392,6 +404,10 @@ function extractUserMessage(messages: UIMessage[]): string | undefined {
   if (!last || last.role !== "user") return undefined
   const textPart = last.parts.find((p) => p.type === "text")
   return textPart?.type === "text" ? textPart.text : undefined
+}
+
+function toError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 function stripExaResponse(output: unknown) {

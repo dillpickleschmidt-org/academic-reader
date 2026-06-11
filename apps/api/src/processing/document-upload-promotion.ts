@@ -3,21 +3,21 @@ import type { StorageService } from "../services/storage"
 import type { DocumentLocation } from "../documents/document-storage"
 import { documentPrefix, tempDocumentPrefix } from "../documents/document-storage"
 
-export async function promoteUploadedFile(
+export function promoteUploadedFile(
   storage: StorageService,
   location: DocumentLocation,
   fileId: string,
 ) {
-  const copied = await Effect.runPromise(
-    storage.copyPrefix(
+  return Effect.gen(function* () {
+    const copied = yield* storage.copyPrefix(
       `${tempDocumentPrefix(fileId)}/`,
       `${documentPrefix(location)}/`,
-    ),
-  )
+    )
 
-  if (copied === 0) {
-    throw new Error("Uploaded file not found")
-  }
+    if (copied === 0) {
+      return yield* Effect.fail(new Error("Uploaded file not found"))
+    }
 
-  await Effect.runPromise(storage.deletePrefix(`${tempDocumentPrefix(fileId)}/`))
+    yield* storage.deletePrefix(`${tempDocumentPrefix(fileId)}/`)
+  })
 }

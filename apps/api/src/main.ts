@@ -1,7 +1,6 @@
-import { HttpMiddleware, HttpServer } from "@effect/platform"
-import { BunHttpServer } from "@effect/platform-bun"
+import { HttpMiddleware, HttpRouter } from "effect/unstable/http"
+import { BunHttpServer, BunRuntime } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
-import { BunRuntime } from "@effect/platform-bun"
 import { AppConfig } from "./config"
 import { Storage } from "./services/storage"
 import { ConvexClient } from "./services/convex-client"
@@ -46,8 +45,7 @@ const program = Effect.gen(function* () {
     ),
   )
 
-  const ServerLive = app.pipe(
-    HttpServer.serve(middleware),
+  const ServerLive = HttpRouter.serve(app, { middleware }).pipe(
     Layer.provide(
       BunHttpServer.layer({
         port: config.port,
@@ -59,20 +57,16 @@ const program = Effect.gen(function* () {
   yield* Layer.launch(ServerLive)
 })
 
-const MainLive = Layer.mergeAll(
-  AppConfig.Live,
-  Storage.Live,
-  ConvexClient.Live,
-  ModelProvider.Live,
-  TtsService.Live,
-).pipe(Layer.provideMerge(AppConfig.Live))
+const BaseServices = Layer.mergeAll(
+  Storage.layer,
+  ConvexClient.layer,
+  ModelProvider.layer,
+  TtsService.layer,
+).pipe(Layer.provideMerge(AppConfig.layer))
 
-const ConversionLive = ConversionBackend.Live.pipe(
-  Layer.provide(AppConfig.Live),
-  Layer.provide(Storage.Live.pipe(Layer.provide(AppConfig.Live))),
+const AllServices = ConversionBackend.layer.pipe(
+  Layer.provideMerge(BaseServices),
 )
-
-const AllServices = Layer.mergeAll(MainLive, ConversionLive)
 
 BunRuntime.runMain(
   Effect.provide(program, AllServices),

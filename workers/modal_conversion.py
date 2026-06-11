@@ -33,23 +33,17 @@ def run_conversion_job(
     start = time.perf_counter()
     extra_fields = extra_fields or {}
     suffix = Path(file_url.split("?")[0]).suffix or ".pdf"
-    input_path: Path | None = None
 
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix=suffix) as temp_file:
             response = httpx.get(file_url, follow_redirects=True, timeout=60.0)
             response.raise_for_status()
             temp_file.write(response.content)
-            input_path = Path(temp_file.name)
+            temp_file.flush()
+            result = convert(Path(temp_file.name))
 
-        result = convert(input_path)
         chunks = (result.get("formats") or {}).get("chunks") or {}
-        httpx.put(
-            result_upload_url,
-            content=json.dumps(result),
-            headers={"Content-Type": "application/json"},
-            timeout=120.0,
-        ).raise_for_status()
+        httpx.put(result_upload_url, json=result, timeout=120.0).raise_for_status()
         log_event(
             worker=worker,
             eventName="conversion_complete",
@@ -85,9 +79,6 @@ def run_conversion_job(
             **extra_fields,
         )
         raise
-    finally:
-        if input_path:
-            input_path.unlink(missing_ok=True)
 
 
 def log_event(worker: str, **fields: Any) -> None:

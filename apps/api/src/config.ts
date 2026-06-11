@@ -46,11 +46,10 @@ export interface AppConfigShape {
   otelEndpoint?: string
 }
 
-export class AppConfig extends Context.Tag("AppConfig")<
-  AppConfig,
-  AppConfigShape
->() {
-  static Live = Layer.effect(
+export class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
+  "AppConfig",
+) {
+  static layer = Layer.effect(
     AppConfig,
     Effect.sync(() => {
       const config = readEnv()

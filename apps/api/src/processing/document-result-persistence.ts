@@ -3,73 +3,85 @@ import type { AppConfigShape } from "../config"
 import type { StorageService } from "../services/storage"
 import type { ConvexServerSession } from "../services/convex-client"
 import type { DocumentLocation } from "../documents/document-storage"
-import { contentHtmlKey, contentMarkdownKey, originalFileKey } from "../documents/document-storage"
+import {
+  contentHtmlKey,
+  contentMarkdownKey,
+  originalFileKey,
+} from "../documents/document-storage"
 import { saveDocumentImages } from "../documents/document-images"
-import { processHtml, HTML_TRANSFORMS, rewriteImageSources, injectPageMarkers } from "../utils/html-processing"
+import {
+  processHtml,
+  HTML_TRANSFORMS,
+  rewriteImageSources,
+  injectPageMarkers,
+} from "../utils/html-processing"
 import { extractAndInjectLinks } from "../services/link-extraction"
 import { normalizeChunk, transformChunks } from "./chunk-normalizer"
-import type { JobResultInput } from "./document-conversion"
+import type { ConversionResult } from "../services/backends/conversion"
 
 const CHUNK_BATCH_SIZE = 200
 
-export async function persistConversionResult(options: {
+export function persistConversionResult(options: {
   config: AppConfigShape
   storage: StorageService
   convex: ConvexServerSession
   documentId: string
   location: DocumentLocation
-  result: JobResultInput
+  result: ConversionResult
 }) {
-  const imageUrls = options.result.images && Object.keys(options.result.images).length
-    ? await Effect.runPromise(
-        saveDocumentImages(options.storage, options.location, options.result.images),
-      )
-    : null
-  const imageCount = imageUrls ? Object.keys(imageUrls).length : 0
+  return Effect.gen(function* () {
+    const imageUrls =
+      options.result.images && Object.keys(options.result.images).length
+        ? yield* saveDocumentImages(
+            options.storage,
+            options.location,
+            options.result.images,
+          )
+        : null
+    const imageCount = imageUrls ? Object.keys(imageUrls).length : 0
 
-  let processedContent = options.result.content
-  if (imageUrls) {
-    processedContent = rewriteImageSources(processedContent, imageUrls)
-  }
-
-  const rawChunks = (options.result.formats.chunks?.blocks ?? []) as any[]
-  const normalizedChunks = rawChunks.map((block, index) =>
-    normalizeChunk(block, index),
-  )
-
-  if (
-    normalizedChunks.length &&
-    options.config.conversionBackend === "datalab"
-  ) {
-    const pdfResult = await Effect.runPromiseExit(
-      options.storage.readFile(originalFileKey(options.location)),
-    )
-    if (pdfResult._tag === "Success") {
-      try {
-        const linked = extractAndInjectLinks(pdfResult.value, processedContent)
-        processedContent = linked.html
-      } catch {}
+    let processedContent = options.result.content
+    if (imageUrls) {
+      processedContent = rewriteImageSources(processedContent, imageUrls)
     }
-  }
 
-  let pageMarkerStats = { expected: 0, injected: 0 }
-  try {
-    const pageMarkers = injectPageMarkers(processedContent, 0)
-    processedContent = pageMarkers.html
-    pageMarkerStats = pageMarkers.stats
-  } catch {}
+    const rawChunks = (options.result.formats.chunks?.blocks ?? []) as any[]
+    const normalizedChunks = rawChunks.map((block, index) =>
+      normalizeChunk(block, index),
+    )
 
-  let htmlProcessingStats = { katexFailureCount: 0 }
-  if (processedContent) {
-    const processed = processHtml(processedContent, HTML_TRANSFORMS)
-    processedContent = processed.html
-    htmlProcessingStats = processed.stats
-  }
+    if (
+      normalizedChunks.length &&
+      options.config.conversionBackend === "datalab"
+    ) {
+      const pdfResult = yield* options.storage
+        .readFile(originalFileKey(options.location))
+        .pipe(Effect.result)
+      if (pdfResult._tag === "Success") {
+        try {
+          const linked = extractAndInjectLinks(pdfResult.success, processedContent)
+          processedContent = linked.html
+        } catch {}
+      }
+    }
 
-  const markdownContent = options.result.formats.markdown
+    let pageMarkerStats = { expected: 0, injected: 0 }
+    try {
+      const pageMarkers = injectPageMarkers(processedContent, 0)
+      processedContent = pageMarkers.html
+      pageMarkerStats = pageMarkers.stats
+    } catch {}
 
-  await Effect.runPromise(
-    Effect.all(
+    let htmlProcessingStats = { katexFailureCount: 0 }
+    if (processedContent) {
+      const processed = processHtml(processedContent, HTML_TRANSFORMS)
+      processedContent = processed.html
+      htmlProcessingStats = processed.stats
+    }
+
+    const markdownContent = options.result.formats.markdown
+
+    yield* Effect.all(
       [
         options.storage.saveFile(contentHtmlKey(options.location), processedContent),
         options.storage.saveFile(
@@ -78,24 +90,32 @@ export async function persistConversionResult(options: {
         ),
       ],
       { concurrency: "unbounded" },
-    ),
-  )
-
-  const chunksForPersistence = transformChunks(normalizedChunks)
-  for (let i = 0; i < chunksForPersistence.length; i += CHUNK_BATCH_SIZE) {
-    await options.convex.addDocumentChunks(
-      options.documentId,
-      chunksForPersistence.slice(i, i + CHUNK_BATCH_SIZE),
     )
-  }
 
-  return {
-    content: processedContent,
-    blocks: normalizedChunks,
-    imageCount,
-    htmlLength: processedContent.length,
-    markdownLength: markdownContent.length,
-    pageMarkerStats,
-    htmlProcessingStats,
-  }
+    const chunksForPersistence = transformChunks(normalizedChunks)
+    for (let i = 0; i < chunksForPersistence.length; i += CHUNK_BATCH_SIZE) {
+      yield* Effect.tryPromise({
+        try: () =>
+          options.convex.addDocumentChunks(
+            options.documentId,
+            chunksForPersistence.slice(i, i + CHUNK_BATCH_SIZE),
+          ),
+        catch: toError,
+      })
+    }
+
+    return {
+      content: processedContent,
+      blocks: normalizedChunks,
+      imageCount,
+      htmlLength: processedContent.length,
+      markdownLength: markdownContent.length,
+      pageMarkerStats,
+      htmlProcessingStats,
+    }
+  })
+}
+
+function toError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error))
 }

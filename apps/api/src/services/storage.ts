@@ -35,8 +35,10 @@ export interface StorageService {
   ): Effect.Effect<{ uploadUrl: string; expiresAt: string }, StorageError>
 }
 
-export class Storage extends Context.Tag("Storage")<Storage, StorageService>() {
-  static Live = Layer.effect(
+export class Storage extends Context.Service<Storage, StorageService>()(
+  "Storage",
+) {
+  static layer = Layer.effect(
     Storage,
     Effect.gen(function* () {
       const config = yield* AppConfig

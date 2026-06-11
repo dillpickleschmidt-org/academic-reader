@@ -24,14 +24,14 @@ export function tocEnrichment(
     const storage = yield* Storage
     const pdfResult = yield* storage
       .readFile(originalFilePath)
-      .pipe(Effect.either)
+      .pipe(Effect.result)
 
-    if (pdfResult._tag === "Left") {
+    if (pdfResult._tag === "Failure") {
       yield* persistToc(convex, documentId, EMPTY_TOC)
       return tocStats(EMPTY_TOC, "pdf_read_failed", false)
     }
 
-    const result = yield* extractTableOfContents(textContent, pdfResult.right)
+    const result = yield* extractTableOfContents(textContent, pdfResult.success)
     const toc = result.toc ?? EMPTY_TOC
     yield* persistToc(convex, documentId, toc)
     return tocStats(toc, result.meta.status, result.meta.offsetDetected)

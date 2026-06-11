@@ -1,6 +1,6 @@
 import { inspect } from "node:util"
-import { FiberRef, Effect } from "effect"
-import { HttpMiddleware, HttpServerRequest } from "@effect/platform"
+import { Cause, Context, Effect, Exit, Result } from "effect"
+import { HttpMiddleware, HttpServerRequest } from "effect/unstable/http"
 import { SeverityNumber } from "@opentelemetry/api-logs"
 import {
   LoggerProvider,
@@ -47,20 +47,25 @@ export interface WideEvent extends Record<string, unknown> {
 const SERVICE_NAME = "academic-reader-api"
 const SERVICE_VERSION = "2.0.0"
 
-const WideEventRef = FiberRef.unsafeMake<WideEvent>({
-  requestId: "",
-  timestamp: "",
-  environment: "",
-  method: "",
-  path: "",
-  conversionBackend: "local",
-  ttsBackend: "none",
+const WideEventRef = Context.Reference<WideEvent>("WideEventRef", {
+  defaultValue: (): WideEvent => ({
+    requestId: "",
+    timestamp: "",
+    environment: "",
+    method: "",
+    path: "",
+    conversionBackend: "local",
+    ttsBackend: "none",
+  }),
 })
 
 export const enrichEvent = (fields: Record<string, unknown>) =>
-  FiberRef.update(WideEventRef, (e) => ({ ...e, ...fields }) as WideEvent)
+  Effect.gen(function* () {
+    const event = yield* WideEventRef
+    Object.assign(event, fields)
+  })
 
-export const getEvent = FiberRef.get(WideEventRef)
+export const getEvent = WideEventRef
 
 function createOtelLogger(endpoint?: string) {
   if (!endpoint) return undefined
@@ -141,14 +146,6 @@ export function emitLifecycleEvent(
   )
 }
 
-const MANUAL_EMIT_ROUTES = [
-  "/api/chat",
-]
-
-function isManualEmitRoute(path: string): boolean {
-  return MANUAL_EMIT_ROUTES.includes(path)
-}
-
 export const wideEventMiddleware = (
   context: WideEventMiddlewareContext,
   otelEndpoint?: string,
@@ -172,11 +169,10 @@ export const wideEventMiddleware = (
         ttsBackend: context.ttsBackend,
       }
 
-      const manualEmit = isManualEmitRoute(path)
-
-      yield* FiberRef.set(WideEventRef, event)
+      const manualEmit = path === "/api/chat"
 
       const response = yield* app.pipe(
+        Effect.provideService(WideEventRef, event),
         Effect.tap((res) =>
           Effect.sync(() => {
             event.status = res.status
@@ -184,15 +180,13 @@ export const wideEventMiddleware = (
         ),
         Effect.onExit((exit) =>
           Effect.sync(() => {
-            if (manualEmit) return
+            if (manualEmit && Exit.isSuccess(exit)) return
+            if (manualEmit && (event.status !== undefined || event.error)) return
 
-            if (exit._tag === "Failure") {
-              event.status = event.status ?? 500
-              event.error = event.error ?? {
-                category: "internal",
-                message: "Request failed",
-                code: "UNCAUGHT_ERROR",
-              }
+            if (Exit.isFailure(exit)) {
+              const details = failureDetails(failureFromCause(exit.cause))
+              event.status = event.status ?? details.status
+              event.error = event.error ?? details.error
             }
 
             emitEvent(event, otelEndpoint)
@@ -203,6 +197,47 @@ export const wideEventMiddleware = (
       return response
     }),
   )
+
+function failureFromCause(cause: Cause.Cause<unknown>): unknown {
+  const error = Cause.findError(cause)
+  return Result.isSuccess(error) ? error.success : undefined
+}
+
+function failureDetails(error: unknown): { status: number; error: WideEventError } {
+  if (error instanceof Cause.NoSuchElementError) {
+    return {
+      status: 404,
+      error: { category: "validation", message: "Not Found", code: "NOT_FOUND" },
+    }
+  }
+
+  const tag = tagForError(error)
+  const message = error && typeof error === "object" && "message" in error
+    ? String(error.message)
+    : "Request failed"
+  return {
+    status: tag === "ValidationError"
+      ? 400
+      : tag === "AuthError"
+        ? 401
+        : tag === "BackendError" ? 502 : 500,
+    error: {
+      category: tag === "ValidationError"
+        ? "validation"
+        : tag === "AuthError" ? "auth" : "internal",
+      message,
+      code: tag
+        ? tag.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()
+        : "UNCAUGHT_ERROR",
+    },
+  }
+}
+
+function tagForError(error: unknown) {
+  return error && typeof error === "object" && "_tag" in error
+    ? String(error._tag)
+    : undefined
+}
 
 function completeEvent(event: WideEvent): WideEvent {
   if (event.durationMs !== undefined) return event

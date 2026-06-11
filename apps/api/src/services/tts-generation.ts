@@ -25,7 +25,6 @@ interface GenerateDocumentAudioOptions {
   documentId: string
   voiceId: string
   ttsBackend: "local" | "modal"
-  documentPath?: string
   event?: WideEvent
   onProgress?: (stats: DocumentAudioGenerationStats) => Promise<void> | void
   onComplete?: (stats: DocumentAudioGenerationStats) => Promise<void> | void
@@ -80,36 +79,42 @@ export function startDocumentAudioGeneration(
 
   activeGenerationKey = key
   const start = performance.now()
-  void Effect.runPromise(
+  Effect.runFork(
     generateDocumentAudio(options).pipe(
       Effect.tap((stats) =>
-        Effect.promise(async () => {
-          if (options.event) {
-            emitStreamingEvent(options.event, {
-              durationMs: Math.round(performance.now() - start),
-              status: 200,
-              ...stats,
-            })
-          }
-          await options.onComplete?.(stats)
+        Effect.tryPromise({
+          try: async () => {
+            if (options.event) {
+              emitStreamingEvent(options.event, {
+                durationMs: Math.round(performance.now() - start),
+                status: 200,
+                ...stats,
+              })
+            }
+            await options.onComplete?.(stats)
+          },
+          catch: toError,
         }),
       ),
-      Effect.catchAllCause((cause) =>
-        Effect.promise(async () => {
-          const message = Cause.pretty(cause)
-          if (options.event) {
-            emitStreamingEvent(options.event, {
-              durationMs: Math.round(performance.now() - start),
-              status: 500,
-              error: {
-                category: "internal",
-                message,
-                code: "AUDIO_GENERATION_FAILED",
-              },
-            })
-          }
-          await options.onFailure?.(message)
-        }),
+      Effect.catchCause((cause) =>
+        Effect.tryPromise({
+          try: async () => {
+            const message = Cause.pretty(cause)
+            if (options.event) {
+              emitStreamingEvent(options.event, {
+                durationMs: Math.round(performance.now() - start),
+                status: 500,
+                error: {
+                  category: "internal",
+                  message,
+                  code: "AUDIO_GENERATION_FAILED",
+                },
+              })
+            }
+            await options.onFailure?.(message)
+          },
+          catch: toError,
+        }).pipe(Effect.ignore),
       ),
       Effect.ensuring(
         Effect.sync(() => {
@@ -141,7 +146,7 @@ function generateDocumentAudio(
     })
     const doc = generationState.document
     const location = documentLocation(doc, doc.documentId)
-    const documentPath = options.documentPath ?? documentPrefix(location)
+    const documentPath = documentPrefix(location)
 
     if (!generationState.ttsReady) {
       return yield* Effect.fail(new Error("TTS text is not ready yet"))
@@ -196,16 +201,17 @@ function generateDocumentAudio(
           recordTimingFailure(stats, chunk.blockId, result.timing)
         }
         if (options.onProgress) {
-          yield* Effect.promise(() =>
-            Promise.resolve(options.onProgress?.({ ...stats })),
-          ).pipe(Effect.ignore)
+          yield* Effect.tryPromise({
+            try: () => Promise.resolve(options.onProgress?.({ ...stats })),
+            catch: toError,
+          }).pipe(Effect.ignore)
         }
       }
     }).pipe(
       Effect.ensuring(
         options.ttsBackend === "local"
           ? options.ttsService.unloadWorker(voice.engine).pipe(
-              Effect.catchAll((err) =>
+              Effect.catch((err) =>
                 Effect.sync(() => {
                   stats.cleanupError =
                     err instanceof Error ? err.message : String(err)
@@ -265,6 +271,10 @@ function generateChunkAudio(
       timing: result.timing,
     }
   })
+}
+
+function toError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 function recordTimingFailure(

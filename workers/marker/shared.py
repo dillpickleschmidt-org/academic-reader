@@ -1,11 +1,10 @@
 """Shared utilities for Marker workers (local and Modal)."""
-import json
 
 
 def to_dict(obj):
     """Convert pydantic model to dict, or return as-is if already a dict."""
-    if hasattr(obj, "model_dump_json"):
-        return json.loads(obj.model_dump_json())
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump(mode="json")
     return obj
 
 

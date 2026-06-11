@@ -15,7 +15,7 @@ export const GetBlockAudioRequest = Schema.Struct({
 })
 export type GetBlockAudioRequest = typeof GetBlockAudioRequest.Type
 
-export const GetBlockAudioResponse = Schema.Union(
+export const GetBlockAudioResponse = Schema.Union([
   Schema.Struct({ ready: Schema.Literal(false) }),
   Schema.Struct({
     ready: Schema.Literal(true),
@@ -25,7 +25,7 @@ export const GetBlockAudioResponse = Schema.Union(
     sampleRate: Schema.Number,
     wordTimestamps: Schema.Array(WordTimestamp),
   }),
-)
+])
 export type GetBlockAudioResponse = typeof GetBlockAudioResponse.Type
 
 export const GenerateDocumentAudioRequest = Schema.Struct({
@@ -34,16 +34,16 @@ export const GenerateDocumentAudioRequest = Schema.Struct({
 })
 export type GenerateDocumentAudioRequest = typeof GenerateDocumentAudioRequest.Type
 
-export const GenerateDocumentAudioResult = Schema.Union(
+export const GenerateDocumentAudioResult = Schema.Union([
   Schema.Struct({ started: Schema.Literal(true) }),
   Schema.Struct({
     started: Schema.Literal(false),
-    reason: Schema.Literal("complete", "busy", "alreadyGenerating"),
+    reason: Schema.Literals(["complete", "busy", "alreadyGenerating"]),
   }),
-)
+])
 export type GenerateDocumentAudioResult = typeof GenerateDocumentAudioResult.Type
 
-export const TTSEngine = Schema.Literal("qwen3", "kokoro")
+export const TTSEngine = Schema.Literals(["qwen3", "kokoro"])
 export type TTSEngine = typeof TTSEngine.Type
 
 export const Voice = Schema.Struct({

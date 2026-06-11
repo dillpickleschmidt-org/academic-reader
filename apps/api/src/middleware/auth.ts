@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { HttpServerRequest } from "@effect/platform"
+import { HttpServerRequest } from "effect/unstable/http"
 import { AuthError } from "@academic-reader/api-client/errors"
 import { AppConfig } from "../config"
 import { enrichEvent } from "./wide-event"

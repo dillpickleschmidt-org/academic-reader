@@ -34,7 +34,7 @@ export interface TocSection {
   readonly children?: ReadonlyArray<TocSection> | undefined
 }
 
-export const TocSection: Schema.Schema<TocSection> = Schema.Struct({
+export const TocSection: Schema.Codec<TocSection> = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   page: Schema.Number,

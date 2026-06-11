@@ -2,7 +2,7 @@ import {
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
-} from "@effect/platform"
+} from "effect/unstable/http"
 import { Effect } from "effect"
 import { ValidationError } from "@academic-reader/api-client/errors"
 import { CreateDocumentRequest } from "@academic-reader/api-client/schemas/document"
@@ -24,9 +24,10 @@ import { generateDocumentDownload } from "../documents/document-download"
 import { generateDocumentEmbeddings } from "../documents/document-embeddings"
 import { decodeJsonBody } from "./request-body"
 
-export const documentsRouter = HttpRouter.empty.pipe(
-  HttpRouter.post(
-    "/",
+export const documentsRouter = HttpRouter.addAll([
+  HttpRouter.route(
+    "POST",
+    "/api/documents",
     Effect.gen(function* () {
       const config = yield* AppConfig
       const storage = yield* Storage
@@ -47,6 +48,13 @@ export const documentsRouter = HttpRouter.empty.pipe(
         })
       }
 
+      const conversion = {
+        processingMode: body.processingMode,
+        useLlm: body.useLlm,
+        forceOcr: body.forceOcr,
+        pageRange: body.pageRange,
+        audioVoiceId,
+      }
       const result = yield* Effect.tryPromise({
         try: () =>
           convex.createDocument({
@@ -54,13 +62,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
             mimeType: body.mimeType,
             sizeBytes: body.sizeBytes,
             pageCount: body.pageCount,
-            conversion: {
-              processingMode: body.processingMode,
-              useLlm: body.useLlm,
-              forceOcr: body.forceOcr,
-              pageRange: body.pageRange,
-              audioVoiceId,
-            },
+            conversion,
           }),
         catch: (e) => e as Error,
       })
@@ -69,7 +71,6 @@ export const documentsRouter = HttpRouter.empty.pipe(
         config,
         storage,
         backend,
-        convex,
         serverConvex: convexService.server(),
         modelProvider,
         ttsService,
@@ -87,11 +88,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
           fileSize: body.sizeBytes,
           conversionBackend: config.conversionBackend,
           ttsBackend: config.ttsBackend,
-          processingMode: body.processingMode,
-          useLlm: body.useLlm,
-          forceOcr: body.forceOcr,
-          pageRange: body.pageRange,
-          audioVoiceId,
+          ...conversion,
         },
         userId,
         documentId: result.documentId,
@@ -99,49 +96,47 @@ export const documentsRouter = HttpRouter.empty.pipe(
         fileId: body.fileId,
         filename: body.filename,
         mimeType: body.mimeType,
-        processingMode: body.processingMode,
-        useLlm: body.useLlm,
-        forceOcr: body.forceOcr,
-        pageRange: body.pageRange,
-        audioVoiceId,
+        ...conversion,
       })
 
-      return HttpServerResponse.unsafeJson({
+      return HttpServerResponse.jsonUnsafe({
         documentId: result.documentId,
       })
     }),
   ),
 
-  HttpRouter.get(
-    "/:documentId/content",
+  HttpRouter.route(
+    "GET",
+    "/api/documents/:documentId/content",
     Effect.gen(function* () {
       const storage = yield* Storage
       const convexService = yield* ConvexClient
       const convex = yield* convexService.userSession()
       const { documentId } = yield* HttpRouter.params
       if (!documentId) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing documentId" },
           { status: 400 },
         )
       }
 
       const result = yield* loadDocumentContent(storage, convex, documentId).pipe(
-        Effect.either,
+        Effect.result,
       )
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: result.left.message },
-          { status: result.left.message.includes("not found") ? 404 : 500 },
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
+          { error: result.failure.message },
+          { status: result.failure.message.includes("not found") ? 404 : 500 },
         )
       }
 
-      return HttpServerResponse.unsafeJson(result.right)
+      return HttpServerResponse.jsonUnsafe(result.success)
     }),
   ),
 
-  HttpRouter.del(
-    "/:documentId",
+  HttpRouter.route(
+    "DELETE",
+    "/api/documents/:documentId",
     Effect.gen(function* () {
       const storage = yield* Storage
       const convexService = yield* ConvexClient
@@ -150,7 +145,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
       const request = yield* HttpServerRequest.HttpServerRequest
       const { documentId } = yield* HttpRouter.params
       if (!documentId) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing documentId" },
           { status: 400 },
         )
@@ -159,7 +154,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
       const url = new URL(request.url, "http://localhost")
       const threadAction = url.searchParams.get("threadAction")
       if (threadAction !== "keep" && threadAction !== "delete") {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "threadAction query param required (keep or delete)" },
           { status: 400 },
         )
@@ -171,21 +166,22 @@ export const documentsRouter = HttpRouter.empty.pipe(
         backend,
         documentId,
         threadAction,
-      }).pipe(Effect.either)
+      }).pipe(Effect.result)
 
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
           { error: "Failed to delete document" },
           { status: 500 },
         )
       }
 
-      return HttpServerResponse.unsafeJson(result.right)
+      return HttpServerResponse.jsonUnsafe(result.success)
     }),
   ),
 
-  HttpRouter.get(
-    "/:documentId/page/:pageNum",
+  HttpRouter.route(
+    "GET",
+    "/api/documents/:documentId/page/:pageNum",
     Effect.gen(function* () {
       const storage = yield* Storage
       const convexService = yield* ConvexClient
@@ -194,7 +190,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
       const documentId = params.documentId
       const pageNumParam = params.pageNum
       if (!documentId || !pageNumParam) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing page parameters" },
           { status: 400 },
         )
@@ -202,7 +198,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
 
       const pageNum = parseInt(pageNumParam, 10)
       if (isNaN(pageNum) || pageNum < 0) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Invalid page number" },
           { status: 400 },
         )
@@ -213,15 +209,15 @@ export const documentsRouter = HttpRouter.empty.pipe(
         convex,
         documentId,
         pageNum,
-      ).pipe(Effect.either)
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: result.left.message },
-          { status: result.left.message.includes("range") ? 400 : 404 },
+      ).pipe(Effect.result)
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
+          { error: result.failure.message },
+          { status: result.failure.message.includes("range") ? 400 : 404 },
         )
       }
 
-      return HttpServerResponse.uint8Array(result.right, {
+      return HttpServerResponse.uint8Array(result.success, {
         headers: {
           "Content-Type": "application/pdf",
           "Cache-Control": "private, max-age=3600",
@@ -230,8 +226,9 @@ export const documentsRouter = HttpRouter.empty.pipe(
     }),
   ),
 
-  HttpRouter.get(
-    "/:documentId/download",
+  HttpRouter.route(
+    "GET",
+    "/api/documents/:documentId/download",
     Effect.gen(function* () {
       const storage = yield* Storage
       const convexService = yield* ConvexClient
@@ -240,7 +237,7 @@ export const documentsRouter = HttpRouter.empty.pipe(
       const request = yield* HttpServerRequest.HttpServerRequest
       const documentId = params.documentId
       if (!documentId) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing documentId" },
           { status: 400 },
         )
@@ -256,16 +253,16 @@ export const documentsRouter = HttpRouter.empty.pipe(
         documentId,
         title,
         tabIndent,
-      }).pipe(Effect.either)
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
+      }).pipe(Effect.result)
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
           { error: "Failed to generate download" },
           { status: 500 },
         )
       }
 
       return HttpServerResponse.uint8Array(
-        new TextEncoder().encode(result.right),
+        new TextEncoder().encode(result.success),
         {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
@@ -276,31 +273,32 @@ export const documentsRouter = HttpRouter.empty.pipe(
     }),
   ),
 
-  HttpRouter.post(
-    "/:documentId/embeddings",
+  HttpRouter.route(
+    "POST",
+    "/api/documents/:documentId/embeddings",
     Effect.gen(function* () {
       const convexService = yield* ConvexClient
       const convex = yield* convexService.userSession()
       const params = yield* HttpRouter.params
       const documentId = params.documentId
       if (!documentId) {
-        return HttpServerResponse.unsafeJson(
+        return HttpServerResponse.jsonUnsafe(
           { error: "Missing documentId" },
           { status: 400 },
         )
       }
 
       const result = yield* generateDocumentEmbeddings(convex, documentId).pipe(
-        Effect.either,
+        Effect.result,
       )
-      if (result._tag === "Left") {
-        return HttpServerResponse.unsafeJson(
-          { error: result.left.message },
-          { status: result.left.message.includes("No chunks") ? 404 : 500 },
+      if (result._tag === "Failure") {
+        return HttpServerResponse.jsonUnsafe(
+          { error: result.failure.message },
+          { status: result.failure.message.includes("No chunks") ? 404 : 500 },
         )
       }
 
-      return HttpServerResponse.unsafeJson(result.right)
+      return HttpServerResponse.jsonUnsafe(result.success)
     }),
   ),
-)
+])

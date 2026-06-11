@@ -2,7 +2,7 @@ import {
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
-} from "@effect/platform"
+} from "effect/unstable/http"
 import { Effect } from "effect"
 import * as mupdf from "mupdf"
 import { ValidationError } from "@academic-reader/api-client/errors"
@@ -28,46 +28,45 @@ function extractPageCount(
   }
 }
 
-export const uploadRouter = HttpRouter.empty.pipe(
-  HttpRouter.post(
-    "/",
-    Effect.gen(function* () {
-      const storage = yield* Storage
+export const uploadRouter = HttpRouter.add(
+  "POST",
+  "/api/upload",
+  Effect.gen(function* () {
+    const storage = yield* Storage
 
-      const request = yield* HttpServerRequest.HttpServerRequest
-      const webRequest = yield* HttpServerRequest.toWeb(request)
-      const formData = yield* Effect.tryPromise({
-        try: () => webRequest.formData(),
-        catch: () => new ValidationError({ message: "Invalid form data" }),
-      })
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const webRequest = yield* HttpServerRequest.toWeb(request)
+    const formData = yield* Effect.tryPromise({
+      try: () => webRequest.formData(),
+      catch: () => new ValidationError({ message: "Invalid form data" }),
+    })
 
-      const file = formData.get("file") as File | null
-      if (!file || typeof file === "string") {
-        return yield* new ValidationError({ message: "No file provided" })
-      }
+    const file = formData.get("file") as File | null
+    if (!file || typeof file === "string") {
+      return yield* new ValidationError({ message: "No file provided" })
+    }
 
-      const filename = sanitizeFilename(file.name)
+    const filename = sanitizeFilename(file.name)
 
-      const arrayBuffer = yield* Effect.tryPromise({
-        try: () => file.arrayBuffer(),
-        catch: () => new ValidationError({ message: "Failed to read file" }),
-      })
+    const arrayBuffer = yield* Effect.tryPromise({
+      try: () => file.arrayBuffer(),
+      catch: () => new ValidationError({ message: "Failed to read file" }),
+    })
 
-      const fileId = crypto.randomUUID()
-      yield* storage.saveFile(
-        tempOriginalFileKey(fileId),
-        Buffer.from(arrayBuffer),
-      )
+    const fileId = crypto.randomUUID()
+    yield* storage.saveFile(
+      tempOriginalFileKey(fileId),
+      Buffer.from(arrayBuffer),
+    )
 
-      const pageCount = extractPageCount(arrayBuffer, file.type)
+    const pageCount = extractPageCount(arrayBuffer, file.type)
 
-      return HttpServerResponse.unsafeJson({
-        file_id: fileId,
-        filename,
-        size: arrayBuffer.byteLength,
-        content_type: file.type,
-        page_count: pageCount,
-      })
-    }),
-  ),
+    return HttpServerResponse.jsonUnsafe({
+      file_id: fileId,
+      filename,
+      size: arrayBuffer.byteLength,
+      content_type: file.type,
+      page_count: pageCount,
+    })
+  }),
 )

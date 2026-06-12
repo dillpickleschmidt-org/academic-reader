@@ -68,6 +68,8 @@ const ReaderLayoutInner = memo(function ReaderLayoutInner({
           onDownload={onDownload}
           downloadDisabled={downloadDisabled}
           tocItems={tocItems}
+          readerMode={readerMode}
+          onReaderModeChange={setReaderMode}
         />
       )}
       <SidebarInset className="h-svh overflow-hidden">

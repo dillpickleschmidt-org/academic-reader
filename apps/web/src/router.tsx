@@ -21,17 +21,12 @@ import { useAppConfig } from "@/hooks/use-app-config"
 import { useDocumentCreation } from "@/hooks/use-document-creation"
 import { useNarratorVoicePreference } from "@/audio/narrator-preference"
 import { useRuntimeConfig } from "@/context/RuntimeConfigContext"
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@academic-reader/ui/primitives/sidebar"
 import { AuthDialog } from "@/components/AuthDialog"
 import { DeleteDocumentDialog } from "@/components/DeleteDocumentDialog"
 import { LandingPage } from "@/pages/LandingPage"
 import { PricingPage } from "@/pages/PricingPage"
 import { ConfigureProcessingPage } from "@/pages/ConfigureProcessingPage"
-import { ChatPanelProvider } from "@/context/ChatPanelContext"
-import { ReaderSidebar } from "@/components/sidebar/ReaderSidebar"
+import { MainFloatingControls } from "@/components/MainFloatingControls"
 import { TTSPlaybackBar } from "@/components/TTSPlaybackBar"
 
 const ResultPage = lazy(() =>
@@ -211,26 +206,24 @@ function HomeRoute() {
   if (!user) return landing
 
   return (
-    <ChatPanelProvider>
-      <SidebarProvider defaultOpen={false}>
-        <ReaderSidebar tocItems={[]} downloadDisabled />
-        <SidebarInset className="min-h-svh">
-          {landing}
-          <div
-            style={
-              {
-                "--reader-border": "var(--border)",
-                "--reader-accent": "var(--primary)",
-                "--reader-text": "var(--foreground)",
-                "--reader-text-muted": "var(--muted-foreground)",
-              } as CSSProperties
-            }
-          >
-            <TTSPlaybackBar />
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </ChatPanelProvider>
+    <>
+      {landing}
+      <div className="landing-theme contents">
+        <MainFloatingControls />
+      </div>
+      <div
+        style={
+          {
+            "--reader-border": "var(--border)",
+            "--reader-accent": "var(--primary)",
+            "--reader-text": "var(--foreground)",
+            "--reader-text-muted": "var(--muted-foreground)",
+          } as CSSProperties
+        }
+      >
+        <TTSPlaybackBar />
+      </div>
+    </>
   )
 }
 

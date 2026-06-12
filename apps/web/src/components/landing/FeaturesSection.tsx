@@ -171,7 +171,7 @@ export function FeaturesSection() {
 
 function ComingSoonBadge() {
   return (
-    <span className="inline-block text-[0.65rem] font-sans font-medium uppercase tracking-wide align-middle ml-2 py-0.5 px-2 rounded-md text-[#c17f59] dark:text-[#c4a265] bg-[#c17f5912] dark:bg-[rgba(196,162,101,0.07)] border border-[#c17f5930] dark:border-[rgba(196,162,101,0.19)]">
+    <span className="inline-block text-[0.65rem] font-sans font-medium uppercase tracking-wide align-middle ml-2 py-0.5 px-2 rounded-md text-primary bg-primary/10 border border-primary/20">
       coming soon
     </span>
   )

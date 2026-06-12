@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactElement } from "react"
 import { Volume2 } from "lucide-react"
 import {
   Popover,
@@ -19,49 +20,71 @@ import { MusicTab } from "./MusicTab"
 import { AmbienceTab } from "./AmbienceTab"
 import { AudioSettingsFooter } from "./AudioSettingsFooter"
 
-export function AudioSettingsPopover() {
+interface AudioSettingsPopoverProps {
+  showNarrator?: boolean
+  trigger?: ReactElement
+  side?: "top" | "right" | "bottom" | "left"
+  align?: "start" | "center" | "end"
+}
+
+export function AudioSettingsPopover({
+  showNarrator = true,
+  trigger,
+  side = "right",
+  align = "start",
+}: AudioSettingsPopoverProps) {
   const isNarrationPlaying = useAudioSelector((s) => s.playback.isPlaying)
   const isMusicPlaying = useAudioSelector((s) => s.music.isPlaying)
   const hasActiveAmbience = useAudioSelector((s) =>
     s.ambience.sounds.some((sound) => sound.enabled),
   )
   const isAudioActive =
-    isNarrationPlaying || isMusicPlaying || hasActiveAmbience
+    (showNarrator && isNarrationPlaying) || isMusicPlaying || hasActiveAmbience
+  const label = showNarrator ? "Narration & Audio" : "Audio"
 
   return (
     <Popover>
       <PopoverTrigger
         render={
-          <SidebarMenuButton
-            tooltip="Narration & Audio"
-            data-active={isAudioActive}
-            className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
-          >
-            <Volume2 />
-            <span>Narration & Audio</span>
-          </SidebarMenuButton>
+          trigger ?? (
+            <SidebarMenuButton
+              tooltip={label}
+              data-active={isAudioActive}
+              className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+            >
+              <Volume2 />
+              <span>{label}</span>
+            </SidebarMenuButton>
+          )
         }
       />
       <PopoverContent
-        side="right"
-        align="start"
+        side={side}
+        align={align}
         sideOffset={8}
         className="w-[360px] p-0"
       >
-        <Tabs defaultValue="narrator" className="w-full gap-0">
+        <Tabs
+          defaultValue={showNarrator ? "narrator" : "ambience"}
+          className="w-full gap-0"
+        >
           <TabsList
             variant="line"
             className="w-full justify-start border-b px-2"
           >
-            <TabsTrigger value="narrator">Narrator</TabsTrigger>
+            {showNarrator && (
+              <TabsTrigger value="narrator">Narrator</TabsTrigger>
+            )}
             <TabsTrigger value="ambience">Ambience</TabsTrigger>
             <TabsTrigger value="music">Music</TabsTrigger>
           </TabsList>
 
           <div className="p-4">
-            <TabsContent value="narrator" className="mt-0">
-              <NarratorTab />
-            </TabsContent>
+            {showNarrator && (
+              <TabsContent value="narrator" className="mt-0">
+                <NarratorTab />
+              </TabsContent>
+            )}
 
             <TabsContent value="ambience" className="mt-0">
               <AmbienceTab />

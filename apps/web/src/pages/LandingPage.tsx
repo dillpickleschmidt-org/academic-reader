@@ -102,10 +102,8 @@ function HeroSection({ onFileSelect }: { onFileSelect: (file: File) => void }) {
             height: 600,
             top: -120,
             left: -100,
-            filter: "blur(80px)",
             background:
               "radial-gradient(ellipse at center, var(--blob-1) 0%, transparent 70%)",
-            animation: "hero-breathe 8s ease-in-out infinite",
           }}
         />
         <div
@@ -115,10 +113,8 @@ function HeroSection({ onFileSelect }: { onFileSelect: (file: File) => void }) {
             height: 400,
             bottom: -60,
             left: "30%",
-            filter: "blur(90px)",
             background:
               "radial-gradient(ellipse at center, var(--blob-2) 0%, transparent 70%)",
-            animation: "hero-breathe 8s ease-in-out infinite 4s",
           }}
         />
       </div>
@@ -239,7 +235,7 @@ function RecentDocumentsSection({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-8 w-8 p-0 ml-auto text-muted-foreground hover:text-[#c17f59] dark:hover:text-[#c4a265] hover:bg-accent"
+                    className="h-8 w-8 p-0 ml-auto text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                     onClick={() => onDeleteDocument(doc._id)}
                     title="Remove"
                   >

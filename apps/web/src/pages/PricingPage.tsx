@@ -17,10 +17,8 @@ export function PricingPage() {
               height: 500,
               top: -80,
               right: -100,
-              filter: "blur(80px)",
               background:
                 "radial-gradient(ellipse at center, var(--blob-1) 0%, transparent 70%)",
-              animation: "hero-breathe 8s ease-in-out infinite",
             }}
           />
           <div
@@ -30,10 +28,8 @@ export function PricingPage() {
               height: 400,
               bottom: 100,
               left: -50,
-              filter: "blur(90px)",
               background:
                 "radial-gradient(ellipse at center, var(--blob-2) 0%, transparent 70%)",
-              animation: "hero-breathe 8s ease-in-out infinite 4s",
             }}
           />
         </div>

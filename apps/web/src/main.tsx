@@ -9,6 +9,7 @@ import {
 import { Toaster } from "@academic-reader/ui/primitives/sonner"
 import { RuntimeConfigProvider, type RuntimeConfig } from "./context/RuntimeConfigContext"
 import { AudioProvider } from "./context/AudioContext"
+import { ThemeEffects } from "./components/ThemeEffects"
 import { router } from "./router"
 import "./styles/App.css"
 
@@ -31,6 +32,7 @@ async function bootstrap(rootEl: HTMLElement) {
       <StrictMode>
         <RuntimeConfigProvider config={config}>
           <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+            <ThemeEffects />
             <AudioProvider>
               <RouterProvider router={router} />
             </AudioProvider>

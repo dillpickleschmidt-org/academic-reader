@@ -29,6 +29,7 @@ import {
 import { Switch } from "@academic-reader/ui/primitives/switch"
 import { useChatPanel } from "@/context/ChatPanelContext"
 import type { TocDisplayItem } from "@/hooks/use-table-of-contents"
+import type { ReaderTheme } from "@/constants/themes"
 
 function ChatThreadsViewToggle() {
   const { viewMode, setViewMode } = useChatPanel()
@@ -100,12 +101,16 @@ interface ReaderSidebarProps extends React.ComponentProps<typeof Sidebar> {
   onDownload?: () => void
   downloadDisabled?: boolean
   tocItems?: TocDisplayItem[]
+  readerMode: ReaderTheme
+  onReaderModeChange: (mode: ReaderTheme) => void
 }
 
 export function ReaderSidebar({
   onDownload,
   downloadDisabled,
   tocItems,
+  readerMode,
+  onReaderModeChange,
   ...props
 }: ReaderSidebarProps) {
   const { state, setOpen } = useSidebar()
@@ -259,7 +264,10 @@ export function ReaderSidebar({
         <NavActions actions={actions} />
       </SidebarContent>
       <SidebarFooter>
-        <ColorThemeSelector />
+        <ColorThemeSelector
+          readerMode={readerMode}
+          onReaderModeChange={onReaderModeChange}
+        />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
